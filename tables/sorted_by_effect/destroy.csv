@@ -1,0 +1,29 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Ember Scout,Beast,You may destroy this in your turn.,0,1,0,0,1,,Alpha 0.1.0,
+Creature — Emberkin,Insect,"On Play: For every card you have discarded this turn, each opponent must destroy one of their creatures.",0,2,0,0,-5,,Alpha 0.1.0,Vmy0j0q4NXn
+Creature — Pyropeon,Insect,On Destruction: Destroy an enemy creature here.,0,1,0,0,2,,Alpha 0.1.0,hGN18cMn_9h
+Creature — Ember Wrecker,Inferno Beast,On Play: Destroy all other friendly creatures here.,0,2,0,1,5,,Alpha 0.1.0,I3Fmj0vzUH7
+Creature — Aethonix Wraith,Incorporeal,"Whenever you destroy a creature, draw a card.",0,1,1,0,3,,Alpha 0.1.0,WgolBaK7yym
+Creature — Khaosflux,Arcane,On Return: Destroy an enemy creature here.,0,1,1,0,2,,Alpha 0.1.0,2b15MqU58_d
+Creature — Inferno Scourger,Dragon Elemental,"Destroy all creatures, which cost X or less mana here.",0,2,0,X,3,,Alpha 0.1.0,IkPzvUw0uIp
+Creature — Pyrebrand,Fiend,On Discard: Destroy a creature.,0,2,0,0,4,,Alpha 0.1.0,2Bz0mjox_Pr
+Creature — Pyrebound Harbinger,Demon Fiend,As an additional cost to play this creature: Destroy all other friendly creatures here (must destroy at least one).,0,2,0,0,5,,Alpha 0.1.0,3DKYJEMSJzP
+Creature — Ember Reaver,Beast,On Play: Destroy the highest power creature(s) here.,0,3,0,1,-1,,Alpha 0.1.0,uKa1Yif0S6b
+Creature — Shadowbound Reaper,Specter Assassin,On Play: Destroy an enemy creature on another location.,0,3,0,1,-5,,Alpha 0.1.0,h6scThDKCSo
+Creature — Flamewyrm,Inferno Dragon,On Revive: Destroy all other creatures here.,2,2,0,0,5,,Alpha 0.1.0,h1BDlS2yp09
+Creature — Infernox Spark,Inferno/Beast,On Play: Destroy an enemy creature here with a mana cost of one or less.,0,1,0,0,-1,,Alpha 0.1.0,5AjHgXGLTlG
+Creature — Pyroclasm Lord,Elemental,On Destruction: Destroy any enemy creature.,0,1,0,1,4,,Alpha 0.1.0,4qTZ16-Thve
+Creature — Khaosblade,Sword,On Return: Destroy any enemy creature.,0,1,1,1,6,,Alpha 0.1.0,JCvxViPcT2b
+Creature — Inferno Reaver,Beast/Monstrosity,On Play: Destroy the next card you play here this turn.,0,2,0,0,4,,Alpha 0.1.0,UHflgcP0b7C
+Creature — Hell Worm,Worm,"Whenever a friendly creature is played here, you may destroy it. Only triggers once each turn.",0,3,0,1,6,,Alpha 0.1.0,7uOOKiS283f
+Creature — Infernox,Dragon,On Play: Destroy an enemy creature here.,0,3,0,1,-1,,Alpha 0.1.0,vI_dFgXesv9
+Creature — Fulminous Ascendant,Aetherwalker,As an additional cost to play this creature: Destroy another friendly creature here. On Play: Revive another creature from your graveyard.,1,1,0,1,4,,Alpha 0.1.0,coNh0B4S6oc
+Creature — Inferno's Spark,Infernal,On Play: All enemies must destroy one of their creatures.,0,1,0,1,-1,,Alpha 0.1.0,0CpoWxP02ZW
+Creature — Scarlet Scourge,Insectoid,On Play: All enemies must destroy one of their creatures here.,0,2,0,1,-1,,Alpha 0.1.0,ZO4hGOc9apK
+Creature — Inferno Reckoner,Infernal,On Play: Discard X cards. Destroy X creatures with a mana value of one or less.,0,2,0,2,5,,Alpha 0.1.0,
+Creature — Embervine Ravager,Elemental Raider,On Play: Destroy a green mana crystal of an enemy.,0,2,0,2,-4,,Alpha 0.1.0,QLsX33QJFyY
+Creature — Scarlet Requiem,Spirit,On Play: Destroy all creatures here with less power than this creature.,0,3,0,2,5,,Alpha 0.1.0,eAnphT3sXnB
+Creature — Kraelion Scourge,Insectoid Fungus,On Revive: Destroy an enemy mana crystal.,1,1,0,2,2,,Alpha 0.1.0,04-bRJ9PSKL
+Creature — Inferno Scourge,Insect,On Play: Destroy all creatures here. Including this creature.,0,3,0,3,12,,Alpha 0.1.0,tuX3bXXsLkC
+Creature — Infernoxar,Inferno Beast,"On Play: For each opponent, destroy one of their creatures.",0,3,0,3,-5,,Alpha 0.1.0,nRdd6Uio10H
+Creature — Inferno's Requiem,Inferno Beast,On Play: Destroy all other creatures here.,0,3,0,4,5,,Alpha 0.1.0,ZHSgrjWpvUB

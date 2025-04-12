@@ -1,0 +1,22 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+Mirrored Sanctum,Location,Starting Location,Creatures here are played face-down and only revealed at the end of the game.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,tMXbuqwUziQ
+The Astral Scriptorium,Location,Starting Location,"Whenever you play a creature here, draw a card.",0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,N2prvYvc0Q5
+The Abyssal Spires,Location,Starting Location,"At the start of their last turn, every player may move one creature to this location.",0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,eKCq08RoGqW
+Emberhaven,Location,Starting Location,"If you are winning at this location, your first creature each turn costs one mana less.",0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,C30zKTzvzB8
+Emerald Hollow,Location,Starting Location,"If you have no creatures here, your first creature each turn costs one mana less.",0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,038p5v4wbNb
+The Prismatic Grotto,Location,Starting Location,Only creatures costing 5 or less mana can be played here.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,a9FgP3QFPOo
+The Ironhaven Citadel,Location,Starting Location,Each creature here has +1 power.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,Qfxc_nh12EC
+The Spire of the Ancients,Location,Starting Location,Only creatures with a cost of 3 or higher can be played here.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,jSpBlLI65wH
+Inferno Citadel,Location,Starting Location,"If you have only one creature here, it has +5 power.",0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,U5iwY4a9fSO
+Inferno's Edge,Location,Starting Location,You can't play cards here two turns in a row.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,vSxF66gXyU8
+Eldrida's Sanctum, Location, Starting Location,The first player to fill this location may draw a card.,0,0,0,0,0,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,MjY9AUo40aV
+Hollowspire,Location,Starting Location,The first player to fill this location may get an extra mana crystal.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,p9EqmOP0I-z
+The Oasis Citadel,Location,Starting Location,Players may only play a maximum of one creature here in their turn.,0,0,0,0,,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,38fZGh-5iyP
+The Nexus Haven,Location,Starting Location,The first player to fill this location may move a creature here to another location.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,eUpqQPm8nkf
+The Oasis of Refuge,Location,Starting Location,The first player to fill this location may return a creature here to their owner's hand.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,UJ6qiaayHfg
+The Citadel of Eldrida,Location,Starting Location,The first player to fill this location may destroy the lowest power creature here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,c1X2-59oS_k
+The Overlooked Corner,Location,Starting Location,The first player to fill this location may look at the top three cards of their deck and return them in any order.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,7gcem-1uriy
+The Wysteria Oasis,Location,Starting Location,Only creatures with a power of 4 or more can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,I8two--Dejq
+Whispering Warrens,Location,Starting Location,Only creatures with a power of 9 or less can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,UUnkHnrCy0l
+Market Square,Location,Starting Location,One more creature can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,3acgy8VfLkU
+Eldrida's Sanctuary,Location,Playable Location,Place this as a new location. All players can play to this new location.,0,0,3,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,bmvdhL9IECP

@@ -1,0 +1,86 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Aquarian Siren,Aquatic,On Play: Draw a card. Put one card from your hand on top of your deck.,0,0,1,0,2,,Alpha 0.1.0,T5St6HlZ-DE
+Creature — Aquasail,Sea Serpent,On Play: Move a friendly creature to here.,0,0,1,0,2,,Alpha 0.1.0,abT4ehMSjMw
+Creature — Arcane Disruptor,Human Sorcerer,On Play: Your next on play effect played this turn does not trigger.,0,0,1,0,2,,Alpha 0.1.0,W6Uv1r-N4EZ
+Creature — Nimbus Specter,Soul,On Play: Draw a card.,0,0,2,0,2,,Alpha 0.1.0,a8wW7Heppsw
+Creature — Emberkin,Insect,"On Play: For every card you have discarded this turn, each opponent must destroy one of their creatures.",0,2,0,0,-5,,Alpha 0.1.0,Vmy0j0q4NXn
+Creature — Corpse Larva,Insect,On Play: Put the top three cards of an enemy's deck in their graveyard.,1,1,0,0,3,,Alpha 0.1.0,E_uvnlZq2Tg
+Creature — Infernal Harbinger,Demon,"On Play: If you have discarded one or more cards this turn, return one of them to your hand.",0,1,0,0,1,,Alpha 0.1.0,
+Creature — Ember Wrecker,Inferno Beast,On Play: Destroy all other friendly creatures here.,0,2,0,1,5,,Alpha 0.1.0,I3Fmj0vzUH7
+Creature — Aetherflame Archmage,Archmage,On Play: Draw a card and discard a card.,0,1,1,0,3,,Alpha 0.1.0,-ubqGddsQER
+Creature — Khronokeeper,Chronomancer,On Draw: You may discard a card. On Play: Draw a card.,0,1,1,0,2,,Alpha 0.1.0,5MuRT1I5zII
+Creature — Ember Reaver,Beast,On Play: Destroy the highest power creature(s) here.,0,3,0,1,-1,,Alpha 0.1.0,uKa1Yif0S6b
+Creature — Shadowbound Reaper,Specter Assassin,On Play: Destroy an enemy creature on another location.,0,3,0,1,-5,,Alpha 0.1.0,h6scThDKCSo
+Creature — Verdant Channeler,Elf Druid,On Play: The next creature you play this turn costs two green mana less.,1,0,0,0,1,,Alpha 0.1.0,xb9g214HwMO
+Creature — Curious Explorer,Squirrel,On Play: Change the colors of up to two of your mana crystals.,1,0,0,0,2,,Alpha 0.1.0,GcCUdJK0jjY
+Creature — Foliar Vigilant,Plants,On Play: You may put up to three creatures from your graveyard on top of your deck.,1,0,0,0,2,,Alpha 0.1.0,_GOdz0Vwgf4
+Creature — Great Tradesman,Human Traveller,On Play: The first creature you play next turn costs 2 colorless mana less.,0,0,0,2,2,,Alpha 0.1.0,LDU8tsQIM0-
+Creature — Leafcaller's Vigilance,Enchanted,On Play: Put the top two cards of your deck into your graveyard.,1,0,0,0,2,,Alpha 0.1.0,2PxR2tm3Afc
+Creature — Sapling Sentinel,Dryad,On Play: Draw up to two cards from your graveyard.,1,0,0,0,2,,Alpha 0.1.0,whimbIUCtR-
+Creature — Treelord Sprout,Mythic,"On Play: Reveal the top card of your deck. If it costs one or less, play it for free.",1,0,0,0,1,,Alpha 0.1.0,A_rwI1Q3-RB
+Creature — Verdi Shift,Plant,On Play: Change the color of an enemy's mana.,1,0,0,0,2,,Alpha 0.1.0,WJiwSnZlEyp
+Creature — Khaos Reaver,Mythic,On Play: Repeat one of your 'On Play' effects here.,1,1,1,0,5,,Alpha 0.1.0,CyodZA44Du8
+Creature — Elder Whisperer,Sage,On Play: Swap a friendly creature here with a creature in your graveyard.,2,0,1,0,4,,Alpha 0.1.0,LFvmNxg1rET
+Creature — Aquasage,Water,On Play: Swap a friendly creature from this location with the top card of your deck.,2,0,2,0,7,,Alpha 0.1.0,f5lDuYY4T25
+Creature — Aetherial Mire Dweller,Insect,On Play: Move any creature to here.,0,0,1,1,3,,Alpha 0.1.0,xPrGkyVuZD6
+Creature — Sentinel of Azure Waters,Aquatic,On Play: Return an enemy creature here to their hand.,0,0,2,1,2,,Alpha 0.1.0,RPsNE434Qsg
+Creature — Nullstone Warden,Mystic Guardian,On Play: The next on play effect you play this turn not trigger.,0,0,1,1,5,,Alpha 0.1.0,
+Creature — Auroral Keeper,Elemental,On Play: Return all friendly creatures here to your hand.,0,0,2,1,6,,Alpha 0.1.0,s6FRroyb5wm
+Creature — Moonlit Revenant,Ghost,On Play: Return a friendly creature here to your hand. You may play it for 1 blue mana next turn.,0,0,1,2,6,,Alpha 0.1.0,ev7pG8h2rlj
+Creature — Infernal Spark,Trickster,On Play: All players must discard a card.,0,1,0,1,2,,Alpha 0.1.0,tph55j5uiZJ
+Creature — Infernox Spark,Inferno/Beast,On Play: Destroy an enemy creature here with a mana cost of one or less.,0,1,0,0,-1,,Alpha 0.1.0,5AjHgXGLTlG
+Creature — Chaotic Mindshaper,Illusionist,On Play: Draw two cards and discard a card.,0,1,1,1,4,,Alpha 0.1.0,x2W-aNqbNfr
+Creature — Inferno Reaver,Beast/Monstrosity,On Play: Destroy the next card you play here this turn.,0,2,0,0,4,,Alpha 0.1.0,UHflgcP0b7C
+Creature — Fatebinder Seer,Oracle,On Play: Draw three cards and discard three cards.,0,2,2,1,9,,Alpha 0.1.0,ha4Nz78ojVo
+Creature — Infernox,Dragon,On Play: Destroy an enemy creature here.,0,3,0,1,-1,,Alpha 0.1.0,vI_dFgXesv9
+Creature — Terrakion,Rock,On Play: Evolve a friendly creature here by one green mana (Put the friendly creature into your graveyard. Search your deck for a creature that costs up to one green mana more and put it into play here).,1,0,0,1,3,,Alpha 0.1.0,Xy_ixWbQN9d
+Creature — Verdant Requiem,Vegetation,On Play: Put the top two cards of all decks into their respective graveyard.,1,0,0,1,4,,Alpha 0.1.0,gp6svEQhMPN
+Creature — Aquariarch,Aquatic Beast,On Play: Copy the 'On Play' effect of the top card of your deck.,1,0,1,1,5,,Alpha 0.1.0,_9rPsJUodOY
+Creature — Archon of the Tideshift,Aquatic,On Play: Put all cards in a graveyard on top of their owners' deck in any order.,1,0,1,1,6,,Alpha 0.1.0,-_vEcjTyoCw
+Creature — Fulminous Ascendant,Aetherwalker,As an additional cost to play this creature: Destroy another friendly creature here. On Play: Revive another creature from your graveyard.,1,1,0,1,4,,Alpha 0.1.0,coNh0B4S6oc
+Creature — Khaos Avatar,Mythic,On Play: Repeat all of your 'On Play' effects here. This effect can not be repeated.,1,1,2,1,7,,Alpha 0.1.0,_bWY_nC4Hq1
+Creature — Verdant Sproutling,Elemental Sapling,On Play: Get an extra green mana crystal.,2,0,0,1,5,,Alpha 0.1.0,MB58UqtnbWL
+Creature — Young Necromancer,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,2,0,0,2,5,,Alpha 0.1.0,TQxvfM-fiOG
+Creature — Sylvan Harmonizer,Elf Druid,On Play: Other creatures you play on this location this turn cost one colorless mana less.,3,0,0,0,2,,Alpha 0.1.0,6mDBrtGR_zW
+Creature — Necrotide Revenant,Spirit,On Play: Revive a creature.,3,0,0,1,6,,Alpha 0.1.0,MsF3czEcciU
+Creature — Auroral Nexus,Angel,On Play: Draw two cards.,0,0,1,2,4,,Alpha 0.1.0,5MlToGlmK_l
+Creature — Mistress of the Tideshroud,Sea Witch,On Play: Move an enemy creature here to another location.,0,0,1,2,5,,Alpha 0.1.0,ZXBCWFmPta2
+Creature — Sky Sentinel,Avian,On Play: Move an enemy creature with less power than this creature to this location.,0,0,1,1,3,,Alpha 0.1.0,
+,,On Play: Move an enemy creature to this location.,0,0,1,2,5,,Alpha 0.1.0,
+Creature — Aquarian Ascendant,Aquatic,On Play: Draw three cards.,0,0,2,2,5,,Alpha 0.1.0,avyc-VILc4Y
+Creature — Maelstrom's Vessel,Shipwreck,On Play: Return any enemy creature to their hand.,0,0,2,2,4,,Alpha 0.1.0,mx1JBHEee7H
+"Creature — Zha'thik, Maelstrom Wraith",Mythic,On Play: Move a friendly creature.,0,0,2,1,5,,Alpha 0.1.0,GyFGA2_0NGh
+Creature — Aquariess of Elysium,Beast,On Play: Return a friendly creature here to your hand. You may play it for free next turn.,0,0,2,2,6,,Alpha 0.1.0,5tU-jDGndJN
+Creature — Maelstrom Oracle,Illusion,On Play: Move enemy creatures to this location.,0,0,3,2,7,,Alpha 0.1.0,bk2yS9BvdTw
+Creature — Inferno's Spark,Infernal,On Play: All enemies must destroy one of their creatures.,0,1,0,1,-1,,Alpha 0.1.0,0CpoWxP02ZW
+Creature — Volatile Alchemist,Spellcrafter,On Play: Draw two cards and discard two cards.,0,1,1,2,7,,Alpha 0.1.0,8pama1LZCTA
+Creature — Scarlet Scourge,Insectoid,On Play: All enemies must destroy one of their creatures here.,0,2,0,1,-1,,Alpha 0.1.0,ZO4hGOc9apK
+Creature — Inferno Reckoner,Infernal,On Play: Discard X cards. Destroy X creatures with a mana value of one or less.,0,2,0,2,5,,Alpha 0.1.0,
+Creature — Infernal Anchor,Mechanical Entity,"On Play: Choose a location. Next turn, your enemies cannot play cards there.",0,2,0,2,6,,Alpha 0.1.0,CBJ2hjF0PO5
+Creature — Inferno Titan,Mythic,On Play: Enemy cards cannot be played here next turn.,0,2,0,2,7,,Alpha 0.1.0,LOsWabZ9Tk7
+Creature — Embervine Ravager,Elemental Raider,On Play: Destroy a green mana crystal of an enemy.,0,2,0,2,-4,,Alpha 0.1.0,QLsX33QJFyY
+Creature — Scarlet Requiem,Spirit,On Play: Destroy all creatures here with less power than this creature.,0,3,0,2,5,,Alpha 0.1.0,eAnphT3sXnB
+Creature — Terraverge,Earth Elemental,On Play: Evolve a friendly creature here by two colorless mana (Put the friendly creature into your graveyard. Search you deck for a creature that costs up to two colorless mana more and put it into play here).,1,0,0,2,4,,Alpha 0.1.0,210cDjfkUXK
+Creature — Aeropex,Aviator,On Play: You may play your next card for free and face down. Turn it face up at the end of the game and activate its effect as usual.,1,0,2,2,6,,Alpha 0.1.0,5fbQ9vxsepj
+Creature — Khaosian Chosen One,Angel,On Play: Play the top card of your deck for free.,2,0,0,2,4,,Alpha 0.1.0,03g67NiRXu0
+Creature — Terra Vigorant,Dryad,On Play: Get an extra mana crystal.,1,0,0,3,6,,Alpha 0.1.0,xx8vbapLCoy
+Creature — Seedling Sage,Fungal,"On Play: For every friendly creature here, including this one, draw a card.",2,0,0,2,5,,Alpha 0.1.0,8uersc6kFuS
+Creature — Aquari Oracle,Aquatic,On Play: Draw three cards. Put one card from your hand on top of your deck.,0,0,1,3,7,,Alpha 0.1.0,EyAhm9NoBjT
+Creature — Aetherium Sage,Human Wizard,On Play: Draw all your cards.,0,0,3,3,10,,Alpha 0.1.0,uzRpW9mwW3T
+"Creature — Aeolus, Echokeeper",Sylph,On Play: Return all friendly creatures here to your hand. You may play them for free next turn.,0,0,3,3,8,,Alpha 0.1.0,VI78dPYygts
+Creature — Maelstrom Guardian,Melee Beast,On Play: Move all enemy creatures here to other locations.,0,0,3,3,8,,Alpha 0.1.0,KEuptP-PvIC
+Creature — Maelstrom of the Abyssal Veil,Aquatic Undead,On Play: Move all your other creatures to any location.,0,0,4,3,9,,Alpha 0.1.0,e2zZOPFKAl0
+Creature — Inferno Scourge,Insect,On Play: Destroy all creatures here. Including this creature.,0,3,0,3,12,,Alpha 0.1.0,tuX3bXXsLkC
+Creature — Infernal Overlord,Evil,On Play: Discard all your cards.,0,3,0,3,16,,Alpha 0.1.0,0wDrgspflOx
+Creature — Infernoxar,Inferno Beast,"On Play: For each opponent, destroy one of their creatures.",0,3,0,3,-5,,Alpha 0.1.0,nRdd6Uio10H
+Creature — Inferno's Requiem,Inferno Beast,On Play: Destroy all other creatures here.,0,3,0,4,5,,Alpha 0.1.0,ZHSgrjWpvUB
+Creature — Echokeeper of the Abyssal Depths,Trickster,On Play: Trigger the 'On Play' Effect of a creature in your graveyard.,1,0,1,3,9,,Alpha 0.1.0,O2fUNvEEZuV
+Creature — Mindshaper Siren,Siren,On Play: Gain control of an enemy creature.,0,0,3,4,1,,Alpha 0.1.0,G6P7CKvnbgX
+Creature — Maelstrom Keeper,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,0,3,4,6,,Alpha 0.1.0,vh5Qdx7g80D
+Creature — Terrakai,Earth Elemental,On Play: Pay X Mana. Draw X cards.,2,0,0,X,4,,Alpha 0.1.0,62wbPvefnrm
+,,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents discard a card.",0,3,0,3,5,,Alpha 0.1.0,
+,,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents have to destroy one of their creatures.",0,3,0,4,7,,Alpha 0.1.0,
+,,On Play: Destroy all other friendly creatures here. For each destroyed draw a card.,0,2,1,0,5,,Alpha 0.1.0,
+,,On Play: Destroy all other friendly creatures here. For each destroyed gain a mana crystal.,2,2,0,0,7,,Alpha 0.1.0,
+,,On Play: All players must discard a card.,0,2,0,0,3,,Alpha 0.1.0,
+,,On Play: Look at the top three cards of your deck.,0,0,1,0,2,,Alpha 0.1.0,

@@ -1,0 +1,23 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Emberkin,Insect,"On Play: For every card you have discarded this turn, each opponent has to destroy one of their creatures.",0,2,0,0,-5,,Alpha 0.1.0,Vmy0j0q4NXn
+Creature — Ember Spark,Inferno,On Discard: Draw two cards.,0,1,0,0,2,,Alpha 0.1.0,_7RElRJ56N0
+Creature — Infernoxys,"Infernoxys, Pyromancer",On Destruction: An enemy must discard two cards.,0,1,0,0,2,,Alpha 0.1.0,qfJjKM-Xj1a
+Creature — Infernal Harbinger,Demon,"On Play: If you have discarded one or more cards this turn, return them to your hand.",0,1,0,0,1,,Alpha 0.1.0,C2G0_aYKt3O
+Creature — Inferno Spark,Infernal,Additional cost: Discard a card.,0,1,0,0,4,,Alpha 0.1.0,JATMXAOzDA4
+Creature — Aetherflame Archmage,Archmage,On Play: Draw a card and discard a card.,0,1,1,0,3,,Alpha 0.1.0,-ubqGddsQER
+Creature — Murmur of the Abyssal Depths,Void,On Draw: You may discard a card.,0,1,1,0,2,,Alpha 0.1.0,ZPHFcpOz4k-
+Creature — Khronokeeper,Chronomancer,On Draw: You may discard a card. On Play: Draw a card.,0,1,1,0,2,,Alpha 0.1.0,5MuRT1I5zII
+Creature — Ember Scourge,Insect,On Discard: All enemies must discard a card.,0,2,0,0,4,,Alpha 0.1.0,cEYLns2PUkR
+Creature — Pyrebrand,Fiend,On Discard: Destroy a creature.,0,2,0,0,4,,Alpha 0.1.0,2Bz0mjox_Pr
+Creature — Infernal Spark,Trickster,On Play: All opponents must discard a card.,0,1,0,1,2,,Alpha 0.1.0,tph55j5uiZJ
+Creature — Chaotic Mindshaper,Illusionist,On Play: Draw two cards and discard a card.,0,1,1,1,4,,Alpha 0.1.0,x2W-aNqbNfr
+Creature — Infernoheart,Infernal Beast,"Whenever you discard a card, draw a card.",0,1,1,1,4,,Alpha 0.1.0,KFV9D3pOyaA
+Creature — Khaosurge,Mythic,As an additional cost to play this card: Discard two cards.,0,2,0,1,8,,Alpha 0.1.0,gOfRf5sOnTD
+Creature — Fatebinder Seer,Oracle,On Play: Draw three cards and discard three cards.,0,2,2,1,9,,Alpha 0.1.0,ha4Nz78ojVo
+Creature — Ember Revenant,Infernal,On Discard: Revive this creature.,1,1,0,1,4,,Alpha 0.1.0,eaXt7jSF4Zq
+Creature — Pyropex the Unyielding,Pyro Beast,On Revive: An enemy must discard three cards.,1,1,0,1,6,,Alpha 0.1.0,np1f0tbwL4J
+Creature — Infernal Scourge,Incendiary,On Discard: An enemy must discard two cards.,0,1,0,2,5,,Alpha 0.1.0,0kfDF4Iz9NH
+Creature — Volatile Alchemist,Spellcrafter,On Play: Draw two cards and discard two cards.,0,1,1,2,7,,Alpha 0.1.0,8pama1LZCTA
+Creature — Inferno Reckoner,Infernal,On Play: Discard X cards. Destroy X creatures with a mana value of one or less.,0,2,0,2,5,,Alpha 0.1.0,
+Creature — Pyreborn Acolyte,Spirit,As an additional cost to play this card: Discard three cards.,0,2,0,3,12,,Alpha 0.1.0,DdJZFxfeUEF
+Creature — Infernal Overlord,Evil,On Play: Discard all your cards.,0,3,0,3,16,,Alpha 0.1.0,0wDrgspflOx

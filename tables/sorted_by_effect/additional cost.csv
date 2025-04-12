@@ -1,0 +1,13 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+"Creature — Aquariel, Whispering Depths",Aquatic Elemental,Additional cost: Return a friendly creature here to your hand.,0,0,2,0,5,,Alpha 0.1.0,FHkoFdHPvyD
+Creature — Whispering Sprite,Elemental,Additional cost: Return any other friendly creature with mana value of 1 or less to your hand.,0,0,1,0,4,,Alpha 0.1.0,HbKkbzcMPzT
+Creature — Kairos Whisper,Elemental,Additional cost: Put a card from your hand on top of your deck.,0,0,1,0,4,,Alpha 0.1.0,yN2lbpUynEu
+Creature — Luminari,Spirit,Additional cost: Return any friendly creature to your hand.,0,0,2,0,5,,Alpha 0.1.0,xRi7mndTSUM
+Creature — Inferno Spark,Infernal,Additional cost: Discard a card.,0,1,0,0,4,,Alpha 0.1.0,JATMXAOzDA4
+Creature — Aetherwave Sprite,Spirit,Additional cost: Sacrifice one of your mana crystals.,0,1,0,0,7,,Alpha 0.1.0,I2zYRIAXaGZ
+Creature — Pyrebound Harbinger,Demon Fiend,As an additional cost to play this creature: Destroy another friendly creature.,0,2,0,0,5,,Alpha 0.1.0,3DKYJEMSJzP
+Creature — Soulforged Revenant,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,1,0,0,4,,Alpha 0.1.0,02kavWsTrUb
+Creature — Scorchheart Fanatic,Demon Berserker,As an additional cost to play this creature: Destroy a friendly creature on an adjacent location.,0,1,0,1,5,,Alpha 0.1.0,sLDGDwCWlHg
+Creature — Khaosurge,Mythic,As an additional cost to play this card: Discard two cards.,0,2,0,1,8,,Alpha 0.1.0,gOfRf5sOnTD
+Creature — Fulminous Ascendant,Aetherwalker,As an additional cost to play this creature: Destroy another friendly creature here. On Play: Revive another creature from your graveyard.,1,1,0,1,4,,Alpha 0.1.0,coNh0B4S6oc
+Creature — Pyreborn Acolyte,Spirit,As an additional cost to play this card: Discard three cards.,0,2,0,3,12,,Alpha 0.1.0,DdJZFxfeUEF

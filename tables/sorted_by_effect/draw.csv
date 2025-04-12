@@ -1,0 +1,31 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Aquarian Siren,Aquatic,On Play: Draw a card. Put one card from your hand on top of your deck.,0,0,1,0,2,,Alpha 0.1.0,T5St6HlZ-DE
+Creature — Aquarius,Mythic,On Return: Draw two cards.,0,0,1,0,2,,Alpha 0.1.0,b-R4RXDt-Yr
+Creature — Moonlit Whisperer,Beast/Witch,On Draw: Draw a card,0,0,2,0,1,,Alpha 0.1.0,wbc2cjMZrlo
+Creature — Nimbus Specter,Soul,On Play: Draw a card.,0,0,2,0,2,,Alpha 0.1.0,a8wW7Heppsw
+Creature — Maelstrom Whisper,Aquatic,"Whenever you draw a card, draw an additional card.",0,0,3,0,5,,Alpha 0.1.0,DpKehwigS1K
+Creature — Ember Spark,Inferno,On Discard: Draw a card.,0,1,0,0,2,,Alpha 0.1.0,_7RElRJ56N0
+Creature — Aetherflame Archmage,Archmage,On Play: Draw a card and discard a card.,0,1,1,0,3,,Alpha 0.1.0,-ubqGddsQER
+Creature — Murmur of the Abyssal Depths,Void,On Draw: You may discard a card.,0,1,1,0,2,,Alpha 0.1.0,ZPHFcpOz4k-
+Creature — Aethonix Wraith,Incorporeal,"Whenever you destroy a creature, draw a card.",0,1,1,0,3,,Alpha 0.1.0,WgolBaK7yym
+Creature — Khronokeeper,Chronomancer,On Draw: You may discard a card. On Play: Draw a card.,0,1,1,0,2,,Alpha 0.1.0,5MuRT1I5zII
+Creature — Khronos Whisperer,Mythic,On Destruction: Draw three cards.,0,1,1,0,4,,Alpha 0.1.0,XAap98w3j4l
+Creature — Sapling Sentinel,Dryad,On Play: Draw up to two cards from your graveyard.,1,0,0,0,2,,Alpha 0.1.0,whimbIUCtR-
+Creature — Aquari Empress,Water,On Revive: Draw three cards.,1,0,1,0,4,,Alpha 0.1.0,9jRBEweykH1
+Creature — Forest Steward,Sylvan,"Whenever you play a one cost creature, you may draw a card.",2,0,0,2,5,,Alpha 0.1.0,NjnVVnCi1YS
+Creature — Moonlit Sprite Guardian,Spirit,On Move: Draw a card.,0,0,1,1,2,,Alpha 0.1.0,loyicJOUXIj
+Creature — Whispering Reliqua,Spirit,On Draw: You may return a friendly creature to your hand.,0,0,1,1,3,,Alpha 0.1.0,FnhUUJ_frxb
+Creature — Zephyrine,Elemental,On Draw: You may move a friendly creature.,0,0,1,1,2,,Alpha 0.1.0,dVNOMiOU_fh
+Creature — Chaotic Mindshaper,Illusionist,On Play: Draw two cards and discard a card.,0,1,1,1,4,,Alpha 0.1.0,x2W-aNqbNfr
+Creature — Infernoheart,Infernal Beast,"Whenever you discard a card, draw a card.",0,1,1,1,4,,Alpha 0.1.0,KFV9D3pOyaA
+Creature — Fatebinder Seer,Oracle,On Play: Draw three cards and discard three cards.,0,2,2,1,9,,Alpha 0.1.0,ha4Nz78ojVo
+Creature — Verdant Vanguard,Beast,On Draw: The next card you play costs one mana less.,1,0,0,1,1,,Alpha 0.1.0,De7oWsYBc6c
+Creature — Auroral Nexus,Angel,On Play: Draw two cards.,0,0,1,2,4,,Alpha 0.1.0,5MlToGlmK_l
+Creature — Aquarian Ascendant,Aquatic,On Play: Draw three cards.,0,0,2,2,5,,Alpha 0.1.0,avyc-VILc4Y
+Creature — Volatile Alchemist,Spellcrafter,On Play: Draw two cards and discard two cards.,0,1,1,2,7,,Alpha 0.1.0,8pama1LZCTA
+Creature — Seedling Sage,Fungal,"On Play: For every friendly creature here, including this one, draw a card.",2,0,0,2,5,,Alpha 0.1.0,8uersc6kFuS
+Creature — Aquari Oracle,Aquatic,On Play: Draw three cards. Put one card from your hand on top of your deck.,0,0,1,3,7,,Alpha 0.1.0,EyAhm9NoBjT
+Creature — Aetherium Sage,Human Wizard,On Play: Draw all your cards.,0,0,3,3,10,,Alpha 0.1.0,uzRpW9mwW3T
+Creature — Terrakai,Earth Elemental,On Play: Pay X Mana. Draw X cards.,2,0,0,X,4,,Alpha 0.1.0,62wbPvefnrm
+,,On Play: Destroy all other friendly creatures here. For each destroyed draw a card.,0,2,1,0,5,,Alpha 0.1.0,
+,,Draw two creatures without an effect.,0,0,0,3,4,,Alpha 0.1.0,

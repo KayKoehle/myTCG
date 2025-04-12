@@ -1,0 +1,3 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Moonlit Ephemera,Spirit,While in your graveyard: You may return this creature to your hand anytime.,0,0,1,0,2,,Alpha 0.1.0,R85VwVSIE4n
+Creature — Ember Steed,Drake,"While in your graveyard: When a card enters your graveyard, you may put it on top of your deck instead. Only triggers once each turn.",1,1,0,1,6,,Alpha 0.1.0,4cx_3XHRpiP

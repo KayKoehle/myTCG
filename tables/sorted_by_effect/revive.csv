@@ -1,0 +1,17 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Maelstrom Wraith,Mythic,On Revive: Return all enemy creatures here to their owners' hand.,0,1,1,0,4,,Alpha 0.1.0,Wtz7mUirGbm
+Creature — Elder Bramble,Vines,"Whenever you revive a creature, get a mana crystal.",1,0,0,0,2,,Alpha 0.1.0,bOizj384obn
+Creature — Terraverde,Plant,On Revive: Get three mana crystals.,1,0,0,0,2,,Alpha 0.1.0,VTsJTSBKvNV
+Creature — Aquari Empress,Water,On Revive: Draw three cards.,1,0,1,0,4,,Alpha 0.1.0,9jRBEweykH1
+Creature — Mysterious Egg,Egg,On Destruction: Revive a creature.,1,1,0,0,0,,Alpha 0.1.0,xrfNztnM_vQ
+Creature — Crystalbane Sprout,Elemental Beast,On Destruction: Get a mana crystal. On Revive: Get a mana crystal.,1,1,0,1,4,,Alpha 0.1.0,2ACB6naK73t
+Creature — Soulforged Revenant,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,1,0,0,4,,Alpha 0.1.0,02kavWsTrUb
+Creature — Flamewyrm,Inferno Dragon,On Revive: Destroy all other creatures here.,2,2,0,0,5,,Alpha 0.1.0,h1BDlS2yp09
+Creature — Elysian Aegis,"Angel, Shield",On Return: Revive a creature.,1,0,1,1,5,,Alpha 0.1.0,rbqqgLwVT6t
+Creature — Fulminous Ascendant,Aetherwalker,As an additional cost to play this creature: Destroy another friendly creature here. On Play: Revive another creature from your graveyard.,1,1,0,1,4,,Alpha 0.1.0,coNh0B4S6oc
+Creature — Ember Revenant,Infernal,On Discard: Revive this creature.,1,1,0,1,4,,Alpha 0.1.0,eaXt7jSF4Zq
+Creature — Pyropex the Unyielding,Pyro Beast,On Revive: An enemy must discard three cards.,1,1,0,1,6,,Alpha 0.1.0,np1f0tbwL4J
+Creature — Young Necromancer,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,2,0,0,2,5,,Alpha 0.1.0,TQxvfM-fiOG
+Creature — Necrotide Revenant,Spirit,On Play: Revive a creature.,3,0,0,1,6,,Alpha 0.1.0,MsF3czEcciU
+Creature — Kraelion Scourge,Insectoid Fungus,On Revive: Destroy an enemy mana crystal.,1,1,0,2,7,,Alpha 0.1.0,04-bRJ9PSKL
+Creature — Gentle Priestess of Gaia,Human,"Whenever you play a creature with higher mana value than this here, you may revive a creature.",3,0,0,2,3,,Alpha 0.1.0,6KNRo4_AA3F

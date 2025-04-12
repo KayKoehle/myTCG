@@ -1,0 +1,16 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+Terraguardian,Creature,Earth Elemental,,0,0,0,1,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,eWJifBNQn-m
+Treelord Sprout,Creature,Leshy,"On Play: Reveal the top card of your deck. If it costs one or less, play it for free.",0,0,1,0,1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,k2bHzVFpeUz
+Mosskin,Creature,Faerie,You may play a creature on top of this.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,-vXwOlKQLiW
+Khaosborn Stalwart,Creature,Basilisk Minotaur,On Play: The next creature you play this turn costs two green mana less.,0,0,1,0,1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,C-VCcdNCG3f
+Mossborn Sprite,Creature,Fey Sprite,,0,0,0,0,1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,hWbujMlhog8
+Terraverde,Creature,Forest Beast,May be played on a full location.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,NUKxQuqr_9B
+Terraguardian Sentinel,Creature,Plant/Beast,"Can only be played on a location, where you have at least two one cost creatures.",0,0,1,3,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,tFPVIiX-ux0
+Great Tradesman,Creature,Human Traveller,On Play: The first creature you play next turn costs 2 colorless mana less.,0,0,0,2,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,XESfY_RppK3
+Riftbringer,Creature,Elemental Sage,You may play one more creature here even when this location is full.,0,0,1,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,NKCPf_lyeGj
+Forest Steward,Creature,Sylvan,"While on top: Whenever you play a one cost creature, you may draw a card.",0,0,2,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Xr0JVXmcbZ8
+Seedling Sage,Creature,Fungal,"On Play: For every friendly creature here, including this one, draw a card.",0,0,2,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0lHU58ufQAa
+Sapling Guardian,Creature,Plant,Costs one colorless mana less for every creature you have played this turn.,0,0,2,4,10,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Cg5Z3FbvH6G
+Nimbus Patron,Creature,Mythical,Costs one colorless mana less for every friendly creature in play.,0,0,3,6,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,54FCyPHB2R5
+Jadescale Snake,Creature,Elemental Snake,"As long as this is the top card here, your other creatures are immune to your opponents' effect",0,0,1,0,2,LeChat,Sana:0.6b,Alpha 0.1.0,thYnxFXdkH9
+"Khronos, Labyrinthine Colossus",Creature,Minotaur,At the end of the game: Get 7 power for every location that is full and where you have one or more creatures.,0,0,3,4,*,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,aVZ3OkCh939

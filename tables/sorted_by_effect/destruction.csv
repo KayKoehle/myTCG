@@ -1,0 +1,12 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Ephemeral Sentinel,Illusion,On Destruction: Return an enemy creature here to their hand.,0,0,1,0,2,,Alpha 0.1.0,is51GJT5GCL
+Creature — Infernoxys,"Infernoxys, Pyromancer",On Destruction: An enemy must discard two cards.,0,1,0,0,2,,Alpha 0.1.0,qfJjKM-Xj1a
+Creature — Pyropeon,Insect,On Destruction: Destroy an enemy creature here.,0,1,0,0,2,,Alpha 0.1.0,hGN18cMn_9h
+Creature — Khronos Whisperer,Mythic,On Destruction: Draw three cards.,0,1,1,0,4,,Alpha 0.1.0,XAap98w3j4l
+Creature — Maelstrom Sprite,Elemental,On Destruction: Return any enemy creature to their hand.,0,1,1,0,4,,Alpha 0.1.0,uAu3fFdaw3l
+Creature — Pyrope Emperor,Dragon,On Destruction: Return all other creatures here to their owners' hand.,0,1,1,2,5,,Alpha 0.1.0,YvGPPuUB1zF
+Creature — Khaos Scourge,Mythic,On Destruction: Return all enemy creatures here to their hand.,0,1,2,0,6,,Alpha 0.1.0,QzumhjmiU_f
+Creature — Mysterious Egg,Egg,On Destruction: Revive a creature.,1,1,0,0,0,,Alpha 0.1.0,xrfNztnM_vQ
+Creature — Crystalbane Sprout,Elemental Beast,On Destruction: Get a mana crystal.,1,1,0,0,3,,Alpha 0.1.0,2ACB6naK73t
+Creature — Crystalbane Sprout,Elemental Beast,On Destruction: Get a mana crystal. On Revive: Get a mana crystal.,1,1,0,1,4,,Alpha 0.1.0,2ACB6naK73t
+Creature — Pyroclasm Lord,Elemental,On Destruction: Destroy any enemy creature.,0,1,0,1,4,,Alpha 0.1.0,4qTZ16-Thve

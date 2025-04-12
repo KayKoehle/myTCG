@@ -1,0 +1,33 @@
+Name,Type,Effect,Green,Red,Blue,Colorless,Power,Artist,Edition,ID
+Creature — Aquariasis,Aquatic,On Return: Move any creature.,0,0,1,0,2,,Alpha 0.1.0,bDrWuKIxWDo
+Creature — Aquarius,Mythic,On Return: Draw two cards.,0,0,1,0,2,,Alpha 0.1.0,b-R4RXDt-Yr
+Creature — Driftwood Seraphim,Woodland Spirit,On Move: Return an enemy creature at the new location with mana cost of one or lower to their owner's hand.,0,0,1,0,2,,Alpha 0.1.0,m6uvOgD2u1H
+Creature — Ephemeral Sentinel,Illusion,On Destruction: Return an enemy creature here to their hand.,0,0,1,0,2,,Alpha 0.1.0,is51GJT5GCL
+Creature — Moonlit Ephemera,Spirit,While in your graveyard: You may return this creature to your hand anytime.,0,0,1,0,2,,Alpha 0.1.0,R85VwVSIE4n
+Creature — Murmuring Aegis,Elemental Guardian,You may return this creature to your hand anytime.,0,0,1,0,2,,Alpha 0.1.0,SDNJaUHHEik
+"Creature — Aquariel, Whispering Depths",Aquatic Elemental,Additional cost: Return a friendly creature here to your hand.,0,0,2,0,5,,Alpha 0.1.0,FHkoFdHPvyD
+Creature — Whispering Sprite,Elemental,Additional cost: Return any other friendly creature with mana value of 1 or less to your hand.,0,0,1,0,4,,Alpha 0.1.0,HbKkbzcMPzT
+Creature — Luminari,Spirit,Additional cost: Return any friendly creature to your hand.,0,0,2,0,5,,Alpha 0.1.0,xRi7mndTSUM
+Creature — Infernal Harbinger,Demon,"On Play: If you have discarded one or more cards this turn, return them to your hand.",0,1,0,0,1,,Alpha 0.1.0,C2G0_aYKt3O
+Creature — Khaosflux,Arcane,On Return: Destroy an enemy creature here.,0,1,1,0,2,,Alpha 0.1.0,2b15MqU58_d
+Creature — Maelstrom Sprite,Elemental,On Destruction: Return any enemy creature to their hand.,0,1,1,0,4,,Alpha 0.1.0,uAu3fFdaw3l
+Creature — Maelstrom Wraith,Mythic,On Revive: Return all enemy creatures here to their owners' hand.,0,1,1,0,4,,Alpha 0.1.0,Wtz7mUirGbm
+Creature — Pyrope Emperor,Dragon,On Destruction: Return all other creatures here to their owners' hand.,0,1,1,2,5,,Alpha 0.1.0,YvGPPuUB1zF
+Creature — Khaos Scourge,Mythic,On Destruction: Return all enemy creatures here to their hand.,0,1,2,0,6,,Alpha 0.1.0,QzumhjmiU_f
+Creature — Aquari Guardian,Aquatic,On Return: Get a mana crystal.,1,0,1,0,3,,Alpha 0.1.0,M4BxSi8Td_D
+Creature — Moonwhisper Avatar,Mythic,On Return: You may play this creature for free next turn.,1,0,1,0,4,,Alpha 0.1.0,FkU5sQZZ5DT
+Creature — Whispering Reliqua,Spirit,On Draw: You may return a friendly creature to your hand.,0,0,1,1,3,,Alpha 0.1.0,FnhUUJ_frxb
+Creature — Aquaspect Sentinel,Insect/Beast,On Return: Return any enemy creature to their hand.,0,0,1,1,3,,Alpha 0.1.0,0E_RNozax8P
+Creature — Sentinel of Azure Waters,Aquatic,On Play: Return an enemy creature here to their hand.,0,0,2,1,2,,Alpha 0.1.0,RPsNE434Qsg
+Creature — Storm Elemental,Elemental,"Whenever a creature with lower power than this is played here, you may return it to its owners hand. Only triggers once each turn.",0,0,2,1,5,,Alpha 0.1.0,j6wxYY3X6Kd
+Creature — Auroral Keeper,Elemental,On Play: Return all friendly creatures here to your hand.,0,0,2,1,6,,Alpha 0.1.0,s6FRroyb5wm
+Creature — Moonlit Revenant,Ghost,On Play: Return a friendly creature here to your hand. You may play it for 1 blue mana next turn.,0,0,1,2,6,,Alpha 0.1.0,ev7pG8h2rlj
+Creature — Fury of Ember,Inferno Beast,You may return the first card that enters your graveyard each turn to your hand.,0,1,0,2,4,,Alpha 0.1.0,ONKgJ0owbyj
+Creature — Khaosblade,Sword,On Return: Destroy any enemy creature.,0,1,1,1,6,,Alpha 0.1.0,JCvxViPcT2b
+Creature — Elysian Aegis,"Angel, Shield",On Return: Revive a creature.,1,0,1,1,5,,Alpha 0.1.0,rbqqgLwVT6t
+Creature — Kairos Avatar,Mythic,On Return: The next card you play is free.,1,0,1,1,5,,Alpha 0.1.0,epb-jYpLRhw
+Creature — Echokeeper,Mechanical,On Return: Gain control of an enemy creature here.,0,0,2,2,4,,Alpha 0.1.0,JinDb3_QGqt
+Creature — Maelstrom's Vessel,Shipwreck,On Play: Return any enemy creature to their hand.,0,0,2,2,4,,Alpha 0.1.0,mx1JBHEee7H
+Creature — Aquariess of Elysium,Beast,On Play: Return a friendly creature here to your hand. You may play it for free next turn.,0,0,2,2,6,,Alpha 0.1.0,5tU-jDGndJN
+"Creature — Aeolus, Echokeeper",Sylph,On Play: Return all friendly creatures here to your hand. You may play them for free next turn.,0,0,3,3,8,,Alpha 0.1.0,VI78dPYygts
+Creature — Maelstrom Keeper,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,0,3,4,6,,Alpha 0.1.0,vh5Qdx7g80D

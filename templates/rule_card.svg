@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="63.499584mm"
+   height="88.899994mm"
+   viewBox="0 0 63.499584 88.899994"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   sodipodi:docname="rule_card.svg"
+   xml:space="preserve"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="2.8284271"
+     inkscape:cx="145.84077"
+     inkscape:cy="231.40069"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="2552"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" /><defs
+     id="defs1" /><g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"><rect
+       style="fill:none;stroke:#000000;stroke-width:0.374469;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;paint-order:markers fill stroke"
+       id="image_frame"
+       width="61.186001"
+       height="81.752274"
+       x="1.1571789"
+       y="2.454386" /><circle
+       style="fill:#ffffff;stroke:#1a1a1a;stroke-width:0.254;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;paint-order:fill markers stroke"
+       id="path5"
+       cx="7.7119622"
+       cy="36.594421"
+       r="0" /><rect
+       style="fill:none;stroke:#000000;stroke-width:0.264583;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       id="full_image"
+       width="63.235001"
+       height="88.635414"
+       x="0.13229179"
+       y="0.13229018" /><text
+       xml:space="preserve"
+       style="font-size:2.11667px;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:#000000;stroke:none;stroke-width:0.264583;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       x="2.7254376"
+       y="86.389282"
+       id="edition"><tspan
+         sodipodi:role="line"
+         id="tspan3"
+         style="font-size:2.11667px;text-align:start;text-anchor:start;fill:#000000;stroke:none;stroke-width:0.264583"
+         x="2.7254376"
+         y="86.389282">Edition</tspan></text><text
+       xml:space="preserve"
+       style="font-size:3.88056px;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;white-space:pre;inline-size:58.4828;display:inline;fill:#000000;stroke:none;stroke-width:0.264583;stroke-linecap:round;stroke-linejoin:round;paint-order:markers fill stroke"
+       x="6.4598289"
+       y="86.537384"
+       id="effect"
+       transform="translate(-3.9402518,-78.46735)"><tspan
+         x="6.4598289"
+         y="86.537384"
+         id="tspan1">On Play
+</tspan><tspan
+         x="6.4598289"
+         y="91.388085"
+         id="tspan2">Revive
+</tspan><tspan
+         x="6.4598289"
+         y="96.238785"
+         id="tspan4">On Revive
+</tspan><tspan
+         x="6.4598289"
+         y="101.08949"
+         id="tspan5">Destroy
+</tspan><tspan
+         x="6.4598289"
+         y="105.94019"
+         id="tspan7">On Destruction
+</tspan><tspan
+         x="6.4598289"
+         y="110.79089"
+         id="tspan8">On Draw
+</tspan><tspan
+         x="6.4598289"
+         y="115.64159"
+         id="tspan9">Move
+</tspan><tspan
+         x="6.4598289"
+         y="120.49229"
+         id="tspan10">On Move
+</tspan><tspan
+         x="6.4598289"
+         y="125.34299"
+         id="tspan11">Evolve
+</tspan><tspan
+         x="6.4598289"
+         y="130.19369"
+         id="tspan12">While in your graveyard:
+</tspan><tspan
+         x="6.4598289"
+         y="135.04438"
+         id="tspan13">Permanent:
+</tspan><tspan
+         x="6.4598289"
+         y="139.89507"
+         id="tspan14">Whenever
+</tspan><tspan
+         x="6.4598289"
+         y="144.74577"
+         id="tspan15">Discard
+</tspan><tspan
+         x="6.4598289"
+         y="149.59646"
+         id="tspan16">On Discard
+</tspan><tspan
+         x="6.4598289"
+         y="154.44715"
+         id="tspan17">Return
+</tspan><tspan
+         x="6.4598289"
+         y="159.29784"
+         id="tspan18">On Return
+</tspan></text></g></svg>
