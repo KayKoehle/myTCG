@@ -6,7 +6,9 @@ from src.utils import delete_contents
 
 
 # TODO place the frame ontop of the image.
-def fill_rectangle_with_image(root, namespace, image_path, id="image_frame"):
+def fill_rectangle_with_image(
+    root, namespace, image_path, id="image_frame", rotate=False
+):
     if os.path.exists(image_path):
         print(f"Image path not found {image_path}")
         return
@@ -33,6 +35,14 @@ def fill_rectangle_with_image(root, namespace, image_path, id="image_frame"):
                 "preserveAspectRatio": "xMidYMid slice",  # Preserve aspect ratio, crop if needed
             },
         )
+
+        # Apply rotation if needed
+        if rotate:
+            # Calculate the center of the rectangle
+            center_x = x + width / 2
+            center_y = y + height / 2
+            # Apply the rotation transformation
+            image_element.attrib["transform"] = f"rotate(180, {center_x}, {center_y})"
 
         # ensure the image is ontop of the frame rectangle
         image_element.attrib["x"] = str(x)  # Position the image at the rectangle's x
@@ -122,6 +132,15 @@ def embed_mana_icons(
             ("./templates/blackWhite/green.svg", green),
             ("./templates/blackWhite/blue.svg", blue),
         ]
+
+    if colorless == "0" and green + blue + red == 0:
+        embed_colorless(
+            group_element,
+            "./templates/colorless.svg",
+            colorless,
+            x_offset=x_offset,
+            y_offset=y_offset,
+        )
 
     # Variable to track the offset for each icon
     i = 0
@@ -329,16 +348,15 @@ def update_effect_text(root, namespace, effect_element, effect_string, icon_map)
         - icon_map (dict): Mapping from token (e.g., '[G]') to SVG filename
         - font_size (int): Font size used to estimate icon size and spacing
     """
-    icon_size = 3.284
+    icon_size = 3.24
     tspan = effect_element.find(".//svg:tspan", namespace)
     x_pos, y_pos = get_element_position(effect_element)
-    y_pos -= icon_size
+    y_pos = float(y_pos) - 3.24
     x_offset, y_offset = 0, 0
     tspan.text = ""
 
     # Split into text and tokens
     parts = re.split(r"(\[G\]|\[R\]|\[B\]|\[1\])", effect_string)
-    print(parts)
 
     # Use the parent of <tspan> as the place to embed the icons
     group_element = ET.Element("g")
@@ -348,7 +366,7 @@ def update_effect_text(root, namespace, effect_element, effect_string, icon_map)
             while x_offset + icon_size > 58:
                 x_offset -= 58
                 y_offset += 5.29
-            tspan.text += "    "
+            tspan.text += "   "
             icon_path = icon_map[part]
             embed_svg(
                 group_element,
@@ -364,6 +382,23 @@ def update_effect_text(root, namespace, effect_element, effect_string, icon_map)
     root.append(group_element)
 
 
+def delete_element(id: str, root, namespace):
+    element_to_remove = root.find(f".//*[@id='{id}']", namespace)
+    if element_to_remove is not None:
+        parent = (
+            element_to_remove.getparent()
+            if hasattr(element_to_remove, "getparent")
+            else None
+        )
+        if parent is None:
+            # If no parent (because ElementTree doesn't track parents), do it manually
+            for parent in root.iter():
+                if element_to_remove in list(parent):
+                    parent.remove(element_to_remove)
+                    print(f"deleted {id}")
+                    break
+
+
 def create_hero_card_from_template(
     template_path,
     output_path,
@@ -375,6 +410,7 @@ def create_hero_card_from_template(
     blue,
     red,
     colorless,
+    power,
     edition,
     writer,
     artist,
@@ -395,13 +431,29 @@ def create_hero_card_from_template(
     ET.register_namespace("inkscape", namespace["inkscape"])
     ET.register_namespace("sodipodi", namespace["sodipodi"])
 
-    # Update the title
-    title_element = root.find(".//svg:text[@id='title']", namespace)
-    tspan = title_element.find(".//svg:tspan", namespace)
-    tspan.text = name
-
-    # Make sure the title fits on the card
-    box_width = 58.0
+    if power == "0" or power == "":
+        delete_element("power_star", root, namespace)
+        delete_element("power", root, namespace)
+        delete_element("title_power", root, namespace)
+        delete_element("title_box_power", root, namespace)
+        # Update the title
+        title_element = root.find(".//svg:text[@id='title_no_power']", namespace)
+        tspan = title_element.find(".//svg:tspan", namespace)
+        tspan.text = name
+        # Make sure the title fits on the card
+        box_width = 58.0
+    else:
+        power_element = root.find(".//svg:text[@id='power']", namespace)
+        tspan = power_element.find(".//svg:tspan", namespace)
+        tspan.text = power
+        delete_element("title_box_no_power", root, namespace)
+        delete_element("title_no_power", root, namespace)
+        # Update the title
+        title_element = root.find(".//svg:text[@id='title_power']", namespace)
+        tspan = title_element.find(".//svg:tspan", namespace)
+        tspan.text = name
+        # Make sure the title fits on the card
+        box_width = 51.0
     approx_text_length = len(name) * 3
     if approx_text_length > box_width:
         title_element.set("textLength", str(box_width))
@@ -415,10 +467,18 @@ def create_hero_card_from_template(
         root, green, blue, red, colorless, color_print, x_offset=2.2, y_offset=75.4
     )
 
+    icon_map = {
+        "[1]": os.path.join("templates", "colorless.svg"),
+        "[R]": os.path.join("templates", "color", "red.svg"),
+        "[G]": os.path.join("templates", "color", "green.svg"),
+        "[B]": os.path.join("templates", "color", "blue.svg"),
+    }
+
     # Update the effect
     effect_element = root.find(".//svg:text[@id='effect']", namespace)
-    tspan = effect_element.find(".//svg:tspan", namespace)
-    tspan.text = effect
+    # tspan = effect_element.find(".//svg:tspan", namespace)
+    # tspan.text = effect
+    update_effect_text(root, namespace, effect_element, effect, icon_map)
 
     # Update the edition
     edition_element = root.find(".//svg:text[@id='edition']", namespace)
@@ -441,8 +501,25 @@ def create_hero_card_from_template(
         image_path = os.path.join("..", "images", "blackWhite", "heroes", f"{name}.png")
     fill_rectangle_with_image(root, namespace, image_path)
 
+    sanitize_element(root)
     # Write the modified SVG to the output path
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
+
+
+def sanitize_element(elem):
+    # Clean attributes
+    for key in list(elem.attrib):
+        val = elem.attrib[key]
+        if not isinstance(val, str):
+            elem.attrib[key] = str(val)
+    # Clean text
+    if elem.text is not None and not isinstance(elem.text, str):
+        elem.text = str(elem.text)
+    if elem.tail is not None and not isinstance(elem.tail, str):
+        elem.tail = str(elem.tail)
+    # Recurse
+    for child in elem:
+        sanitize_element(child)
 
 
 def create_transform_card_from_template(
@@ -517,17 +594,28 @@ def create_transform_card_from_template(
     tspan.text = f"{main_types[1]} — {subtypes[1]}"
 
     embed_mana_icons(
-        root, green, blue, red, colorless, color_print, x_offset=3, y_offset=1.3
+        root, green, blue, red, colorless, color_print, x_offset=8, y_offset=1.9
     )
+
+    icon_map = {
+        "[1]": os.path.join("templates", "colorless.svg"),
+        "[R]": os.path.join("templates", "color", "red.svg"),
+        "[G]": os.path.join("templates", "color", "green.svg"),
+        "[B]": os.path.join("templates", "color", "blue.svg"),
+    }
 
     # Update the effects
     effect_element = root.find(".//svg:text[@id='effect']", namespace)
-    tspan = effect_element.find(".//svg:tspan", namespace)
-    tspan.text = effects[0]
+    # tspan = effect_element.find(".//svg:tspan", namespace)
+    # tspan.text = effects[0]
+    print(f"EFFEKT TEXT {effects[0]}")
+    update_effect_text(root, namespace, effect_element, effects[0], icon_map)
 
     effect_element = root.find(".//svg:text[@id='effect2']", namespace)
-    tspan = effect_element.find(".//svg:tspan", namespace)
-    tspan.text = effects[1]
+    # tspan = effect_element.find(".//svg:tspan", namespace)
+    # tspan.text = effects[1]
+    print(f"EFFEKT TEXT {effects[1]}")
+    update_effect_text(root, namespace, effect_element, effects[1], icon_map)
 
     # Update the power
     power_element = root.find(".//svg:text[@id='power']", namespace)
@@ -555,23 +643,23 @@ def create_transform_card_from_template(
 
     if color_print:
         image_path = os.path.join(
-            "..", "images", "color", "creature", f"{names[0]}.png"
+            "..", "images", "color", "creatures", f"{names[0]}.png"
         )
     else:
         image_path = os.path.join(
-            "..", "images", "blackWhite", "creature", f"{names[0]}.png"
+            "..", "images", "blackWhite", "creatures", f"{names[0]}.png"
         )
     fill_rectangle_with_image(root, namespace, image_path)
 
     if color_print:
         image_path = os.path.join(
-            "..", "images", "color", "creature", f"{names[0]}.png"
+            "..", "images", "color", "creatures", f"{names[1]}.png"
         )
     else:
         image_path = os.path.join(
-            "..", "images", "color", "creature", f"{names[1]}.png"
+            "..", "images", "blackWhite", "creatures", f"{names[1]}.png"
         )
-    fill_rectangle_with_image(root, namespace, image_path, id="image_frame2")
+    fill_rectangle_with_image(root, namespace, image_path, id="image_frame2", rotate=True)
 
     # Write the modified SVG to the output path
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
@@ -731,6 +819,7 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
                     int(blue),
                     int(red),
                     int(colorless),
+                    power,
                     edition,
                     writer,
                     artist,
