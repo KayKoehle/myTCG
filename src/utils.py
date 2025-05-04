@@ -245,7 +245,7 @@ def combine_decklists_to_csv(
 
 # swap_rows(r"tables\creatures.csv", "Red", "Green")
 # prepend_to_column(r"tables\creatures.csv", "Type", "Creature - ")
-# sort_cards(r"tables\creatures.csv", sort_by=["Color", "Power", "Name"])
+# sort_cards(r"tables\all_cards.csv", sort_by=["Name", "Color", "Power"])
 # write_csv_by_effect(
 #     r"tables\creatures.csv",
 #     "tables\\sorted_by_effect",
@@ -264,4 +264,4 @@ def combine_decklists_to_csv(
 # )
 # insert_new_column(r"tables\creatures.csv", position = 9, column_name = "Writer", default_value="Llama3.2:3b")
 # write_default_value(r"tables\creatures.csv", column = "Artist", value = "Sana:0.6b", overwrite = True)
-combine_decklists_to_csv(r"tables\all_cards.csv", "decklists", "tables\decklists.csv", "tables\leftover.csv")
+# combine_decklists_to_csv(r"tables\all_cards.csv", "decklists", "tables\decklists.csv", "tables\leftover.csv")

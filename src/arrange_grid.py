@@ -1,8 +1,6 @@
-import svgwrite
 import os
 from svgwrite import cm
 from xml.etree import ElementTree as ET
-
 from src.utils import delete_contents
 
 
