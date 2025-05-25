@@ -19,4 +19,4 @@ The Overlooked Corner,Location,Starting Location,The first player to fill this l
 The Wysteria Oasis,Location,Starting Location,Only creatures with a power of 4 or more can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,I8two--Dejq
 Whispering Warrens,Location,Starting Location,Only creatures with a power of 9 or less can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,UUnkHnrCy0l
 Market Square,Location,Starting Location,One more creature can be played here.,0,0,0,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,3acgy8VfLkU
-Eldrida's Sanctuary,Location,Playable Location,Place this as a new location. All players can play to this new location.,0,0,3,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.0,bmvdhL9IECP
+Eldrida's Sanctuary,Location,Playable Location,Place this as a new location. All players can play to this new location. This location has space for five creatures.,0,0,3,0,,Llama3.2:3b,SanaSprint:1.6b,Alpha 0.1.1,BzMzKB3qRvG

@@ -1,14 +1,15 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
-"Kaelorvathys, Starforged of Eldrida",Hero,Demigod,[B]: Draw a card.,0,1,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,P9h3jLftP6U
-"Kaelarathys, Stormbringer of Elyria.",Hero,Chronokeeper,[B]: Move a creature.,0,1,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,gLqjiNAfOx8
-"Tharroskaios, Aviador of Eldrador.",Hero,Archangel,[B]: Return a friendly creature to their owner's hand.,0,1,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,7p8R-_h6vwj
-"Tharroskai, Draconian Starblade",Hero,Primordial Being,[B][B]: Change the order of all creature stacks at one of the locations.,0,2,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,V6CPUPLxNcb
-"Zhilakorvathys, Son of Aethonix",Hero,Fate Weaver,[G]: Your next card costs 2 less.,0,0,1,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,qBAZ3iBj6Sy
-"Tharros, Scourge of the Starforged",Hero,Creator,[G]: Summon a 2 power creature token.,0,0,1,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,AaZo3cQRr4a
-"Khra'gixxar, Lord of Aethoria's Fury",Hero,Archon,[G]: You may play your next creature on a full location.,0,0,1,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,W21edeaVth4
-"Zha'thikus, Kraelion Stormbringer",Hero,Divine Avatar,[G][G][G]: Get an extra mana crystal.,0,0,3,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9nFnUtYk3A2
-"Aethonoxar, Son of Elyrian",Hero,Demigod,[R][B]: Additional cost: Destroy a friendly creature. Draw a card,1,1,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,BzjcxDmYatX
-"Kaelin'zorvath, Son of the Stars",Hero,Cosmic Entity,[R]: Destroy a friendly creature.,1,0,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,6gR0sjFEGje
-Tharroskraelion,Hero,Titan,[R]: Destroy a creature with a cost of one or less.,1,0,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,52m0d5XEyue
-"Zhrakkarathys, Chaos-born Drake",Hero,Demon,[R][R]: All opponents must destroy one of their creatures.,2,0,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,hyNrFSEJTrR
-"Khra'gixxos, Lord of the Ember Storms",Hero,Eternal,"[R][R][R]: For each opponent, destroy one of their creatures.",3,0,0,0,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,016qr6ZLrZE
+"Aethonoxar, Son of Elyrian",Hero,Demigod,[R][B]:Additional cost: Destroy a friendly creature. Draw a card,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,0Msbs6QtCk1
+"Kaelarathys, Stormbringer of Elyria",Hero,Chronokeeper,[B]:Move a creature.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,9DBeFWD_Up6
+"Kaelin'zorvath, Born from Fire",Hero,Cosmic Entity,[R]:Destroy a friendly creature.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,MbTdMMhVj91
+"Kaelorvathys, Starforged of Eldrida",Hero,Demigod,[B]:Draw a card.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,9uXAcAZ_pac
+"Khra'gixxar, Lord of Aethoria's Fury",Hero,Archon,[G][G][G]:You may play your next creature on a full location.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,8TdJoteSbTE
+"Khra'gixxos, Lord of the Ember Storms",Hero,Eternal,"[R][R][R]:For each opponent, destroy one of their creatures.",0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,LoXrmT9OeDf
+Lifebringer Zha'thikus,Hero,Divine Avatar,[G][G][G]:Get an extra mana crystal.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,Exo1CPcIHhO
+Forest Mother Ursa,Hero,Creator,[G][G]: Play this as a creature.,0,0,0,0,5,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,mmROHGlvTgw
+"Tharroskai, Draconian Starblade",Hero,Primordial Being,[B][B]:Change the order of all creature stacks at one of the locations.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,hiDrbj4jykO
+"Tharroskaios, Aviador of Eldrador",Hero,Archangel,[B]:Return a friendly creature to their owner's hand.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,FNS2Wi6Cun2
+Tharroskraelion,Hero,Titan,[R]:Destroy a creature with a cost of one or less.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,zJt8WBIHaS2
+"Zhilakorvathys, Son of Aethonix",Hero,Fate Weaver,[G]:Your next card costs 2 less.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,XGYHUFFsw8P
+"Zhrakkarathys, Chaos-born Drake",Hero,Demon,[R][R]:All opponents must destroy one of their creatures.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,RQCJFqMAMC8
+"Lyraea, Soul Harvester",Hero,Necromancer,[R][R]: Discard a card and return another card from your graveyard to your hand.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.0,StYNYUstXEi

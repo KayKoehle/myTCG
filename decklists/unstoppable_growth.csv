@@ -9,7 +9,7 @@ Megalithic Sentinel,Creature,Lithokrator,Draw two creatures without an effect.,0
 Mana Multiplier,Creature,Kitsune Yurei,"Whenever you get an extra mana crystal, get an additional mana crystal.",0,0,3,0,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,-Z0Qu7KiTyv
 Riftbringer,Creature,Elemental Sage,You may play one more creature here even when this location is full.,0,0,1,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,NKCPf_lyeGj
 Colossus of the Ancients,Creature,Golem,On Play: Get an extra mana crystal.,0,0,1,3,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,wKtnkXV4Xhl
-get mana instead of drawing a card.
+Mana Weaver,Creature,Spider,"While on top: At the start of your turn, you may get an extra mana crystal instead of drawing a card.",0,0,2,1,5,Llama3.2:3b,Sana:1.6b,Alpha 0.1.0,kmleaM-JJjP
 Jadescale Snake,Creature,Elemental Snake,"As long as this is the top card here, your other creatures are immune to your opponents' effect",0,0,1,0,2,LeChat,Sana:0.6b,Alpha 0.1.0,thYnxFXdkH9
 Terraka Prime,Creature,Planar Monster,At the end of the game: Copy the power of your highest power creature here.,0,0,3,2,*,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,3Ru_11Oe1I2
 Aeropex,Creature,Aviator,,0,0,0,6,12,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,SiYwZamjIuL
