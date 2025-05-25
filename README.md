@@ -8,13 +8,14 @@ Read the rules for the game [here](rules/main.pdf).
 Call `main.py` to read the csv and generate `.svg` files from it.
 
 We can also generate box designs for starter decks.
-
+  13080910
 ## ToDos
 ### Physical game
-- Update and Print Rulesbook
-- Print updated cards
-- Print new small deckboxes
+- ~180 cards with mesopotamian mythology (3 mono-color starter decks. 3 dual-color starter decks. = 90 cards in decks, rest for drafting)
+- Red Destroy, Green Farming, Blue Flood
+- RG Revive, RB On return, GB Top-card for free,  
 
+### Expansion Ideas
 - Wide creatures
 - Creatures with Lines
 - Two-sided cards
@@ -24,8 +25,6 @@ We can also generate box designs for starter decks.
 - Equipments
 - Quest cards that give a bonus if you complete them
 - Extra Drafting Rule cards (Time Periods) like Edo, Heian, High Middle ages, Sumerian, Pax Romana. Rules like: 
-
-- Less different Subtypes, more structure in names and subtypes, effect which use subtypes
 
 ### Digital Game
 - Implement Ai agents to play the game 
