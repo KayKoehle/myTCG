@@ -1,0 +1,17 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+Shamhat,Being,"Human, Priestess","While on top: If you have 'Wild Man Enkidu' or when you play him here, transform him.",0,0,0,1,1,Sumerian,Flux1,Alpha 0.2.0,Tx1Qry2pXQj
+Aruru's Lump of Clay,Being,Clay,On enter: Draw a human.,0,0,0,1,1,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,u_jJHwjTSAI
+"Ninsun, Mother of Gilgamesh",Being,God,On enter: Play a human for free.,0,0,0,4,1,Sumerian,Flux1,Alpha 0.2.0,OBeFsSalXPE
+"Gilgamesh, Loathed King#Reformed King",Being#Being,"Human, King#Human, King",While on top: You may move another being at the start of your turns. If Enkidu is banished: Transform.#,0,0,0,3,5#12,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,rl_g6ZdXskf
+Wild Man Enkidu#Civilized Enkidu,Being#Being,"Beast#Human",#On move: You may banish one of your beings at the new location.,0,0,0,3,5#5,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,hVbDH6ZYfYw
+Bull of Heaven,Being,God,"On enter: For each opponent, banish one of their lowest power beings at each location.", 0,0,0,4,-1,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,CM7_zdv3TxC
+Farmer,Being,"Human, Farmer",,0,0,0,1,2,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,pQYigHdRATd
+Ferryman Urshanabi,Being,"Human, Underworld Guide","On enter: You may move 'Gilgamesh' to this location. If you do, draw 1.",0,0,0,2,3,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,Md0x-EEAJ9X
+Gazelles,Being,"Beast, Gazelle",,0,0,0,1,2,Sumerian,Flux1,Alpha 0.2.0,8bwukNBxVv8
+Ishtar,Being,God,On enter: 'Draw the Bull of Heavens'.,0,0,0,1,2,Sumerian,Flux1,Alpha 0.2.0,FbjQNyrKmWe
+Mountain Lions,Being,"Beast, Lion",,0,0,0,2,4,Sumerian,Flux1,Alpha 0.2.0,gaFv4w5n2BI
+Wolves,Being,"Beast, Wolf",,0,0,0,2,4,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,gaFv4w5n2BI
+Sun God Šamaš,Being,God,,0,0,0,1,2,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,q7gVhg8pNHA
+"Humbaba, Guardian of the Cedar",Being,God,"On enter: For each opponent, banish one of their beings.",0,0,0,3,-1,Sumerian,Sana1.5:1.6b,Alpha 0.2.0,hwJJK90X4Tw
+Alewife Siduri,Being,Human,On enter: You may move one of your beings.,0,0,0,1,2,Sumerian,Flux1,Alpha 0.2.0,oKauCGMiJvc
+Utnapishtim,Being,"Human, King",Immortal.,0,0,0,4,8,Sumerian,Flux1,Alpha 0.2.0,UzAcwF3sKZE

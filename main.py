@@ -17,10 +17,14 @@ if __name__ == "__main__":
     # plot_stats("./decklists/flames_of_annihilation.csv", "destroy_starter")
     # plot_stats("./decklists/raging_fires.csv", "discard_starter")
 
-    # csv_file_path = "./tables/cards_to_print.csv"  # Path to your CSV file
-    # output_directory = "output_svgs"  # Directory where SVG files will be saved
-    # process_csv_with_template(csv_file_path, output_directory, color_print=True)
-    # arrange_svgs(input_dir = output_directory, output_dir = "print_svgs")
+    # csv_file_path = "tables/religion/mesopotamian/decklists/Epic_of_Gilgamesh.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamian/decklists/Tiamats_Army.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamian/decklists/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamian/decklists/The_Flood.csv"  # Path to your CSV file
+    csv_file_path = "tables/cards_to_print.csv"
+    output_directory = "output_svgs"  # Directory where SVG files will be saved
+    process_csv_with_template(csv_file_path, output_directory, color_print=True)
+    arrange_svgs(input_dir = output_directory, output_dir = "print_svgs")
     # export_to_tabletopsim()
     
     # Create boxes

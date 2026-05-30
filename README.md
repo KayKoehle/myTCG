@@ -15,13 +15,22 @@ We can also generate box designs for starter decks.
 - Red Destroy, Green Farming, Blue Flood
 - RG Revive, RB On return, GB Top-card for free,  
 
+### Mythology
+Ziusdra (Eridu Genesis) - 
+Atrahasis - Human overpopulation
+Utnapishtim (Epic of Gilgamesh) - becomes Immortal
+Noah - Builds ark
+Chinese Flood Myth - Build Dykes
+Manu Vaivasvata Flood - Build boat, sail to himalaya
+
+
 ### Expansion Ideas
 - Wide creatures
 - Creatures with Lines
 - Two-sided cards
 - Fusion creatures
 - Pilot creatures
-- More ambush creatures
+- Ambush creatures
 - Equipments
 - Quest cards that give a bonus if you complete them
 - Extra Drafting Rule cards (Time Periods) like Edo, Heian, High Middle ages, Sumerian, Pax Romana. Rules like: 
@@ -81,6 +90,8 @@ Curses are given to your opponents.
 You may start with a hero.
 To use the hero's ability, you must pay one victory point and the mana cost on the hero card.
 
+## Quests
+Give a reward after a condition is fulfilled, like move one of your creatures 5 times.
 
 ## Starter Decks
 

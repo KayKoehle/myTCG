@@ -1,0 +1,16 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+"Achilles, the Invincible",Being,Hero,"On Enter: Banish an opposing being at this location. If you control a Greek hero at an adjacent location, draw a card.",3,0,1,1,5,Greek,Milo,Alpha 0.2.0,ILIAD001
+"Odysseus, the Cunning",Being,Hero,"On Enter: Move an opposing being to an adjacent location. If that being is banished this turn, draw 2 cards.",1,1,1,1,4,Greek,Milo,Alpha 0.2.0,ILIAD002
+"Ajax, the Great",Being,Hero,"Ongoing: Beings at this location cannot be moved by opponent effects. If this being banishes an opposing being, you may move a Greek hero to this location.",3,0,1,1,5,Greek,Milo,Alpha 0.2.0,ILIAD003
+"Diomedes, the Fierce",Being,Hero,"On Enter: Banish an opposing being with 2 or less Power. If you control Athena, banish an opposing being with 3 or less Power instead.",2,0,1,1,4,Greek,Milo,Alpha 0.2.0,ILIAD004
+"Patroclus, Achilles' Companion",Being,Hero,"On Enter: If Achilles is on the board, this being cannot be banished by opponent effects this turn. If this being is banished, banish an opposing being with 2 or less Power.",2,0,1,0,3,Greek,Milo,Alpha 0.2.0,ILIAD005
+"Menelaus, King of Sparta",Being,Hero,"On Enter: If Helen of Troy is on the board, banish an opposing being at this location. If you do, draw a card.",1,0,2,1,4,Greek,Milo,Alpha 0.2.0,ILIAD006
+"Nestor, the Wise",Being,Hero,"Ongoing: Once per turn, if you control 2+ Greek heroes, draw a card.",0,1,2,0,2,Greek,Milo,Alpha 0.2.0,ILIAD007
+"Agamemnon, High King",Being,Hero,"On Enter: Choose a location. Trojan players cannot play beings at that location this turn.",1,0,2,1,4,Greek,Milo,Alpha 0.2.0,ILIAD008
+"Greek Blockade Runner",Being,Warrior,"On Enter: Trojan players cannot draw cards at the start of their next turn. If this being is banished, put a Greek Warrior from your deck into your hand.",1,0,1,1,2,Greek,Milo,Alpha 0.2.0,ILIAD046
+"Odysseus' Spy",Being,Warrior,"On Enter: Look at the top 3 cards of an opponents deck. You may banish one of them. If you do, draw a card.",0,1,1,1,2,Greek,Milo,Alpha 0.2.0,ILIAD047
+"Achilles' Raiding Party",Being,Warrior,"On Enter: Banish a Trojan ‘supply’ being (e.g., Trojan Granary). If you do, draw a card.",2,0,1,0,3,Greek,Milo,Alpha 0.2.0,ILIAD048
+"Agamemnon's Command Post",Being,Leader,"Ongoing: Trojan players cannot play beings at more than 2 locations. If this being is banished, put a Greek Hero from your deck into your hand.",1,0,2,1,4,Greek,Milo,Alpha 0.2.0,ILIAD049
+"Nestor's Counselor",Being,Advisor,"On Enter: Choose a location. Trojan players cannot play beings at that location this turn. If you control 2+ Greek heroes, draw a card.",0,1,2,0,2,Greek,Milo,Alpha 0.2.0,ILIAD050
+"The Greek Camp",Being,Location,"Ongoing: Greek beings at this location cannot be banished by Trojan effects. Once per turn, you may move a Greek being to an adjacent location.",0,0,1,2,0,Greek,Milo,Alpha 0.2.0,ILIAD051
+"The Trojan Horse",Being,Artifact,"On Enter: At the start of your next turn, banish all Trojan beings at this location. If Odysseus is at this location, draw 2 cards instead.",0,0,1,2,0,Greek,Milo,Alpha 0.2.0,ILIAD052

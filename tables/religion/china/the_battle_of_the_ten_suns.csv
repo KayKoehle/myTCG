@@ -1,0 +1,16 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+"Scorching Sun",Being,Spirit,"On Enter: If you have more than 2 Suns in play, banish all beings with 1 or less Power at this location.",0,0,0,1,2,Chinese,Qwen3,Alpha 0.2.0,SUN001
+"Golden Crow",Being,Spirit,"On Enter: If you have more than 3 Suns in play, banish a being with 2 or less Power at this location.",0,0,0,2,3,Chinese,Qwen3,Alpha 0.2.0,SUN002
+"Red Sun",Being,Spirit,"On Enter: If you have more than 4 Suns in play, banish all beings with 3 or less power at this location. Ongoing: Beings here gain +1 Power.",3,0,0,0,5,Chinese,Qwen3,Alpha 0.2.0,SUN003
+"Dawn Sun",Being,Spirit,"On Enter: Draw a card if there are 2 or fewer Suns on the board. Ongoing: Beings here cannot be banished by Suns.",0,1,1,0,2,Chinese,Qwen3,Alpha 0.2.0,SUN004
+"Eclipse Sun",Being,Spirit,"On Enter: Banish a Sun at any location. If you do, draw a card.",0,0,0,2,1,Chinese,Qwen3,Alpha 0.2.0,SUN005
+"Zenith Sun",Being,Spirit,"On Enter: If there are 4+ Suns, banish a being with 3 or less Power here.",1,0,2,0,4,Chinese,Qwen3,Alpha 0.2.0,SUN006
+"Twilight Sun",Being,Spirit,"On Enter: Move a Sun from an adjacent location to this location. If there are 3+ Suns here, banish a being with 2 or less Power at this location.",1,0,1,1,3,Chinese,Qwen3,Alpha 0.2.0,SUN007
+"Storm Sun",Being,Spirit,"On Enter: If there are 4+ Suns on the board, banish all beings with 1 Power at any location. Ongoing: Suns here cannot be moved by opponents.",2,0,0,1,4,Chinese,Qwen3,Alpha 0.2.0,SUN008
+"Harvest Sun",Being,Spirit,"On Enter: .",0,1,2,0,3,Chinese,Qwen3,Alpha 0.2.0,SUN009
+"Solstice Sun",Being,Spirit,"On Enter: If you have more than 4 Suns at this location. Banish all non-Sun beings here.",0,0,2,2,2,Chinese,Qwen3,Alpha 0.2.0,SUN010
+"Sun Charioteer",Being,Human,"On Enter: Move up to 2 Suns from one location to another.",1,0,0,2,3,Chinese,Milo,Alpha 0.2.0,SUN014
+"Di Jun, Father of the Suns",Being,Deity,"On Enter: Put up to 2 Suns from your deck into play at any location. If you control 5+ Suns, banish Di Jun and all Suns at this location.",0,0,0,3,4,Chinese,Qwen3,Alpha 0.2.0,SUN013
+"Xihe, Mother of the Suns",Being,Deity,"On Enter: Put up to 2 Suns from your deck into play at any location. If you control 5+ Suns, banish Di Jun and all Suns at this location.",0,0,0,3,4,Chinese,Qwen3,Alpha 0.2.0,SUN013
+"Chang'e, the Moon Goddess",Being,Deity,"On Enter: Banish up to 2 Suns at any location. If you do, draw a card for each Sun banished this way.",0,2,1,1,3,Chinese,Qwen3,Alpha 0.2.0,SUN012
+"Houyi, the Divine Archer",Being,Legend,"On Enter: Banish up to 2 Suns at any location. If you have a single sun in play.",2,1,0,2,5,Chinese,Qwen3,Alpha 0.2.0,SUN011

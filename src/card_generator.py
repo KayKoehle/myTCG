@@ -580,6 +580,7 @@ def generate_cards(
             card["Effect"],
         )
         if card["Edition"] != "":
+            print(card["Edition"], card)
             text, version = card["Edition"].split(" ")
             major, minor, patch = map(int, version.split("."))
             if card["ID"] != "" and new_id != card["ID"]:

@@ -1,0 +1,22 @@
+Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
+"Ra, the Deceiver",Being,Deity,"On Enter: Put Sekhmet, Lioness of Slaughter from your deck into your opponent’s hand. Draw 2 Humans from your deck.",0,0,0,3,5,Egyptian,Qwen3,Alpha 0.2.0,DOM001
+"Sekhmet, Lioness of Slaughter",Being,Deity,"On Enter: Banish all Humans at this location.",4,0,0,0,7,Egyptian,Qwen3,Alpha 0.2.0,DOM002
+"Hathor, Lady of the Red Beer",Being,Deity,"Ongoing: Sekhmet cannot be played if you control Hathor. Once per turn, play a Human from your hand for free.",0,0,3,0,3,Egyptian,Qwen3,Alpha 0.2.0,DOM003
+"Thoth, Keeper of Secrets",Being,Deity,"On Enter: Your opponent discards Sekhmet if they hold her. Draw a card for each Human in your graveyard.",0,3,0,0,2,Egyptian,Qwen3,Alpha 0.2.0,DOM004
+"Rebellious Human",Being,Human,"On Enter: If Sekhmet is at this location, banish her instead of this Human.",1,0,0,0,2,Egyptian,Qwen3,Alpha 0.2.0,DOM005
+"Loyal Servant",Being,Human,"Ongoing: Sekhmet cannot banish this Human while you control a Deity. This Human costs 1 less Colorless to play.",0,0,1,0,1,Egyptian,Qwen3,Alpha 0.2.0,DOM006
+"Shu, God of Air",Being,Deity,"Ongoing: Humans you control cannot be banished by Sekhmet. Sekhmet costs your opponent 1 additional Colorless to play.",0,1,2,0,3,Egyptian,Qwen3,Alpha 0.2.0,DOM007
+"Tefnut, Goddess of Moisture",Being,Deity,"On Enter: Return Sekhmet from your opponent’s hand to your deck. Draw a Human from your deck.",0,0,3,0,2,Egyptian,Qwen3,Alpha 0.2.0,DOM008
+"Drunken Human",Being,Human,"On Enter: If Sekhmet is at this location, move her to your opponent’s graveyard. This Human costs 1 less Colorless to play.",1,0,1,0,1,Egyptian,Qwen3,Alpha 0.2.0,DOM009
+"Geb, God of Earth",Being,Deity,"Ongoing: Humans you control gain +1 Power. Sekhmet cannot be played at this location.",0,0,3,0,4,Egyptian,Qwen3,Alpha 0.2.0,DOM010
+"Desperate Survivor",Being,Human,"On Enter: If Sekhmet is on the board, move her to an adjacent location. This Human costs 1 less Colorless to play.",0,1,0,0,1,Egyptian,Qwen3,Alpha 0.2.0,DOM011
+"Anubis, Judge of the Dead",Being,Deity,"On Enter: Banish all Humans at Sekhmet’s location. Draw a card for each Human banished this way.",0,0,0,3,3,Egyptian,Qwen3,Alpha 0.2.0,DOM012
+"Bastet, Protector of the Weak",Being,Deity,"Ongoing: Sekhmet cannot banish Humans at this location. Once per turn, play a Human from your hand for free.",1,0,2,0,2,Egyptian,Qwen3,Alpha 0.2.0,DOM013
+"Osiris, Lord of Rebirth",Being,Deity,"On Enter: Return up to 2 Humans from your graveyard to your hand. If Sekhmet is on the board, banish her.",0,0,3,1,4,Egyptian,Qwen3,Alpha 0.2.0,DOM014
+"Set, Instigator of Chaos",Being,Deity,"On Enter: Your opponent must reveal their hand. If they hold Sekhmet, they must play her if able.",3,0,0,0,4,Egyptian,Qwen3,Alpha 0.2.0,DOM015
+"Maat, Goddess of Order",Being,Deity,"Ongoing: Sekhmet costs your opponent 2 additional Colorless to play. Once per turn, draw a Human from your deck.",0,2,1,0,3,Egyptian,Qwen3,Alpha 0.2.0,DOM016
+"Isis, Mother of Magic",Being,Deity,"On Enter: Return Sekhmet from your opponent’s graveyard to your deck. Put a Human from your hand into play for free.",0,2,1,0,3,Egyptian,Qwen3,Alpha 0.2.0,DOM017
+"Nile Priest",Being,Human,"On Enter: If you control a Deity, move Sekhmet to your opponent’s graveyard. This Human costs 1 less Colorless to play.",0,1,1,0,2,Egyptian,Qwen3,Alpha 0.2.0,DOM018
+"Ptah, Creator of Life",Being,Deity,"On Enter: Return target Human from your graveyard to your hand. If Sekhmet is on the board, banish her and draw a Human from your deck.",0,0,2,2,4,Egyptian,Qwen3,Alpha 0.2.0,DOM019
+"Wadjet, Cobra Guardian",Being,Deity,"Ongoing: Sekhmet cannot banish Humans at this location. Once per turn, draw a Human from your deck.",1,0,1,1,2,Egyptian,Qwen3,Alpha 0.2.0,DOM020
+"Hidden Child",Being,Human,"Ongoing: Sekhmet cannot banish this Human. This Human costs 1 less Colorless to play.",0,0,1,0,1,Egyptian,Qwen3,Alpha 0.2.0,DOM021
