@@ -3,6 +3,7 @@ from src.svg_generator import process_csv_with_template
 from src.arrange_grid import arrange_svgs
 from src.box_generator import create_box_from_template
 from src.pdf_export import svg_to_pdf
+from src.comfyui_generator import generate_missing_images
 
 if __name__ == "__main__":
     # svg_to_pdf(r"C:\Users\kayko\Documents\Python Projects\MyTCGCardGenerator\print_svgs", r"C:\Users\kayko\Documents\Python Projects\MyTCGCardGenerator\print_svgs")
@@ -23,6 +24,12 @@ if __name__ == "__main__":
     # csv_file_path = "tables/religion/mesopotamian/decklists/The_Flood.csv"  # Path to your CSV file
     csv_file_path = "tables/cards_to_print.csv"
     output_directory = "output_svgs"  # Directory where SVG files will be saved
+
+    # --- Generate missing card art via ComfyUI (Flux2-Klein) ---
+    # Uncomment to generate images for all cards in the CSV that don't have art yet.
+    # Pass overwrite=True to regenerate images that already exist.
+    # generate_missing_images(csv_file_path, output_base_dir="images/color", overwrite=False)
+
     process_csv_with_template(csv_file_path, output_directory, color_print=True)
     arrange_svgs(input_dir = output_directory, output_dir = "print_svgs")
     # export_to_tabletopsim()

@@ -219,6 +219,32 @@ def get_svg_dimensions(svg_path):
     return float(width.replace("mm", "")), float(height.replace("mm", ""))
 
 
+def _render_lore(root, lore_text: str) -> None:
+    """Append an italic lore/flavour text element to the SVG root."""
+    if not lore_text:
+        return
+    lore_element = ET.Element(
+        "text",
+        {
+            "xml:space": "preserve",
+            "id": "lore",
+            "x": "2.18",
+            "y": "79",
+            "style": (
+                "font-size:2.82222px;font-style:italic;text-align:start;"
+                "writing-mode:lr-tb;direction:ltr;text-anchor:start;"
+                "white-space:pre;inline-size:58.4828;display:inline;"
+                "fill:#555555;stroke:none;stroke-width:0.264583;"
+                "-inkscape-font-specification:serif;font-family:serif;"
+                "font-weight:normal;font-stretch:normal;font-variant:normal"
+            ),
+        },
+    )
+    tspan = ET.SubElement(lore_element, "tspan", {"x": "2.18", "y": "79"})
+    tspan.text = lore_text
+    root.append(lore_element)
+
+
 def create_creature_card_from_template(
     template_path,
     output_path,
@@ -235,6 +261,7 @@ def create_creature_card_from_template(
     writer,
     artist,
     color_print=True,
+    anecdote="",
 ):
     """Modifies an Inkscape SVG template to create a card."""
     # Parse the SVG template
@@ -303,6 +330,8 @@ def create_creature_card_from_template(
     artist_element = root.find(".//svg:text[@id='artist']", namespace)
     tspan = artist_element.find(".//svg:tspan", namespace)
     tspan.text = artist
+
+    _render_lore(root, anecdote)
 
     if color_print:
         image_path = os.path.join("..", "images", "color", "creatures", f"{name}.png")
@@ -415,6 +444,7 @@ def create_hero_card_from_template(
     writer,
     artist,
     color_print=True,
+    anecdote="",
 ):
     """Modifies an Inkscape SVG template to create a card."""
     # Parse the SVG template
@@ -501,6 +531,7 @@ def create_hero_card_from_template(
         image_path = os.path.join("..", "images", "blackWhite", "heroes", f"{name}.png")
     fill_rectangle_with_image(root, namespace, image_path)
 
+    _render_lore(root, anecdote)
     sanitize_element(root)
     # Write the modified SVG to the output path
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
@@ -538,6 +569,7 @@ def create_transform_card_from_template(
     artist,
     writer,
     color_print=True,
+    anecdote="",
 ):
     """Modifies an Inkscape SVG template to create a card."""
     # Parse the SVG template
@@ -678,6 +710,7 @@ def create_location_card_from_template(
     writer,
     artist,
     color_print=True,
+    lore="",
 ):
     """Modifies an Inkscape SVG template to create a card."""
     # Parse the SVG template
@@ -764,6 +797,7 @@ def create_location_card_from_template(
         )
     fill_rectangle_with_image(root, namespace, image_path)
 
+    _render_lore(root, lore)
     # Write the modified SVG to the output path
     tree.write(output_path, encoding="utf-8", xml_declaration=True)
 
@@ -790,6 +824,7 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
             writer = row.get("Writer").strip()
             edition = row.get("Edition").strip()
             artist = row.get("Artist").strip()
+            anecdote = (row.get("Lore") or row.get("Anecdote") or "").strip()
 
             output_path = os.path.join(output_dir, f"{name}.svg")
             if "Location" in main_type:
@@ -806,6 +841,7 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
                     writer,
                     artist,
                     color_print,
+                    anecdote,
                 )
             elif main_type == "Hero":
                 create_hero_card_from_template(
@@ -824,6 +860,7 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
                     writer,
                     artist,
                     color_print,
+                    anecdote,
                 )
             elif "#" in power:
                 print(main_type)
@@ -844,6 +881,7 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
                     writer,
                     artist,
                     color_print,
+                    anecdote,
                 )
             else:
                 create_creature_card_from_template(
@@ -862,5 +900,6 @@ def process_csv_with_template(csv_file_path: str, output_dir: str, color_print: 
                     writer,
                     artist,
                     color_print,
+                    anecdote,
                 )
             print(f"Card {idx+1} created: {output_path}")
