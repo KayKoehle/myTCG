@@ -1,0 +1,75 @@
+# ----- Python -----
+__pycache__/
+*.pyc
+*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# ----- Virtual environments -----
+.venv/
+venv/
+env/
+.ENV/
+ENV/
+
+# ----- Environment / secrets -----
+.env
+.env.local
+.env.*.local
+*.pem
+secrets.*
+
+# ----- IDEs / editors -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# ----- OS files -----
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- LaTeX build artifacts -----
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.nav
+*.snm
+*.vrb
+
+# ----- Generated card output -----
+# Uncomment the next lines if generated artifacts should not be tracked.
+# cards_output/
+# output_boxes/
+# output_svgs/
+# print_svgs/
+
+# ----- Generated images -----
+# Uncomment if regenerated on demand from sources.
+# images/old/
+# images/blackWhite/
+# images/color/

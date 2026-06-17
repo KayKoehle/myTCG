@@ -8,7 +8,7 @@ Read the rules for the game [here](rules/main.pdf).
 Call `main.py` to read the csv and generate `.svg` files from it.
 
 We can also generate box designs for starter decks.
-  13080910
+
 ## ToDos
 ### Physical game
 - ~180 cards with mesopotamian mythology (3 mono-color starter decks. 3 dual-color starter decks. = 90 cards in decks, rest for drafting)
