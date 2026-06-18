@@ -65,7 +65,7 @@ logs/
 # Uncomment the next lines if generated artifacts should not be tracked.
 # cards_output/
 # output_boxes/
-# output_svgs/
+output_svgs/
 # print_svgs/
 
 # ----- Generated images -----
