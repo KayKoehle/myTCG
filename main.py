@@ -4,6 +4,7 @@ from src.arrange_grid import arrange_svgs
 from src.box_generator import create_box_from_template
 from src.pdf_export import svg_to_pdf
 from src.comfyui_generator import generate_missing_images
+from pathlib import Path
 
 if __name__ == "__main__":
     # svg_to_pdf(r"C:\Users\kayko\Documents\Python Projects\MyTCGCardGenerator\print_svgs", r"C:\Users\kayko\Documents\Python Projects\MyTCGCardGenerator\print_svgs")
@@ -18,11 +19,11 @@ if __name__ == "__main__":
     # plot_stats("./decklists/flames_of_annihilation.csv", "destroy_starter")
     # plot_stats("./decklists/raging_fires.csv", "discard_starter")
 
-    # csv_file_path = "tables/religion/mesopotamian/decklists/Epic_of_Gilgamesh.csv"  # Path to your CSV file
-    # csv_file_path = "tables/religion/mesopotamian/decklists/Tiamats_Army.csv"  # Path to your CSV file
-    # csv_file_path = "tables/religion/mesopotamian/decklists/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
-    # csv_file_path = "tables/religion/mesopotamian/decklists/The_Flood.csv"  # Path to your CSV file
-    csv_file_path = "tables/cards_to_print.csv"
+    # csv_file_path = "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamia/Tiamats_Army.csv"  # Path to your CSV file
+    csv_file_path = "tables/religion/mesopotamia/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamia/The_Flood.csv"  # Path to your CSV file
+    # csv_file_path = "tables/cards_to_print.csv"
     output_directory = "output_svgs"  # Directory where SVG files will be saved
 
     # --- Generate missing card art via ComfyUI (Flux2-Klein) ---

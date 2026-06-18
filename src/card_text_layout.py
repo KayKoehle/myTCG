@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 
 # Horizontal text column: x-start and usable width
 TEXT_X: float = 2.18
-TEXT_WIDTH: float = 58.0          # usable column width in SVG units
+TEXT_WIDTH: float = 58.0      # usable column width in SVG units
 
 # Vertical text zone: top of effect area → bottom of card text zone
 EFFECT_ZONE_TOP: float = 65.0    # y where effect text starts (approx)
@@ -37,11 +37,10 @@ SMALL_LORE_FONT_SIZE: float = 2.10
 TINY_EFFECT_FONT_SIZE: float = 1.95
 TINY_LORE_FONT_SIZE: float = 1.75
 
-CHAR_WIDTH_RATIO: float = 0.62   # estimated char_width = font_size * ratio
+CHAR_WIDTH_RATIO: float = 0.4 
 LINE_HEIGHT_RATIO: float = 1.45  # line_height = font_size * ratio
 
 LORE_SEPARATOR_GAP: float = 2.5  # vertical gap between effect block and lore
-LORE_DIVIDER_THICKNESS: float = 0.3
 
 # Minimum lore font size before we drop lore entirely
 LORE_MIN_FONT_SIZE: float = 1.60
@@ -131,7 +130,7 @@ def _build_lore_element(
     font_size: float,
     col_width: float,
 ) -> ET.Element:
-    """Return a fully-populated <text> element for lore text."""
+    """Return a fully-populated <text> element for lore text compatible with Inkscape."""
     style = (
         f"font-size:{font_size}px;"
         "font-style:italic;"
@@ -153,28 +152,11 @@ def _build_lore_element(
     elem = ET.Element("text", {
         "xml:space": "preserve",
         "id": "lore",
-        "x": str(round(x, 4)),
-        "y": str(round(y_start, 4)),
         "style": style,
     })
     _append_wrapped_tspans(elem, text, x, y_start, font_size, col_width,
                            italic=True, fill="#555555")
     return elem
-
-
-def _build_divider(x: float, y: float, width: float) -> ET.Element:
-    """Thin horizontal rule separating effect from lore."""
-    return ET.Element("line", {
-        "x1": str(round(x, 4)),
-        "y1": str(round(y, 4)),
-        "x2": str(round(x + width, 4)),
-        "y2": str(round(y, 4)),
-        "style": (
-            f"stroke:#888888;"
-            f"stroke-width:{LORE_DIVIDER_THICKNESS};"
-            "stroke-dasharray:none;"
-        ),
-    })
 
 
 # ---------------------------------------------------------------------------
@@ -282,14 +264,13 @@ def _choose_layout(
 
         if total <= TOTAL_ZONE_HEIGHT:
             if e_lines <= 2:
-                mode = LayoutMode.LORE_PROMINENT
+                return LayoutMode.LORE_PROMINENT, e_fs, l_fs
             elif e_fs == NORMAL_EFFECT_FONT_SIZE:
-                mode = LayoutMode.NORMAL
+                return LayoutMode.NORMAL, e_fs, l_fs
             elif e_fs == SMALL_EFFECT_FONT_SIZE:
-                mode = LayoutMode.COMPACT
+                return LayoutMode.COMPACT, e_fs, l_fs
             else:
-                mode = LayoutMode.TINY
-            return mode, e_fs, l_fs
+                return LayoutMode.TINY, e_fs, l_fs
 
     # Nothing fits → drop lore
     return LayoutMode.NO_LORE, TINY_EFFECT_FONT_SIZE, 0.0
@@ -304,7 +285,7 @@ def layout_effect_and_lore(
     anecdote: str,
 ) -> None:
     """
-    Main entry point.  Call instead of update_effect_text() + _render_lore().
+    Main entry point. Call instead of update_effect_text() + _render_lore().
 
     Dynamically sizes and positions effect text and lore/anecdote text so both
     fit within the card's text zone, degrading gracefully when content is long.
@@ -319,21 +300,24 @@ def layout_effect_and_lore(
     if mode == LayoutMode.NO_LORE or not anecdote:
         return   # nothing more to do
 
-    # --- Divider line ---
-    divider_y = effect_bottom_y + LORE_SEPARATOR_GAP * 0.4
-    root.append(_build_divider(TEXT_X, divider_y, TEXT_WIDTH))
-
-    # --- Lore text ---
-    lore_y = divider_y + LORE_SEPARATOR_GAP * 0.6
+    # --- Dynamic Positioning calculations ---
+    l_lines = _estimate_lines(anecdote, l_fs, TEXT_WIDTH)
+    l_height = _lines_height(l_lines, l_fs)
 
     if mode == LayoutMode.LORE_PROMINENT:
-        # Push lore to center of remaining space
-        l_lines = _estimate_lines(anecdote, l_fs, TEXT_WIDTH)
-        l_height = _lines_height(l_lines, l_fs)
-        remaining = CARD_TEXT_ZONE_BOTTOM - lore_y
-        lore_y += max(0.0, (remaining - l_height) / 2)
-        # Use a slightly larger font for prominence
-        l_fs = min(l_fs * 1.15, NORMAL_LORE_FONT_SIZE * 1.1)
+        # Scale up slightly if prominent
+        l_fs_scaled = min(l_fs * 1.15, NORMAL_LORE_FONT_SIZE * 1.1)
+        l_lines = _estimate_lines(anecdote, l_fs_scaled, TEXT_WIDTH)
+        l_height = _lines_height(l_lines, l_fs_scaled)
+        
+        # In prominent mode, center it evenly inside the remaining box space below effect
+        remaining_space = CARD_TEXT_ZONE_BOTTOM - (effect_bottom_y + LORE_SEPARATOR_GAP)
+        lore_y = (effect_bottom_y + LORE_SEPARATOR_GAP) + max(0.0, (remaining_space - l_height) / 2)
+        l_fs = l_fs_scaled
+    else:
+        # Standard Cards: Lock the bottom text line precisely up against CARD_TEXT_ZONE_BOTTOM
+        lore_y = CARD_TEXT_ZONE_BOTTOM - l_height + (l_fs * LINE_HEIGHT_RATIO)
 
+    # --- Append Lore ---
     lore_elem = _build_lore_element(anecdote, TEXT_X, lore_y, l_fs, TEXT_WIDTH)
     root.append(lore_elem)
