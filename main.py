@@ -19,11 +19,11 @@ if __name__ == "__main__":
     # plot_stats("./decklists/flames_of_annihilation.csv", "destroy_starter")
     # plot_stats("./decklists/raging_fires.csv", "discard_starter")
 
-    csv_file_path = "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv"  # Path to your CSV file
     # csv_file_path = "tables/religion/mesopotamia/Tiamats_Army.csv"  # Path to your CSV file
     # csv_file_path = "tables/religion/mesopotamia/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
     # csv_file_path = "tables/religion/mesopotamia/The_Flood.csv"  # Path to your CSV file
-    # csv_file_path = "tables/cards_to_print.csv"
+    csv_file_path = "tables/cards_to_print.csv"
     output_directory = "output_svgs"  # Directory where SVG files will be saved
 
     # --- Generate missing card art via ComfyUI (Flux2-Klein) ---
