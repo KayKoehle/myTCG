@@ -19,9 +19,9 @@ if __name__ == "__main__":
     # plot_stats("./decklists/flames_of_annihilation.csv", "destroy_starter")
     # plot_stats("./decklists/raging_fires.csv", "discard_starter")
 
-    # csv_file_path = "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv"  # Path to your CSV file
+    csv_file_path = "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv"  # Path to your CSV file
     # csv_file_path = "tables/religion/mesopotamia/Tiamats_Army.csv"  # Path to your CSV file
-    csv_file_path = "tables/religion/mesopotamia/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
+    # csv_file_path = "tables/religion/mesopotamia/Inannas_Descent_into_the_Underworld.csv"  # Path to your CSV file
     # csv_file_path = "tables/religion/mesopotamia/The_Flood.csv"  # Path to your CSV file
     # csv_file_path = "tables/cards_to_print.csv"
     output_directory = "output_svgs"  # Directory where SVG files will be saved
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # --- Generate missing card art via ComfyUI (Flux2-Klein) ---
     # Uncomment to generate images for all cards in the CSV that don't have art yet.
     # Pass overwrite=True to regenerate images that already exist.
-    # generate_missing_images(csv_file_path, output_base_dir="images/color", overwrite=False)
+    generate_missing_images(csv_file_path, output_base_dir="images/color", overwrite=False)
 
     process_csv_with_template(csv_file_path, output_directory, color_print=True)
     arrange_svgs(input_dir = output_directory, output_dir = "print_svgs")

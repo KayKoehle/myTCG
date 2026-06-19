@@ -4,6 +4,31 @@
 This repository contains code to generate the print-ready cards for my trading card game.
 Read the rules for the game [here](rules/main.pdf).
 
+## Setup with uv
+
+1. Install [uv](https://docs.astral.sh/uv/).
+2. From the repository root, create and sync the virtual environment:
+
+```bash
+uv sync
+```
+
+3. Run the main generation pipeline:
+
+```bash
+uv run python main.py
+```
+
+Optional commands:
+
+```bash
+# Start the FastAPI server
+uv run uvicorn src.server.main:app --reload
+
+# Install dev dependencies
+uv sync --group dev
+```
+
 `tables/all_cards.csv` contains the table with all cards in the game.
 Call `main.py` to read the csv and generate `.svg` files from it.
 

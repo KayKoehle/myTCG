@@ -101,7 +101,7 @@ FLUX_KLEIN_WORKFLOW = {
     },
     "75:67": {
         "inputs": {
-            "text": "",
+            "text": "modern clothes, cowboy hat, modern city, futuristic, sci-fi, photo, photograph, 3d render, cartoon, anime, text, logo, watermark, frame, border, white background",
             "clip": ["75:71", 0],
         },
         "class_type": "CLIPTextEncode",
@@ -156,79 +156,112 @@ FLUX_KLEIN_WORKFLOW = {
 
 
 def build_prompt(name: str, card_type: str, subtype: str, effect: str) -> str:
-    """Construct a rich oil-painting prompt with background specific to subtype and effect."""
+    """Construct a lore-consistent prompt with deterministic scene variation."""
 
-    # --- Subject ---
-    type_subject = {
-        "Creature": f"a fearsome {subtype or 'creature'} named {name}",
-        "Being":    f"a {subtype or 'figure'} named {name}",
-        "Hero":     f"an epic portrait of {name}, legendary {subtype or 'hero'}",
-        "Location": f"the mythical location {name}",
-        "Structure": f"the ancient {subtype or 'structure'} known as {name}",
-        "Attachment": f"a magical {subtype or 'artefact'} called {name}",
-        "Spell":    f"the powerful spell {name}",
-        "Artefact": f"an ancient {subtype or 'artefact'} called {name}",
+    def pick(options: list[str]) -> str:
+        if not options:
+            return ""
+        idx = sum(ord(ch) for ch in name) % len(options)
+        return options[idx]
+
+    subtype_tokens = [part.strip() for part in (subtype or "").split(",") if part.strip()]
+    subtype_lower = [token.lower() for token in subtype_tokens]
+    primary_subtype = subtype_tokens[0] if subtype_tokens else ""
+
+    # Core subject line (avoid awkward repetitions like "Clay named Clay").
+    if card_type == "Location":
+        subject = f"the mythic place {name}"
+    elif card_type in ("Spell", "Attachment", "Artefact"):
+        subject = f"{name}, an ancient {primary_subtype.lower() if primary_subtype else 'mystic force'}"
+    elif primary_subtype and primary_subtype.lower() == name.lower():
+        subject = f"{name}, an ancient mythic entity"
+    elif subtype_tokens:
+        subject = f"{name}, a {', '.join(subtype_tokens[:3]).lower()} from Bronze Age Mesopotamia"
+    else:
+        subject = f"{name}, a mythic being from Bronze Age Mesopotamia"
+
+    # Classify by subtype keywords, including multi-value subtype cells.
+    role = "generic"
+    if any(token in subtype_lower for token in ("monster", "beast", "demon")):
+        role = "monster"
+    elif any(token in subtype_lower for token in ("god", "deity")):
+        role = "divine"
+    elif any(token in subtype_lower for token in ("hero", "king", "human", "priestess", "guide")):
+        role = "heroic"
+    elif any(token in subtype_lower for token in ("plant", "clay", "spirit")):
+        role = "mythic"
+
+    role_scenes = {
+        "heroic": [
+            "standing on the ramparts of Uruk at dusk, mudbrick walls and torchlight behind",
+            "crossing a date-palm oasis at dawn, canal water reflecting bronze armor",
+            "before carved temple reliefs and cuneiform steles in a sacred courtyard",
+            "on a riverbank beside reed boats and clay tablets under wind-whipped clouds",
+        ],
+        "monster": [
+            "emerging from a cedar forest in stormlight, shattered trunks and flying embers",
+            "towering over a flooded plain with ruined ziggurats half-submerged in silt",
+            "at a mountain pass beneath lightning, broken stone idols and dust swirling",
+            "rising from the depths of the underworld river in black mist and moonlight",
+        ],
+        "divine": [
+            "enthroned above a stepped ziggurat with sunbeams cutting through incense smoke",
+            "descending through celestial storm clouds over the city of Uruk",
+            "framed by radiant temple fire and sacred banners in a moonlit sanctuary",
+            "appearing above the Euphrates in a halo of gold and lapis light",
+        ],
+        "mythic": [
+            "formed from wet clay and river silt beside a ritual basin and reed mats",
+            "in a forgotten shrine lit by oil lamps and drifting temple smoke",
+            "in the shadow of colossal gates engraved with lions and winged bulls",
+            "at the edge of a moonlit marsh where reeds bend in a warm desert wind",
+        ],
+        "generic": [
+            "in ancient Mesopotamia with monumental mudbrick architecture and distant ziggurats",
+            "in a stormy Bronze Age landscape of river deltas, reeds, and stepped temples",
+            "on sacred ground near Uruk under dramatic skies and windblown dust",
+            "amid ruined temple stones and cuneiform carvings at twilight",
+        ],
     }
-    subject = type_subject.get(card_type, name)
+    background = pick(role_scenes.get(role, role_scenes["generic"]))
 
-    # --- Background: keyed by subtype first, then card type ---
-    subtype_background = {
-        # Beings
-        "Human":    "standing on the banks of a vast flooded yellow river delta, "
-                    "rain-soaked earthen levees stretching to the horizon, "
-                    "storm clouds and grey sky, workers and mud in the distance",
-        "Spirit":   "surrounded by swirling jade-green river mist, "
-                    "translucent water cascading over ancient stones, "
-                    "moonlit river gorge with lotus flowers and ethereal light",
-        "Monster":  "rising from dark churning floodwaters, "
-                    "submerged ruins and uprooted trees in the churning chaos, "
-                    "lightning-split stormy sky reflecting on black water",
-        "Legend":   "overlooking a vast panorama of the Nine Provinces, "
-                    "flooded plains and mountain ranges under a golden dawn sky, "
-                    "rivers carved by divine will winding into the distance",
-        # Structures / Dams
-        "Dam":      "a massive ancient stone dam holding back a raging brown river, "
-                    "torrential water spraying over the sides, "
-                    "misty mountain valley and overcast sky in the background",
-        "Natural Disaster": "an apocalyptic wall of floodwater consuming entire villages, "
-                    "dark rolling storm clouds from horizon to horizon, "
-                    "terrified figures on distant hilltops surrounded by rising brown water",
-        # Locations
-        "Location": "sweeping panoramic vista of mythical ancient China, "
-                    "dramatic natural lighting, mountains and rivers fully visible",
-    }
-
-    # Pull extra thematic detail from the effect text
+    # Effect-based mood details.
     effect_hints = []
     effect_lower = (effect or "").lower()
     if "banish" in effect_lower:
-        effect_hints.append("with an air of dread and finality")
+        effect_hints.append("a severe, fateful atmosphere")
     if "draw" in effect_lower:
-        effect_hints.append("surrounded by swirling arcane energy")
-    if "dam" in effect_lower and card_type not in ("Structure",):
-        effect_hints.append("with stone dam works visible in the distance")
+        effect_hints.append("floating cuneiform glyphs and arcane tablets")
     if "flood" in effect_lower:
-        effect_hints.append("knee-deep in rising murky floodwaters")
-    if "sacrifice" in effect_lower or "banish this" in effect_lower:
-        effect_hints.append("with a look of solemn sacrifice")
+        effect_hints.append("rising muddy floodwaters and heavy rain")
+    if "move" in effect_lower:
+        effect_hints.append("dynamic forward motion, cloak and debris swept by wind")
+    if "discard" in effect_lower:
+        effect_hints.append("scattered ritual papers and broken relic fragments")
+    if "destroy" in effect_lower:
+        effect_hints.append("fractured stone and sparks from violent impact")
 
-    background = subtype_background.get(
-        subtype,
-        subtype_background.get(
-            card_type,
-            "dramatic ancient landscape under a stormy sky, "
-            "rich atmospheric depth with distant mountains",
-        ),
-    )
-    if effect_hints:
-        background += ", " + ", ".join(effect_hints)
+    camera = pick([
+        "dramatic low-angle composition",
+        "wide cinematic composition with deep perspective",
+        "three-quarter portrait composition",
+        "close mid-shot with intense focal depth",
+    ])
 
+    style = pick([
+        "epic historical oil painting",
+        "baroque mythological painting",
+        "romantic-era grand history painting",
+        "classical fine-art oil on canvas",
+    ])
+
+    extra = f", {', '.join(effect_hints)}" if effect_hints else ""
     prompt = (
-        f"{subject}, {background}, "
-        f"epic oil painting, classical fine art style, rich impasto textures, "
-        f"dramatic chiaroscuro lighting, masterpiece quality, highly detailed brushwork, "
-        f"no text, no UI, no borders, no card frame, no watermark, "
-        f"no white background, illustration only"
+        f"{subject}, {background}{extra}, {camera}, {style}, "
+        f"rich impasto textures, dramatic chiaroscuro, masterpiece-level detail, "
+        f"Bronze Age Mesopotamian attire, Sumerian architecture, authentic ancient setting, "
+        f"no modern clothing, no cowboy hats, no modern props, no firearms, "
+        f"no text, no UI, no borders, no card frame, no watermark, no white background, illustration only"
     )
     return prompt
 
