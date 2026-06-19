@@ -1,24 +1,16 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
-"Flies",Being,"Insect","If a being left the world this turn, you may play this for free.",0,0,0,1,2,Akkadian,Flux1,Alpha 0.2.0,
-"Atrahasis, Flood Survivor",Being,"Human, King","Immortal.",0,0,0,4,8,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"The Ark",Artefact,"Boat","Costs [1] less for each of your humans. While on top: Non-Deity beings here are protected from the flood.",0,0,0,15,20,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Slave",Being,"Human Worker","While on top: You may banish this to play your next artefact this turn for [2] less.",0,0,0,1,1,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Shepherd",Being,"Human Worker","On enter: The next human you play costs [1] less.",0,0,0,1,1,Akkadian,Flux1,Alpha 0.2.0,
-"Farmer",Being,"Human Worker","On enter: Play another 1 cost human for free.",0,0,0,1,1,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Fisherman",Being,"Human Worker","On enter: Draw two humans from your underworld.",0,0,0,2,3,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Shipbuilder",Being,"Human Worker","While on top: Artifacts you play cost [1] less.",0,0,0,2,3,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Citizen of Shruppak",Being,"Human Worker","On enter: Draw two humans.",0,0,0,3,4,Akkadian,Sana1.5:1.6b,Alpha 0.2.0,
-"Enki",Being,"Deity","While on top: Your humans here are immortal (they cannot be banished or returned to the hand).",0,0,0,6,12,Akkadian,Flux1,Alpha 0.2.0,
-"Apsu",Being,"Deity","On enter: Return all your beings at the other locations to your hand.",0,0,0,6,15,Akkadian,Flux1,Alpha 0.2.0,
-"Enlil, Storm God",Being,"Deity","On enter: If there is a human here, return all other beings at this location to their controller's hand.",0,0,0,7,5,Akkadian,Flux1,Alpha 0.2.0,
-"Mami",Being,"Deity, Water","While on top: Your first human each turn costs [1] less.",0,0,0,3,5,Akkadian,Flux1,Alpha 0.2.0,
-"Anu, Sky God",Being,"Deity","While on top: Your banished humans are returned to your hand instead.",0,0,0,5,10,Akkadian,Flux1,Alpha 0.2.0,
-"Adad",Being,"Deity","",0,0,0,5,10,Akkadian,Flux1,Alpha 0.2.0,
-"The Great Sumerian Flood",Catastrophe,Flood,"Put this aside at the start of the game. The flood happens when you have 12 or more humans. The Flood: Destroy all humans.",0,0,0,0,0,Akkadian,Flux2Klein:9b,Alpha 0.3.0
-
-"Play to give to opponent. They can decide when to flood"
-"Occurs when three plague cards have been drawn"
-"Last card in deck"
-"At the start, secretly pick a number, occurs at that round"
-"Bot players have half of the flood card in their deck, triggers when both are drawn"
-"The flood cards sits beside the board, either player can trigger it on their turn by paying a cost
+"The Great Sumerian Deluge",Catastrophe,Flood,"Put this aside at the start of the game. The first time there are 8 or more humans in play, the flood happens at the end of that turn. The Flood: Banish all humans.",0,0,0,0,0,Akkadian,Flux2Klein:9b,Alpha 0.3.0
+"Cuneiform Tablets of Ea",Artefact,Tablet,"On enter: Search your deck for 'The Ark' and add it to your hand. While on top: You may discard a card to look at the top 3 cards of your deck and arrange them in any order.",0,0,0,1,0,Akkadian,ZImageTurbo,Alpha 0.3.0,,'Take the design of the ship I draw for you on the ground! Let its dimensions be measured exactly...'
+"Flies",Being,"Insect","If a being left the world this turn, you may play this for free.",0,0,0,1,2,Akkadian,ZImageTurbo,Alpha 0.3.0,
+"Slave",Being,"Human","While on top: You may banish this to play your next artefact this turn for [2] less.",0,0,0,1,1,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Shepherd",Being,"Human","On enter: The next human you play costs [1] less.",0,0,0,1,1,Akkadian,ZImageTurbo,Alpha 0.3.0,
+"Farmer",Being,"Human","On enter: Play another 1 cost human for free.",0,0,0,1,1,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Fisherman",Being,"Human","On enter: Draw two humans from your underworld.",0,0,0,2,3,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Sacrificer at the Altar",Being,"Human, Priest","On enter: If the flood would happen at the end of this turn, it happens at the end of your next turn instead.",0,0,0,2,4,Akkadian,ZImageTurbo,Alpha0.3.0
+"Weeping Mother Goddess",Being,"Deity","On enter: Choose one of your humans with a cost of [2] or less and return it to its owner's hand.",0,0,0,2,4,Akkadian,ZImageTurbo,Alpha 0.3.0
+"Shipbuilder",Being,"Human","While on top: Artifacts you play cost [1] less.",0,0,0,2,3,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Citizen of Shruppak",Being,"Human","On enter: Draw two humans.",0,0,0,3,4,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Atrahasis, Flood Survivor",Being,"Human, King","Immortal.",0,0,0,4,8,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,
+"Elders of Shuruppak",Being,Human,"While on top: Double the power of all your humans here.",0,0,0,4,0,Akkadian,ZImageTurbo,Alpha 0.3.0,,
+"Enlil, Storm God",Being,"Deity","On enter: If there is a human here, you may unleash the flood.",0,0,0,7,5,Akkadian,ZImageTurbo,Alpha 0.3.0,
+"The Ark",Artefact,"Boat","Costs [1] less for each of your humans. Indestructible. On enter: Choose a location. While on top: Your humans on chosen location are protected from the flood.",0,0,0,13,15,Akkadian,Sana1.5:1.6b,Alpha 0.3.0,

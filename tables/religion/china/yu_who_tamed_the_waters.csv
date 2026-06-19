@@ -14,3 +14,13 @@ Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
 "Gonggong, the Water Fiend",Being,Monster,"On enter: If you control fewer than 3 Dams, each opponent banishes one of their beings. While on top: You may banish this being to put a Dam from your deck into play at any location.",0,2,0,2,6,Chinese,Milo,Alpha 0.2.0,,"In his rage, Gonggong struck Mount Buzhou and shattered the pillar of the sky, tilting heaven and earth."
 "Xiangliu, the Nine-Headed",Being,Monster,"On enter: If you control fewer than 3 Dams, each opponent banishes their being with the highest power. While on top: You may banish this being to put a Dam from your hand into play for free.",0,2,0,2,7,Chinese,Milo,Alpha 0.2.0,,"Nine-headed Xiangliu left nine poisoned marshes wherever its blood fell. Even in death it corrupted the earth."
 "Yu the Great, Flood Tamer",Being,Legend,"On enter: Draw a Dam from your deck. If you control a Dam at every location, draw 3 cards instead.",0,2,1,1,6,Chinese,Milo,Alpha 0.2.0,,"For thirteen years he labored, passing his own home three times without once entering."
+
+
+
+
+"Play to give to opponent. They can decide when to flood"
+"Occurs when three plague cards have been drawn"
+"Last card in deck"
+"At the start, secretly pick a number, occurs at that round"
+"Bot players have half of the flood card in their deck, triggers when both are drawn"
+"The flood cards sits beside the board, either player can trigger it on their turn by paying a cost"
