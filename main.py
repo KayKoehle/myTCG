@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # --- Generate missing card art via ComfyUI (Flux2-Klein) ---
     # Uncomment to generate images for all cards in the CSV that don't have art yet.
     # Pass overwrite=True to regenerate images that already exist.
-    generate_missing_images(csv_file_path, output_base_dir="images/color", overwrite=False)
+    generate_missing_images(csv_file_path, output_base_dir="images/color", overwrite=True)
 
     process_csv_with_template(csv_file_path, output_directory, color_print=True)
     arrange_svgs(input_dir = output_directory, output_dir = "print_svgs")
