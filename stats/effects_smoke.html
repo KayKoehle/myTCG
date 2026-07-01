@@ -1,0 +1,297 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Card Diagnostics</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffaf2;
+      --ink: #231b16;
+      --muted: #6f6256;
+      --line: #d9cbb9;
+      --accent: #0c7c59;
+      --accent-soft: #dff3ec;
+      --warning: #b8542f;
+      --warning-soft: #f7e2d8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #fff7e6 0, transparent 30%),
+        linear-gradient(180deg, #f7f0e6 0%, var(--bg) 100%);
+    }
+    main { max-width: 1320px; margin: 0 auto; padding: 32px 24px 48px; }
+    h1, h2, h3, h4 { margin: 0; font-weight: 700; }
+    p { margin: 0; color: var(--muted); }
+    .hero { display: grid; gap: 14px; margin-bottom: 28px; }
+    .hero h1 { font-size: clamp(2rem, 4vw, 3.6rem); letter-spacing: -0.04em; }
+    .hero p { max-width: 70ch; line-height: 1.5; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .summary-card, .deck-panel, .controls, .table-panel {
+      background: color-mix(in srgb, var(--panel) 94%, white 6%);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(35, 27, 22, 0.06);
+    }
+    .summary-card { padding: 18px; display: grid; gap: 8px; }
+    .deck-list { display: grid; gap: 18px; margin-bottom: 28px; }
+    .deck-panel { padding: 20px; display: grid; gap: 16px; }
+    .deck-header { display: grid; gap: 6px; }
+    .rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+    .rank-list { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+    .rank-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; }
+    .rank-list.strong li { background: var(--accent-soft); }
+    .rank-list.weak li { background: var(--warning-soft); }
+    .controls { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; }
+    .controls input, .controls select {
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+    }
+    .table-panel { overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.96rem; }
+    thead { background: #efe2d1; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; }
+    th { cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 1; }
+    tbody tr:hover { background: #fff2dc; }
+    .metric { font-variant-numeric: tabular-nums; }
+    .score-bar { width: 120px; height: 10px; border-radius: 999px; background: #eadbc7; overflow: hidden; }
+    .score-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #c75c36 0%, #d8a041 35%, #0c7c59 100%); }
+    @media (max-width: 900px) {
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+      .controls { align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>AI Card Diagnostics</h1>
+      <p>This report turns the trained-play CSV into a deck-by-deck view of likely strong and weak cards. The current signal is stats-only: cost, power, draw frequency, play frequency, and win correlation from vanilla-card self-play.</p>
+    </section>
+
+    <section class="summary-grid">
+            <section class="summary-card">
+              <h3>epic_of_gilgamesh</h3>
+              <p>Cards: 15</p>
+              <p>Avg strength: 0.019</p>
+              <p>Avg plays tracked: 0.60</p>
+            </section>
+            
+            <section class="summary-card">
+              <h3>inannas_descent</h3>
+              <p>Cards: 15</p>
+              <p>Avg strength: 0.087</p>
+              <p>Avg plays tracked: 0.53</p>
+            </section>
+            
+            <section class="summary-card">
+              <h3>siege_of_troy</h3>
+              <p>Cards: 15</p>
+              <p>Avg strength: 0.096</p>
+              <p>Avg plays tracked: 0.47</p>
+            </section>
+            
+            <section class="summary-card">
+              <h3>the_flood</h3>
+              <p>Cards: 15</p>
+              <p>Avg strength: 0.051</p>
+              <p>Avg plays tracked: 0.47</p>
+            </section>
+            </section>
+
+    <section class="deck-list">
+            <section class="deck-panel">
+              <div class="deck-header">
+                <h2>epic_of_gilgamesh</h2>
+                <p>Top and bottom cards by a simple stats-only strength proxy from trained play.</p>
+              </div>
+              <div class="rank-grid">
+                <div>
+                  <h4>Likely Strongest</h4>
+                  <ol class="rank-list strong"><li><span>Ferryman Urshanabi</span><strong>0.067</strong></li><li><span>Mountain Lions</span><strong>0.067</strong></li><li><span>Shamhat</span><strong>0.067</strong></li><li><span>Enkidu</span><strong>0.029</strong></li><li><span>Gilgamesh</span><strong>0.029</strong></li></ol>
+                </div>
+                <div>
+                  <h4>Likely Weakest</h4>
+                  <ol class="rank-list weak"><li><span>Utnapishtim, Survivor of the Flood</span><strong>0.000</strong></li><li><span>Trapper</span><strong>0.000</strong></li><li><span>The Serpent</span><strong>0.000</strong></li><li><span>Ninsun, Mother of Gilgamesh</span><strong>0.000</strong></li><li><span>Ishtar</span><strong>0.000</strong></li></ol>
+                </div>
+              </div>
+            </section>
+            
+            <section class="deck-panel">
+              <div class="deck-header">
+                <h2>inannas_descent</h2>
+                <p>Top and bottom cards by a simple stats-only strength proxy from trained play.</p>
+              </div>
+              <div class="rank-grid">
+                <div>
+                  <h4>Likely Strongest</h4>
+                  <ol class="rank-list strong"><li><span>Gala-Tura</span><strong>0.317</strong></li><li><span>Underworld Courier</span><strong>0.283</strong></li><li><span>Dirt under Enki&#x27;s Fingernail</span><strong>0.233</strong></li><li><span>Ninšubur, Sukkal to Inanna</span><strong>0.154</strong></li><li><span>Galla Demons</span><strong>0.083</strong></li></ol>
+                </div>
+                <div>
+                  <h4>Likely Weakest</h4>
+                  <ol class="rank-list weak"><li><span>Šara, Inanna&#x27;s Beautician</span><strong>0.000</strong></li><li><span>Namtar, Sukkal to Ereshkigal</span><strong>0.000</strong></li><li><span>Gatekeeper Neti</span><strong>0.000</strong></li><li><span>Dumuzid, Shepherd God</span><strong>0.000</strong></li><li><span>Anunnaki, The Seven Judges</span><strong>0.000</strong></li></ol>
+                </div>
+              </div>
+            </section>
+            
+            <section class="deck-panel">
+              <div class="deck-header">
+                <h2>siege_of_troy</h2>
+                <p>Top and bottom cards by a simple stats-only strength proxy from trained play.</p>
+              </div>
+              <div class="rank-grid">
+                <div>
+                  <h4>Likely Strongest</h4>
+                  <ol class="rank-list strong"><li><span>Greek Soldiers</span><strong>0.317</strong></li><li><span>Epeius, Builder of the Horse</span><strong>0.283</strong></li><li><span>Patroclus</span><strong>0.283</strong></li><li><span>Camp Guard at the Ships</span><strong>0.154</strong></li><li><span>Eurybates, Herald of Odysseus</span><strong>0.154</strong></li></ol>
+                </div>
+                <div>
+                  <h4>Likely Weakest</h4>
+                  <ol class="rank-list weak"><li><span>Odysseus</span><strong>0.000</strong></li><li><span>Menelaus, the Wronged King</span><strong>0.000</strong></li><li><span>Dolon the Scout</span><strong>0.000</strong></li><li><span>Agamemnon, King of Mycenae</span><strong>0.000</strong></li><li><span>Achilles</span><strong>0.000</strong></li></ol>
+                </div>
+              </div>
+            </section>
+            
+            <section class="deck-panel">
+              <div class="deck-header">
+                <h2>the_flood</h2>
+                <p>Top and bottom cards by a simple stats-only strength proxy from trained play.</p>
+              </div>
+              <div class="rank-grid">
+                <div>
+                  <h4>Likely Strongest</h4>
+                  <ol class="rank-list strong"><li><span>Shepherd</span><strong>0.192</strong></li><li><span>Farmer</span><strong>0.154</strong></li><li><span>Flies</span><strong>0.154</strong></li><li><span>Weeping Mother Goddess</span><strong>0.154</strong></li><li><span>Enlil, Storm God</span><strong>0.050</strong></li></ol>
+                </div>
+                <div>
+                  <h4>Likely Weakest</h4>
+                  <ol class="rank-list weak"><li><span>The Great Sumerian Deluge</span><strong>0.000</strong></li><li><span>The Ark</span><strong>0.000</strong></li><li><span>Shipbuilder</span><strong>0.000</strong></li><li><span>Fisherman</span><strong>0.000</strong></li><li><span>Elders of Shuruppak</span><strong>0.000</strong></li></ol>
+                </div>
+              </div>
+            </section>
+            </section>
+
+    <section class="controls">
+      <input id="search" type="search" placeholder="Filter by card name">
+      <select id="deck-filter">
+        <option value="">All decks</option>
+      </select>
+      <span id="row-count"></span>
+    </section>
+
+    <section class="table-panel">
+      <table>
+        <thead>
+          <tr>
+            <th data-key="deck_name">Deck</th>
+            <th data-key="card_name">Card</th>
+            <th data-key="cost">Cost</th>
+            <th data-key="power">Power</th>
+            <th data-key="drawn">Drawn</th>
+            <th data-key="played">Played</th>
+            <th data-key="play_rate_when_drawn">Play Rate</th>
+            <th data-key="win_rate_when_drawn">Win When Drawn</th>
+            <th data-key="win_rate_when_played">Win When Played</th>
+            <th data-key="avg_play_turn">Avg Play Turn</th>
+            <th data-key="strength_score">Strength Score</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const rows = [{"deck_name": "epic_of_gilgamesh", "card_id": "2IMlQQUsfZ_", "card_name": "Ferryman Urshanabi", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "6.000", "strength_score": "0.0667"}, {"deck_name": "epic_of_gilgamesh", "card_id": "icfoMyk5tlU", "card_name": "Mountain Lions", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "5.500", "strength_score": "0.0667"}, {"deck_name": "epic_of_gilgamesh", "card_id": "-KecTe5eiPR", "card_name": "Shamhat", "cost": "2", "power": "2", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "9.500", "strength_score": "0.0667"}, {"deck_name": "epic_of_gilgamesh", "card_id": "CzXrLL9X8Xy", "card_name": "Enkidu", "cost": "1", "power": "0", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "8.000", "strength_score": "0.0292"}, {"deck_name": "epic_of_gilgamesh", "card_id": "6FGIU9_q0Nn", "card_name": "Gilgamesh", "cost": "1", "power": "0", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "1.000", "strength_score": "0.0292"}, {"deck_name": "epic_of_gilgamesh", "card_id": "SSpYMp5nXPU", "card_name": "Scorpion-Men", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "4.000", "strength_score": "0.0292"}, {"deck_name": "epic_of_gilgamesh", "card_id": "4a1TujCquQS", "card_name": "Alewife Siduri", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "ROZeABjkymD", "card_name": "Bull of Heaven", "cost": "5", "power": "6", "games_in_deck": "3", "drawn": "2", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "0nZbjrCenyj", "card_name": "Clay", "cost": "0", "power": "0", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "hwJJK90X4Tw", "card_name": "Humbaba, Guardian of the Cedar Forest", "cost": "4", "power": "5", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "Vlh6b3Wo1d6", "card_name": "Ishtar", "cost": "4", "power": "7", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "BAblevg9m9z", "card_name": "Ninsun, Mother of Gilgamesh", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "DrrqqtwGoZV", "card_name": "The Serpent", "cost": "3", "power": "4", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "7d-Wslti-4u", "card_name": "Trapper", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "epic_of_gilgamesh", "card_id": "UzAcwF3sKZE", "card_name": "Utnapishtim, Survivor of the Flood", "cost": "4", "power": "8", "games_in_deck": "3", "drawn": "3", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "MVzYNP4KaDe", "card_name": "Gala-Tura", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "1.000", "strength_score": "0.3167"}, {"deck_name": "inannas_descent", "card_id": "CB7XX5OWy3a", "card_name": "Underworld Courier", "cost": "3", "power": "6", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "8.000", "strength_score": "0.2833"}, {"deck_name": "inannas_descent", "card_id": "N7JQAEQjs-Y", "card_name": "Dirt under Enki's Fingernail", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "0.500", "win_rate_when_played": "1.000", "avg_play_turn": "5.000", "strength_score": "0.2333"}, {"deck_name": "inannas_descent", "card_id": "skIjatjA2RF", "card_name": "Nin\u0161ubur, Sukkal to Inanna", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "12.000", "strength_score": "0.1542"}, {"deck_name": "inannas_descent", "card_id": "YevA6QuwW3x", "card_name": "Galla Demons", "cost": "2", "power": "4", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "0.500", "win_rate_when_played": "0.000", "avg_play_turn": "8.000", "strength_score": "0.0833"}, {"deck_name": "inannas_descent", "card_id": "i61k3h2udR4", "card_name": "Sirtur, Mourning Mother", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "0.500", "win_rate_when_played": "0.000", "avg_play_turn": "4.000", "strength_score": "0.0833"}, {"deck_name": "inannas_descent", "card_id": "H6wRKS1YHdk", "card_name": "Geshtinanna, Dumuzid's Sister", "cost": "2", "power": "4", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "inannas_descent", "card_id": "kLxFEdSvaz7", "card_name": "Inanna, Goddess of Love and War", "cost": "3", "power": "5", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "inannas_descent", "card_id": "3izkotDW6CX", "card_name": "Lulal, Inanna's Bodyguard", "cost": "4", "power": "4", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "inannas_descent", "card_id": "bNdrm3ffCfA", "card_name": "Kur-Jara", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "0", "played": "1", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "1.000", "avg_play_turn": "7.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "LrOuhcjePqs", "card_name": "Anunnaki, The Seven Judges", "cost": "5", "power": "8", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "ZkZkovtg_ma", "card_name": "Dumuzid, Shepherd God", "cost": "4", "power": "7", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "G85guTm1172", "card_name": "Gatekeeper Neti", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "wEKl5yfxFt8", "card_name": "Namtar, Sukkal to Ereshkigal", "cost": "4", "power": "7", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "inannas_descent", "card_id": "qlmkvqO1sU7", "card_name": "\u0160ara, Inanna's Beautician", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "HX3RA6IUN5w", "card_name": "Greek Soldiers", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "3.500", "strength_score": "0.3167"}, {"deck_name": "siege_of_troy", "card_id": "T5q4qursDll", "card_name": "Epeius, Builder of the Horse", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "4.000", "strength_score": "0.2833"}, {"deck_name": "siege_of_troy", "card_id": "xPzvC_VGhL5", "card_name": "Patroclus", "cost": "3", "power": "4", "games_in_deck": "3", "drawn": "2", "played": "1", "play_rate_when_drawn": "0.500", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "7.000", "strength_score": "0.2833"}, {"deck_name": "siege_of_troy", "card_id": "u5f6lLI-aog", "card_name": "Camp Guard at the Ships", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "3.000", "strength_score": "0.1542"}, {"deck_name": "siege_of_troy", "card_id": "CAUxKGFEh7b", "card_name": "Eurybates, Herald of Odysseus", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "9.000", "strength_score": "0.1542"}, {"deck_name": "siege_of_troy", "card_id": "enyV39bdtIu", "card_name": "Diomedes, the God-Smiter", "cost": "5", "power": "7", "games_in_deck": "3", "drawn": "2", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.1000"}, {"deck_name": "siege_of_troy", "card_id": "pFfu2pD4Q_b", "card_name": "Ajax, the Great", "cost": "4", "power": "8", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "siege_of_troy", "card_id": "pLahIuAf6iu", "card_name": "Sinon the Deceiver", "cost": "1", "power": "-1", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "siege_of_troy", "card_id": "Uc68EJSt2YB", "card_name": "The Trojan Horse", "cost": "3", "power": "0", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "siege_of_troy", "card_id": "_BbaDt4S1iq", "card_name": "Calchas, Prophet of Apollo", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "0", "played": "1", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "1.000", "avg_play_turn": "5.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "Yd6O7E8LRBf", "card_name": "Achilles", "cost": "5", "power": "7", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "qibikejB9Am", "card_name": "Agamemnon, King of Mycenae", "cost": "4", "power": "6", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "lOgIzXk5HaR", "card_name": "Dolon the Scout", "cost": "2", "power": "-2", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "NQBuZu-Q_zb", "card_name": "Menelaus, the Wronged King", "cost": "2", "power": "2", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "siege_of_troy", "card_id": "-G99pvI_SMN", "card_name": "Odysseus", "cost": "3", "power": "5", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "Sdb4CgSv4R2", "card_name": "Shepherd", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "2", "played": "2", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.500", "win_rate_when_played": "0.500", "avg_play_turn": "7.500", "strength_score": "0.1917"}, {"deck_name": "the_flood", "card_id": "B__zEJ87zqF", "card_name": "Farmer", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "7.000", "strength_score": "0.1542"}, {"deck_name": "the_flood", "card_id": "LYRnErbuszd", "card_name": "Flies", "cost": "1", "power": "2", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "2.000", "strength_score": "0.1542"}, {"deck_name": "the_flood", "card_id": "yJO7CRRsQMp", "card_name": "Weeping Mother Goddess", "cost": "2", "power": "4", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "1.000", "win_rate_when_played": "1.000", "avg_play_turn": "6.000", "strength_score": "0.1542"}, {"deck_name": "the_flood", "card_id": "tn_PzBPhP3o", "card_name": "Enlil, Storm God", "cost": "7", "power": "5", "games_in_deck": "3", "drawn": "3", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.333", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0500"}, {"deck_name": "the_flood", "card_id": "BoHk4CAsA9-", "card_name": "Sacrificer at the Altar", "cost": "2", "power": "4", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "8.000", "strength_score": "0.0292"}, {"deck_name": "the_flood", "card_id": "t4s-FwCZUKu", "card_name": "Slave", "cost": "1", "power": "1", "games_in_deck": "3", "drawn": "1", "played": "1", "play_rate_when_drawn": "1.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "1.000", "strength_score": "0.0292"}, {"deck_name": "the_flood", "card_id": "UzAcwF3sKZE_a59d8d", "card_name": "Atrahasis, Flood Survivor", "cost": "4", "power": "8", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "ki9FDi_ylU-", "card_name": "Citizen of Shruppak", "cost": "3", "power": "4", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "CDYo-CyhJf_", "card_name": "Cuneiform Tablets of Ea", "cost": "1", "power": "0", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "O34y8qm-VvN", "card_name": "Elders of Shuruppak", "cost": "3", "power": "0", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "KFomrwg_i_Y", "card_name": "Fisherman", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "SWVT-VqhAFN", "card_name": "Shipbuilder", "cost": "2", "power": "3", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "i6kJDIBO1cu", "card_name": "The Ark", "cost": "13", "power": "12", "games_in_deck": "3", "drawn": "1", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}, {"deck_name": "the_flood", "card_id": "mQoBPSxfTkS", "card_name": "The Great Sumerian Deluge", "cost": "0", "power": "0", "games_in_deck": "3", "drawn": "0", "played": "0", "play_rate_when_drawn": "0.000", "win_rate_when_drawn": "0.000", "win_rate_when_played": "0.000", "avg_play_turn": "0.000", "strength_score": "0.0000"}];
+    const deckNames = ["epic_of_gilgamesh", "inannas_descent", "siege_of_troy", "the_flood"];
+    const numericKeys = new Set([
+      'cost', 'power', 'drawn', 'played', 'play_rate_when_drawn',
+      'win_rate_when_drawn', 'win_rate_when_played', 'avg_play_turn', 'strength_score'
+    ]);
+    const deckFilter = document.getElementById('deck-filter');
+    const searchInput = document.getElementById('search');
+    const tableBody = document.getElementById('table-body');
+    const rowCount = document.getElementById('row-count');
+    let sortKey = 'strength_score';
+    let sortDir = 'desc';
+
+    for (const deck of deckNames) {
+      const option = document.createElement('option');
+      option.value = deck;
+      option.textContent = deck;
+      deckFilter.appendChild(option);
+    }
+
+    function compareRows(a, b) {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      const direction = sortDir === 'asc' ? 1 : -1;
+      if (numericKeys.has(sortKey)) {
+        return (parseFloat(aVal) - parseFloat(bVal)) * direction;
+      }
+      return String(aVal).localeCompare(String(bVal)) * direction;
+    }
+
+    function render() {
+      const search = searchInput.value.trim().toLowerCase();
+      const deck = deckFilter.value;
+      let filtered = rows.filter((row) => {
+        const matchesDeck = !deck || row.deck_name === deck;
+        const matchesSearch = !search || row.card_name.toLowerCase().includes(search);
+        return matchesDeck && matchesSearch;
+      });
+
+      filtered = filtered.sort(compareRows);
+      rowCount.textContent = `${filtered.length} cards shown`;
+      tableBody.innerHTML = '';
+
+      for (const row of filtered) {
+        const tr = document.createElement('tr');
+        const scorePct = Math.max(0, Math.min(100, Math.round(parseFloat(row.strength_score) * 100)));
+        tr.innerHTML = `
+          <td>${row.deck_name}</td>
+          <td>${row.card_name}</td>
+          <td class="metric">${row.cost}</td>
+          <td class="metric">${row.power}</td>
+          <td class="metric">${row.drawn}</td>
+          <td class="metric">${row.played}</td>
+          <td class="metric">${row.play_rate_when_drawn}</td>
+          <td class="metric">${row.win_rate_when_drawn}</td>
+          <td class="metric">${row.win_rate_when_played}</td>
+          <td class="metric">${row.avg_play_turn}</td>
+          <td>
+            <div class="score-bar"><span style="width:${scorePct}%"></span></div>
+            <div class="metric">${row.strength_score}</div>
+          </td>
+        `;
+        tableBody.appendChild(tr);
+      }
+    }
+
+    document.querySelectorAll('th[data-key]').forEach((th) => {
+      th.addEventListener('click', () => {
+        const nextKey = th.dataset.key;
+        if (sortKey === nextKey) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortKey = nextKey;
+          sortDir = numericKeys.has(sortKey) ? 'desc' : 'asc';
+        }
+        render();
+      });
+    });
+    searchInput.addEventListener('input', render);
+    deckFilter.addEventListener('change', render);
+    render();
+  </script>
+</body>
+</html>
+    

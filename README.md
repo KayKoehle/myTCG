@@ -27,7 +27,57 @@ uv run uvicorn src.server.main:app --reload
 
 # Install dev dependencies
 uv sync --group dev
+
+# Train distributed neural AI (module entrypoint under src)
+uv run python -m src.server.ai.train_distributed --episodes 2000 --num-actors 8 --episodes-per-update 32 --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy --pipeline-mode shared_memory --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 --elo-csv stats/ai_training_elo_distributed.csv --checkpoint-path stats/checkpoints/ai_nn_distributed_latest.pt --device auto
 ```
+
+Training artifacts are written to `stats/` by default.
+
+WebSocket endpoint for action protocol:
+
+- `/ws/action`
+
+Example payload:
+
+```json
+{
+	"match_id": "default",
+	"player_id": 1,
+	"action_kind": "draw_card",
+	"seed": 42,
+	"deck_a": "echoes_of_the_storm",
+	"deck_b": "flames_of_annihilation"
+}
+```
+
+## Play Against Trained AI (Web App)
+
+1. Start the API server:
+
+```bash
+uv run uvicorn src.server.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+2. Open the browser UI:
+
+- http://localhost:8000/play
+
+3. In the UI:
+
+- Set `checkpoint_path` to a model file you want to use.
+- Click `Start / Refresh`.
+- Drag cards from your hand onto your side of a location to play them.
+- Card visuals are rendered from SVG assets in `output_svgs/` (served at `/assets/cards`).
+- Use `Run AI Move` (single action) or `Run AI Turn` (AI continues until your turn).
+
+HTTP routes used by the UI:
+
+- `POST /api/state`
+- `POST /api/action`
+- `POST /api/ai-move`
+
+Legacy draw endpoint remains available at `/ws/draw`.
 
 `tables/all_cards.csv` contains the table with all cards in the game.
 Call `main.py` to read the csv and generate `.svg` files from it.

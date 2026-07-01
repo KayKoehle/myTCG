@@ -1,0 +1,61 @@
+deck_name,card_id,card_name,cost,power,games_in_deck,drawn,played,play_rate_when_drawn,win_rate_when_drawn,win_rate_when_played,avg_play_turn
+epic_of_gilgamesh,CzXrLL9X8Xy,Enkidu,1,0,3,1,1,1.000,0.000,0.000,8.000
+epic_of_gilgamesh,2IMlQQUsfZ_,Ferryman Urshanabi,2,3,3,2,2,1.000,0.000,0.000,6.000
+epic_of_gilgamesh,6FGIU9_q0Nn,Gilgamesh,1,0,3,1,1,1.000,0.000,0.000,1.000
+epic_of_gilgamesh,icfoMyk5tlU,Mountain Lions,1,1,3,2,2,1.000,0.000,0.000,5.500
+epic_of_gilgamesh,SSpYMp5nXPU,Scorpion-Men,2,3,3,1,1,1.000,0.000,0.000,4.000
+epic_of_gilgamesh,-KecTe5eiPR,Shamhat,2,2,3,2,2,1.000,0.000,0.000,9.500
+epic_of_gilgamesh,4a1TujCquQS,Alewife Siduri,1,2,3,0,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,ROZeABjkymD,Bull of Heaven,5,6,3,2,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,0nZbjrCenyj,Clay,0,0,3,0,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,hwJJK90X4Tw,"Humbaba, Guardian of the Cedar Forest",4,5,3,1,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,Vlh6b3Wo1d6,Ishtar,4,7,3,0,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,BAblevg9m9z,"Ninsun, Mother of Gilgamesh",1,1,3,0,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,DrrqqtwGoZV,The Serpent,3,4,3,1,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,7d-Wslti-4u,Trapper,1,1,3,0,0,0.000,0.000,0.000,0.000
+epic_of_gilgamesh,UzAcwF3sKZE,"Utnapishtim, Survivor of the Flood",4,8,3,3,0,0.000,0.000,0.000,0.000
+inannas_descent,N7JQAEQjs-Y,Dirt under Enki's Fingernail,2,3,3,2,1,0.500,0.500,1.000,5.000
+inannas_descent,MVzYNP4KaDe,Gala-Tura,1,2,3,2,2,1.000,1.000,1.000,1.000
+inannas_descent,bNdrm3ffCfA,Kur-Jara,1,2,3,0,1,0.000,0.000,1.000,7.000
+inannas_descent,skIjatjA2RF,"Ninšubur, Sukkal to Inanna",2,3,3,1,1,1.000,1.000,1.000,12.000
+inannas_descent,CB7XX5OWy3a,Underworld Courier,3,6,3,2,1,0.500,1.000,1.000,8.000
+inannas_descent,YevA6QuwW3x,Galla Demons,2,4,3,2,1,0.500,0.500,0.000,8.000
+inannas_descent,i61k3h2udR4,"Sirtur, Mourning Mother",2,3,3,2,1,0.500,0.500,0.000,4.000
+inannas_descent,LrOuhcjePqs,"Anunnaki, The Seven Judges",5,8,3,0,0,0.000,0.000,0.000,0.000
+inannas_descent,ZkZkovtg_ma,"Dumuzid, Shepherd God",4,7,3,0,0,0.000,0.000,0.000,0.000
+inannas_descent,G85guTm1172,Gatekeeper Neti,2,3,3,0,0,0.000,0.000,0.000,0.000
+inannas_descent,H6wRKS1YHdk,"Geshtinanna, Dumuzid's Sister",2,4,3,1,0,0.000,1.000,0.000,0.000
+inannas_descent,kLxFEdSvaz7,"Inanna, Goddess of Love and War",3,5,3,1,0,0.000,1.000,0.000,0.000
+inannas_descent,3izkotDW6CX,"Lulal, Inanna's Bodyguard",4,4,3,1,0,0.000,1.000,0.000,0.000
+inannas_descent,wEKl5yfxFt8,"Namtar, Sukkal to Ereshkigal",4,7,3,1,0,0.000,0.000,0.000,0.000
+inannas_descent,qlmkvqO1sU7,"Šara, Inanna's Beautician",1,2,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,_BbaDt4S1iq,"Calchas, Prophet of Apollo",1,1,3,0,1,0.000,0.000,1.000,5.000
+siege_of_troy,u5f6lLI-aog,Camp Guard at the Ships,2,3,3,1,1,1.000,1.000,1.000,3.000
+siege_of_troy,T5q4qursDll,"Epeius, Builder of the Horse",2,3,3,2,1,0.500,1.000,1.000,4.000
+siege_of_troy,CAUxKGFEh7b,"Eurybates, Herald of Odysseus",1,2,3,1,1,1.000,1.000,1.000,9.000
+siege_of_troy,HX3RA6IUN5w,Greek Soldiers,1,2,3,2,2,1.000,1.000,1.000,3.500
+siege_of_troy,xPzvC_VGhL5,Patroclus,3,4,3,2,1,0.500,1.000,1.000,7.000
+siege_of_troy,Yd6O7E8LRBf,Achilles,5,7,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,qibikejB9Am,"Agamemnon, King of Mycenae",4,6,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,pFfu2pD4Q_b,"Ajax, the Great",4,8,3,1,0,0.000,1.000,0.000,0.000
+siege_of_troy,enyV39bdtIu,"Diomedes, the God-Smiter",5,7,3,2,0,0.000,1.000,0.000,0.000
+siege_of_troy,lOgIzXk5HaR,Dolon the Scout,2,-2,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,NQBuZu-Q_zb,"Menelaus, the Wronged King",2,2,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,-G99pvI_SMN,Odysseus,3,5,3,0,0,0.000,0.000,0.000,0.000
+siege_of_troy,pLahIuAf6iu,Sinon the Deceiver,1,-1,3,1,0,0.000,1.000,0.000,0.000
+siege_of_troy,Uc68EJSt2YB,The Trojan Horse,3,0,3,1,0,0.000,1.000,0.000,0.000
+the_flood,B__zEJ87zqF,Farmer,1,1,3,1,1,1.000,1.000,1.000,7.000
+the_flood,LYRnErbuszd,Flies,1,2,3,1,1,1.000,1.000,1.000,2.000
+the_flood,yJO7CRRsQMp,Weeping Mother Goddess,2,4,3,1,1,1.000,1.000,1.000,6.000
+the_flood,Sdb4CgSv4R2,Shepherd,1,1,3,2,2,1.000,0.500,0.500,7.500
+the_flood,BoHk4CAsA9-,Sacrificer at the Altar,2,4,3,1,1,1.000,0.000,0.000,8.000
+the_flood,t4s-FwCZUKu,Slave,1,1,3,1,1,1.000,0.000,0.000,1.000
+the_flood,UzAcwF3sKZE_a59d8d,"Atrahasis, Flood Survivor",4,8,3,1,0,0.000,0.000,0.000,0.000
+the_flood,ki9FDi_ylU-,Citizen of Shruppak,3,4,3,0,0,0.000,0.000,0.000,0.000
+the_flood,CDYo-CyhJf_,Cuneiform Tablets of Ea,1,0,3,1,0,0.000,0.000,0.000,0.000
+the_flood,O34y8qm-VvN,Elders of Shuruppak,3,0,3,0,0,0.000,0.000,0.000,0.000
+the_flood,tn_PzBPhP3o,"Enlil, Storm God",7,5,3,3,0,0.000,0.333,0.000,0.000
+the_flood,KFomrwg_i_Y,Fisherman,2,3,3,0,0,0.000,0.000,0.000,0.000
+the_flood,SWVT-VqhAFN,Shipbuilder,2,3,3,0,0,0.000,0.000,0.000,0.000
+the_flood,i6kJDIBO1cu,The Ark,13,12,3,1,0,0.000,0.000,0.000,0.000
+the_flood,mQoBPSxfTkS,The Great Sumerian Deluge,0,0,3,0,0,0.000,0.000,0.000,0.000

@@ -1,10 +1,69 @@
-from typing import Optional, List
-from pydantic import BaseModel
-from domain.card import Card
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+class ActionRequest(BaseModel):
+    match_id: str = Field(default="default")
+    player_id: int
+    action_kind: str
+    seed: int = 42
+    deck_a: str = "epic_of_gilgamesh"
+    deck_b: str = "siege_of_troy"
+    card_id: Optional[str] = None
+    location_id: Optional[int] = None
+    option_id: Optional[str] = None
+
+
+class ActionResponse(BaseModel):
+    ok: bool = True
+    snapshot: dict[str, Any]
+
+
+class ErrorResponse(BaseModel):
+    ok: bool = False
+    error: str
+
 
 class DrawRequest(BaseModel):
-    player_id: int  # Add player_id to identify the player
+    # Legacy alias to keep existing test clients easy to migrate.
+    player_id: int
+    match_id: str = Field(default="default")
+    seed: int = 42
+    deck_a: str = "epic_of_gilgamesh"
+    deck_b: str = "siege_of_troy"
+
 
 class DrawResponse(BaseModel):
-    card: Optional[Card]  # The drawn card (or None if the deck is empty)
-    message: str  # A message describing the result
+    ok: bool = True
+    snapshot: dict[str, Any]
+
+
+class StateRequest(BaseModel):
+    match_id: str = Field(default="default")
+    player_id: int = 1
+    seed: int = 42
+    deck_a: str = "epic_of_gilgamesh"
+    deck_b: str = "siege_of_troy"
+
+
+class StateResponse(BaseModel):
+    ok: bool = True
+    snapshot: dict[str, Any]
+
+
+class AiMoveRequest(BaseModel):
+    match_id: str = Field(default="default")
+    ai_player_id: int = 2
+    viewer_player_id: int = 1
+    seed: int = 42
+    deck_a: str = "epic_of_gilgamesh"
+    deck_b: str = "siege_of_troy"
+    checkpoint_path: str = "stats/checkpoints/ai_nn_distributed_latest.pt"
+    device: str = "auto"
+
+
+class AiMoveResponse(BaseModel):
+    ok: bool = True
+    action: dict[str, Any]
+    snapshot: dict[str, Any]

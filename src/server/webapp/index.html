@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#10253b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/webapp/icons/app-icon.svg" type="image/svg+xml">
+    <title>MyTCG Snap Arena</title>
+    <link rel="stylesheet" href="/webapp/styles.css">
+</head>
+
+<body>
+    <div class="app">
+        <aside class="panel sidebar">
+            <h1 class="title sidebar-top-hidden">MyTCG Snap Arena</h1>
+            <div class="tiny sidebar-top-hidden">You are on the left side. Opponent is on the right side.</div>
+
+            <details class="settings-shell">
+                <summary>
+                    <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+                    </svg>
+                    <span>Settings</span>
+                </summary>
+                <div class="settings-body">
+                    <div class="grid2">
+                        <div>
+                            <label>Deck A</label>
+                            <select id="deckA"></select>
+                        </div>
+                        <div>
+                            <label>Deck B</label>
+                            <select id="deckB"></select>
+                        </div>
+                    </div>
+
+                    <label>Checkpoint</label>
+                    <select id="checkpointPath"></select>
+
+                    <div style="margin-top: 10px;">
+                        <button class="btn" id="btnNewGame" style="width:100%;">New Game</button>
+                    </div>
+                </div>
+            </details>
+
+            <section class="vp-sidebar" id="vpSidebar" aria-label="Victory points"></section>
+
+            <div class="mulligan-panel hidden" id="mulliganPanel">
+                <div class="mulligan-title">Mulligan</div>
+                <div class="mulligan-sub" id="mulliganInfo">Click cards to replace, then press Confirm mulligan.</div>
+            </div>
+
+            <div class="status" id="status">Ready.</div>
+
+            <section class="history-panel" aria-label="Past actions">
+                <div class="history-title">Past Actions</div>
+                <div class="history-list" id="actionHistory"></div>
+            </section>
+        </aside>
+
+        <main class="board">
+            <div class="hud" id="hud"></div>
+            <div id="pending"></div>
+
+            <section class="player-zone">
+                <aside class="hand-wrap underworld-pane">
+                    <h3 class="hand-title zone-title-muted">Opponent Underworld</h3>
+                    <div class="underworld-grid" id="oppUnderworld"></div>
+                </aside>
+
+                <section class="hand-wrap">
+                    <div class="hand-head">
+                        <h3 class="hand-title zone-title-muted">Opponent Hand</h3>
+                    </div>
+                    <div class="opponent-hand" id="oppHand"></div>
+                    <div class="mana-zone" id="oppMana"></div>
+                </section>
+
+                <aside class="pile" id="oppDeck">
+                    <div class="pile-label zone-title-muted">Opponent Deck</div>
+                    <div class="deck-stack">
+                        <span class="deck-card"></span>
+                        <span class="deck-card"></span>
+                        <span class="deck-card"></span>
+                    </div>
+                    <div class="pile-count" id="oppDeckCount">0</div>
+                </aside>
+            </section>
+
+            <section>
+                <div class="lanes" id="lanes"></div>
+            </section>
+
+            <section class="center-action">
+                <button class="btn turn" id="btnEndTurn">End Turn</button>
+            </section>
+
+            <section class="player-zone">
+                <aside class="pile hand-wrap deck-like-underworld" id="yourDeck">
+                    <div class="pile-label">Your Deck</div>
+                    <div class="deck-stack">
+                        <span class="deck-card"></span>
+                        <span class="deck-card"></span>
+                        <span class="deck-card"></span>
+                    </div>
+                    <div class="pile-count" id="yourDeckCount">0</div>
+                </aside>
+
+                <section class="hand-wrap">
+                    <h3 class="hand-title hand-title-blue">Your Hand</h3>
+                    <div class="mana-zone" id="yourMana"></div>
+                    <div class="hand" id="hand"></div>
+                </section>
+
+                <aside class="hand-wrap underworld-pane">
+                    <h3 class="hand-title">Your Underworld</h3>
+                    <div class="underworld-grid" id="yourUnderworld"></div>
+                </aside>
+            </section>
+        </main>
+    </div>
+
+    <div id="choiceModal" class="choice-modal" aria-hidden="true">
+        <div class="choice-dialog" role="dialog" aria-modal="true" aria-labelledby="choiceTitle">
+            <h2 id="choiceTitle" class="choice-title">Choose an option</h2>
+            <p class="choice-prompt" id="choicePrompt"></p>
+            <div class="choice-sub" id="choiceSub"></div>
+            <div class="choice-options" id="choiceOptions"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/webapp/js/main.js"></script>
+    <script src="/webapp/pwa.js"></script>
+</body>
+
+</html>

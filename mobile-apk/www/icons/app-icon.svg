@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MyTCG">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f3556" />
+      <stop offset="100%" stop-color="#091a2b" />
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffe2a0" />
+      <stop offset="100%" stop-color="#da8b36" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="120" fill="url(#bg)" />
+  <circle cx="112" cy="90" r="140" fill="#1aa9eb" opacity="0.22" />
+  <circle cx="430" cy="72" r="120" fill="#ff9f4d" opacity="0.2" />
+
+  <g transform="translate(108 76)">
+    <rect x="34" y="44" width="226" height="320" rx="20" fill="#0d2238" stroke="#b9d9ea" stroke-width="8" />
+    <rect x="0" y="0" width="226" height="320" rx="20" fill="#153653" stroke="#cfe9f8" stroke-width="8" />
+    <rect x="16" y="16" width="194" height="132" rx="12" fill="#244f73" />
+    <rect x="16" y="166" width="194" height="138" rx="12" fill="#0f2a42" />
+
+    <circle cx="42" cy="42" r="24" fill="url(#card)" stroke="#ffeec9" stroke-width="4" />
+    <polygon points="182,42 197,50 197,67 182,75 167,67 167,50" fill="#e84141" stroke="#ffb5b5" stroke-width="4" />
+
+    <path d="M58 208 L98 250 L154 180" fill="none" stroke="#7ce4c9" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

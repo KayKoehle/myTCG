@@ -74,3 +74,10 @@ output_svgs/
 # images/old/
 # images/blackWhite/
 # images/color/
+
+# ----- Mobile (Capacitor / Android) generated artifacts -----
+mobile-apk/node_modules/
+mobile-apk/android/.gradle/
+mobile-apk/android/build/
+mobile-apk/android/app/build/
+mobile-apk/android/local.properties
