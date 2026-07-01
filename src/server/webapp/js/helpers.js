@@ -6,11 +6,22 @@ export function laneLabel(locationId) {
     return `lane ${laneId + 1}`;
 }
 
-export function actionLabel(action) {
-    if (action.kind === 'play_card') return `Play ${action.card_id} -> ${laneLabel(action.location_id)}`;
+function looksLikeCardId(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{8,}$/.test(value);
+}
+
+export function cardDisplayName(cardId, cardNameById) {
+    if (cardNameById && cardNameById.has(cardId)) return cardNameById.get(cardId);
+    return looksLikeCardId(cardId) ? 'Unknown card' : String(cardId || 'Unknown card');
+}
+
+export function actionLabel(action, cardNameById = new Map()) {
+    if (action.kind === 'play_card') {
+        return `Play ${cardDisplayName(action.card_id, cardNameById)} -> ${laneLabel(action.location_id)}`;
+    }
     if (action.kind === 'choose_option') {
         if (action.option_id === 'KEEP') return 'Mulligan: KEEP';
-        return `Choose: ${action.option_id}`;
+        return `Choose: ${describeChoiceOption(action.option_id, cardNameById)}`;
     }
     if (action.kind === 'draw_card') return 'Draw card';
     return action.kind;
@@ -91,6 +102,12 @@ export function escapeHtml(value) {
 
 export function buildCardNameMap(snapshot) {
     const cardNameById = new Map();
+
+    const known = snapshot && typeof snapshot.card_name_by_id === 'object' ? snapshot.card_name_by_id : {};
+    for (const [cardId, cardName] of Object.entries(known)) {
+        if (cardId && cardName) cardNameById.set(cardId, cardName);
+    }
+
     const rememberCards = (cards) => {
         if (!Array.isArray(cards)) return;
         for (const card of cards) {
@@ -118,22 +135,42 @@ export function buildCardNameMap(snapshot) {
 export function describeChoiceOption(optionId, cardNameById) {
     if (optionId === 'PASS') return 'Pass';
     if (optionId === 'KEEP') return 'Keep current hand';
+    if (optionId === 'BOTTOM') return 'Move top card to bottom';
+    if (optionId === 'NONE') return 'None';
 
     const directName = cardNameById.get(optionId);
     if (directName) return directName;
 
     if (typeof optionId === 'string') {
         const parts = optionId.split('|');
-        if (parts.length >= 2) {
+        const zone = parts[0];
+        if (parts.length === 2 && (zone === 'hand' || zone === 'deck' || zone === 'underworld')) {
+            const zoneName = zone.charAt(0).toUpperCase() + zone.slice(1);
+            return `${zoneName}: ${cardDisplayName(parts[1], cardNameById)}`;
+        }
+
+        if (parts.length === 2) {
             const maybeCardId = parts[0];
             const maybeLane = Number(parts[1]);
             if (Number.isFinite(maybeLane)) {
-                const cardName = cardNameById.get(maybeCardId) || maybeCardId;
-                return `${cardName} -> ${laneLabel(maybeLane)}`;
+                return `${cardDisplayName(maybeCardId, cardNameById)} -> ${laneLabel(maybeLane)}`;
+            }
+
+            const allNamed = parts.every((part) => cardNameById.has(part) || looksLikeCardId(part));
+            if (allNamed) {
+                return parts.map((part) => cardDisplayName(part, cardNameById)).join(', ');
+            }
+        }
+
+        if (parts.length === 3) {
+            const maybeLane = Number(parts[1]);
+            const maybeSide = Number(parts[2]);
+            if (Number.isFinite(maybeLane) && Number.isFinite(maybeSide)) {
+                return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane)}`;
             }
         }
     }
-    return optionId;
+    return looksLikeCardId(optionId) ? 'Unknown card' : optionId;
 }
 
 export function fillSelectFromOptions(selectEl, options, preferredValue) {

@@ -12,6 +12,7 @@ export function createAppState() {
         legalMoveChoiceSet: new Set(),
         movableChoiceCardSet: new Set(),
         playableCardSet: new Set(),
+        cardNameById: new Map(),
         mulliganSelected: new Set(),
         autoRunning: false,
     };

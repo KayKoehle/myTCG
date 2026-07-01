@@ -251,6 +251,7 @@ export function layoutHand(ui) {
 
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     app.snapshot = snapshot;
+    app.cardNameById = buildCardNameMap(snapshot);
 
     const human = String(config.player_id);
     const ai = String(config.ai_player_id);
@@ -316,10 +317,9 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     if (snapshot.pending_choice && !isOpeningMulligan) {
         const p = snapshot.pending_choice;
         const canChoose = Number(p.player_id) === config.player_id && p.choice_kind !== 'opening_mulligan';
-        const cardNameById = buildCardNameMap(snapshot);
         const listedOptions = (p.options || []).map((opt) => ({
             value: opt,
-            label: describeChoiceOption(opt, cardNameById),
+            label: describeChoiceOption(opt, app.cardNameById),
         }));
         const optionChips = canChoose
             ? `<div class="pending-options">${listedOptions.map((opt) => `<span class="option-chip" data-choice-option="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</span>`).join('')}</div>`

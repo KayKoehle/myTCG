@@ -1,5 +1,5 @@
 import { postJson } from './api.js';
-import { actionLabel, humanLegalActions, laneLabel } from './helpers.js';
+import { actionLabel, cardDisplayName, humanLegalActions, laneLabel } from './helpers.js';
 import { renderSnapshot, layoutHand } from './render.js';
 import { buildConfig, createAppState } from './state.js';
 
@@ -109,7 +109,7 @@ export function createGameController(ui) {
                         return parts.length === 3 && parts[0] === moveCardId && Number(parts[1]) === loc;
                     });
                     if (!option) {
-                        ui.status.textContent = `Cannot move ${moveCardId} to ${laneLabel(loc)} right now.`;
+                        ui.status.textContent = `Cannot move ${cardDisplayName(moveCardId, app.cardNameById)} to ${laneLabel(loc)} right now.`;
                         return;
                     }
                     await doAction({ kind: 'choose_option', option_id: option });
@@ -119,7 +119,7 @@ export function createGameController(ui) {
                 const activeCardId = app.draggedCardId || payload;
                 if (!activeCardId) return;
                 if (!app.legalPlaySet.has(`${activeCardId}|${loc}`)) {
-                    ui.status.textContent = `Cannot play ${activeCardId} to ${laneLabel(loc)} right now.`;
+                    ui.status.textContent = `Cannot play ${cardDisplayName(activeCardId, app.cardNameById)} to ${laneLabel(loc)} right now.`;
                     return;
                 }
                 await doAction({ kind: 'play_card', card_id: activeCardId, location_id: loc });
@@ -221,7 +221,7 @@ export function createGameController(ui) {
             rerender(data.snapshot);
             const snap = data.snapshot || {};
             if (!isOpeningMulligan(snap) && ui.status.textContent) {
-                ui.status.textContent = `AI action: ${actionLabel(data.action)} | ${ui.status.textContent}`;
+                ui.status.textContent = `AI action: ${actionLabel(data.action, app.cardNameById)} | ${ui.status.textContent}`;
             }
         } catch (error) {
             ui.status.textContent = String(error);

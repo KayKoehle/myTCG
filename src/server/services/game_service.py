@@ -6,7 +6,7 @@ from typing import Any
 
 from ..engine.openspiel_adapter import parse_action
 from ..engine.state import GameState
-from ..engine.transitions import CARD_LIBRARY, _card_owner_idx, _dynamic_card_power, apply_action, available_decks, create_initial_state, legal_actions
+from ..engine.transitions import CARD_LIBRARY, _card_owner_idx, _dynamic_card_power, apply_action, available_decks, create_initial_state, deck_card_ids, legal_actions
 from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 
 
@@ -78,6 +78,12 @@ class GameService:
         state = match.state
         viewer_idx = state.player_ids.index(viewer_player_id)
         opp_idx = 1 - viewer_idx
+        known_card_ids = deck_card_ids((match.deck_a, match.deck_b))
+        card_name_by_id = {
+            card_id: CARD_LIBRARY[card_id].name
+            for card_id in known_card_ids
+            if card_id in CARD_LIBRARY
+        }
         checkpoint_dir = Path("stats/checkpoints")
         available_checkpoints = sorted(str(path) for path in checkpoint_dir.glob("*.pt")) if checkpoint_dir.exists() else []
 
@@ -149,6 +155,7 @@ class GameService:
                 str(state.player_ids[0]): match.deck_a,
                 str(state.player_ids[1]): match.deck_b,
             },
+            "card_name_by_id": card_name_by_id,
             "available_decks": list(available_decks()),
             "phase": state.phase,
             "mulligan_done": {

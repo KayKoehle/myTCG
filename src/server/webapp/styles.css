@@ -76,7 +76,7 @@ body {
     overflow: hidden;
 }
 
-.settings-shell > summary {
+.settings-shell>summary {
     list-style: none;
     cursor: pointer;
     padding: 8px 10px;
@@ -98,7 +98,7 @@ body {
     opacity: 0.9;
 }
 
-.settings-shell > summary::-webkit-details-marker {
+.settings-shell>summary::-webkit-details-marker {
     display: none;
 }
 

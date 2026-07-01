@@ -1,19 +1,19 @@
 {
-  "name": "MyTCG Snap Arena",
-  "short_name": "MyTCG",
-  "description": "Play MyTCG Snap Arena on desktop and Android.",
-  "start_url": "/play",
-  "scope": "/",
-  "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#07131f",
-  "theme_color": "#10253b",
-  "icons": [
-    {
-      "src": "/webapp/icons/app-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ]
+    "name": "MyTCG Snap Arena",
+    "short_name": "MyTCG",
+    "description": "Play MyTCG Snap Arena on desktop and Android.",
+    "start_url": "/play",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#07131f",
+    "theme_color": "#10253b",
+    "icons": [
+        {
+            "src": "/webapp/icons/app-icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
 }
