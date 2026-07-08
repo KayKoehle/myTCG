@@ -7,7 +7,7 @@ export function createAppState() {
         defaultDeckA: 'epic_of_gilgamesh',
         defaultDeckB: 'siege_of_troy',
         snapshot: null,
-        draggedCardId: null,
+        selectedCardId: null,
         legalPlaySet: new Set(),
         legalMoveChoiceSet: new Set(),
         movableChoiceCardSet: new Set(),
@@ -15,6 +15,7 @@ export function createAppState() {
         cardNameById: new Map(),
         mulliganSelected: new Set(),
         autoRunning: false,
+        dragEndedAt: 0,
     };
 }
 

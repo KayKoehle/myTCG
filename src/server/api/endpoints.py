@@ -17,6 +17,7 @@ from .schemas import (
     DrawRequest,
     DrawResponse,
     ErrorResponse,
+    MatchupStatsResponse,
     StateRequest,
     StateResponse,
 )
@@ -45,7 +46,6 @@ class ConnectionManager:
 manager = ConnectionManager()
 game_service = GameService()
 WEBAPP_DIR = Path(__file__).resolve().parents[1] / "webapp"
-WEBAPP_INDEX = Path(__file__).resolve().parents[1] / "webapp" / "index.html"
 WEBAPP_MANIFEST = WEBAPP_DIR / "manifest.webmanifest"
 WEBAPP_SW = WEBAPP_DIR / "sw.js"
 
@@ -58,14 +58,14 @@ def register_ws_routes(app: FastAPI):
     Attach all WebSocket endpoints to the FastAPI app.
     """
 
+    # html=True serves index.html at /webapp/ so the page shares one set of
+    # relative asset paths with the Capacitor build (which serves www/ at /).
     if WEBAPP_DIR.exists():
-        app.mount("/webapp", StaticFiles(directory=str(WEBAPP_DIR)), name="webapp")
+        app.mount("/webapp", StaticFiles(directory=str(WEBAPP_DIR), html=True), name="webapp")
 
     @app.get("/play")
     async def play_page():
-        if not WEBAPP_INDEX.exists():
-            return {"ok": False, "error": f"Missing web app file: {WEBAPP_INDEX}"}
-        return FileResponse(WEBAPP_INDEX)
+        return RedirectResponse(url="/webapp/", status_code=307)
 
     @app.get("/manifest.webmanifest")
     async def manifest_file():
@@ -81,7 +81,7 @@ def register_ws_routes(app: FastAPI):
 
     @app.get("/")
     async def root_redirect():
-        return RedirectResponse(url="/play", status_code=307)
+        return RedirectResponse(url="/webapp/", status_code=307)
 
     @app.post("/api/state", response_model=StateResponse)
     async def get_state(request: StateRequest):
@@ -109,6 +109,10 @@ def register_ws_routes(app: FastAPI):
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
+
+    @app.post("/api/matchup-stats", response_model=MatchupStatsResponse)
+    async def matchup_stats(request: dict | None = None):
+        return MatchupStatsResponse(stats=game_service.matchup_stats.summary())
 
     @app.post("/api/ai-move", response_model=AiMoveResponse)
     async def apply_ai_move(request: AiMoveRequest):

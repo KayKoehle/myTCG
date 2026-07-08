@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import copy
 import csv
 import multiprocessing as mp
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .openspiel_game import build_open_spiel_game
+from .policy import obs_to_features
 
 try:
     from tqdm.auto import tqdm
@@ -30,33 +30,6 @@ def _load_torch() -> Any:
             "PyTorch is not installed. Install AI deps with: uv sync --group ai"
         ) from exc
     return torch, nn, optim, Categorical
-
-
-def _hash_tokens(text: str, feature_dim: int) -> list[int]:
-    tokens = text.replace(";", " ").replace("|", " ").replace(",", " ").replace("=", " ").split()
-    if not tokens:
-        return [0]
-    return [abs(hash(tok)) % feature_dim for tok in tokens]
-
-
-def _safe_tuple(value: str, default: tuple[int, int]) -> tuple[int, int]:
-    try:
-        parsed = ast.literal_eval(value)
-        if isinstance(parsed, tuple) and len(parsed) == 2:
-            return int(parsed[0]), int(parsed[1])
-    except Exception:  # noqa: BLE001
-        pass
-    return default
-
-
-def _parse_observation(observation: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for part in observation.split(";"):
-        if "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        out[key.strip()] = value.strip()
-    return out
 
 
 class _ActorCriticNetwork:
@@ -97,61 +70,9 @@ class _ActorCriticNetwork:
 
 
 def _obs_to_tensor(torch: Any, observation: str, feature_dim: int, device: Any):
-    vec = torch.zeros(feature_dim, dtype=torch.float32, device=device)
-    fields = _parse_observation(observation)
-
-    phase_map = {"MULLIGAN": 0, "DRAW": 0, "MAIN": 1, "GAME_OVER": 2}
-    phase = fields.get("phase", "")
-    if phase in phase_map:
-        vec[phase_map[phase]] = 1.0
-
-    turn = float(fields.get("turn", "0") or 0)
-    vec[3] = min(1.0, turn / 50.0)
-    vec[4] = float(fields.get("current", "0") or 0)
-
-    vp0, vp1 = _safe_tuple(fields.get("vp", "(0,0)"), (0, 0))
-    vec[5] = vp0 / 4.0
-    vec[6] = vp1 / 4.0
-
-    mana0, mana1 = _safe_tuple(fields.get("mana", "(0,0)"), (0, 0))
-    vec[7] = mana0 / 10.0
-    vec[8] = mana1 / 10.0
-
-    deck0, deck1 = _safe_tuple(fields.get("deck_sizes", "(0,0)"), (0, 0))
-    vec[9] = min(1.0, deck0 / 60.0)
-    vec[10] = min(1.0, deck1 / 60.0)
-
-    own_hand = fields.get("own_hand", "")
-    vec[11] = min(1.0, len([c for c in own_hand.split(",") if c]) / 20.0) if own_hand else 0.0
-
-    opp_hand = fields.get("opponent_hand", "")
-    if opp_hand.startswith("size="):
-        try:
-            vec[12] = min(1.0, float(opp_hand.split("=", 1)[1]) / 20.0)
-        except ValueError:
-            vec[12] = 0.0
-    else:
-        vec[12] = min(1.0, len([c for c in opp_hand.split(",") if c]) / 20.0) if opp_hand else 0.0
-
-    board = fields.get("board", "")
-    base = 13
-    for idx, part in enumerate(board.split("|")[:6]):
-        if "=" not in part:
-            continue
-        cards = part.split("=", 1)[1]
-        vec[base + idx] = min(1.0, len([c for c in cards.split(",") if c]) / 10.0)
-
-    vec[19] = 0.0 if fields.get("pending_choice", "None") == "None" else 1.0
-
-    hash_start = 32
-    hash_dim = max(1, feature_dim - hash_start)
-    for idx in _hash_tokens(observation, hash_dim):
-        vec[hash_start + idx] += 1.0
-
-    norm = torch.linalg.vector_norm(vec)
-    if float(norm) > 0.0:
-        vec = vec / norm
-    return vec
+    # Featurization is shared with the dependency-free inference path
+    # (engine/policy.py) so training and mobile see identical inputs.
+    return torch.tensor(obs_to_features(observation, feature_dim), dtype=torch.float32, device=device)
 
 
 def _sample_masked_action(torch: Any, Categorical: Any, logits: Any, legal_actions: list[int]):

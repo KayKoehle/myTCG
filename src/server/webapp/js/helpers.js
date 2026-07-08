@@ -66,6 +66,13 @@ export function effectLabel(card) {
     return effect || 'No effect text';
 }
 
+export function typeLabel(card) {
+    const type = (card && typeof card.type === 'string') ? card.type.trim() : '';
+    if (!type) return '';
+    const subtype = (card && typeof card.subtype === 'string') ? card.subtype.trim() : '';
+    return subtype ? `${type} — ${subtype}` : type;
+}
+
 export function displayCardTitle(cardName) {
     const rawName = String(cardName || '').trim();
     if (!rawName) return '';
@@ -179,6 +186,30 @@ export function fillSelectFromOptions(selectEl, options, preferredValue) {
     selectEl.innerHTML = normalized.map((opt) => `<option value="${opt}">${opt}</option>`).join('');
     const nextValue = normalized.includes(preferredValue) ? preferredValue : normalized[0];
     selectEl.value = nextValue;
+}
+
+export function findCardById(snapshot, cardId) {
+    if (!snapshot || !cardId) return null;
+
+    const scan = (cards) => (Array.isArray(cards) ? cards.find((c) => c && c.id === cardId) : null);
+
+    const inHand = scan(snapshot.hand);
+    if (inHand) return inHand;
+
+    for (const lane of (snapshot.locations || [])) {
+        if (!lane || !lane.stacks) continue;
+        for (const stackCards of Object.values(lane.stacks)) {
+            const found = scan(stackCards);
+            if (found) return found;
+        }
+    }
+
+    for (const cards of Object.values(snapshot.underworld || {})) {
+        const found = scan(cards);
+        if (found) return found;
+    }
+
+    return scan(snapshot.opponent_hand);
 }
 
 export function stackPower(cards) {

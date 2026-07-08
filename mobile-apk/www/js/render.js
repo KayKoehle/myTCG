@@ -13,6 +13,7 @@ import {
     laneLabel,
     ordinalLabel,
     stackPower,
+    typeLabel,
 } from './helpers.js';
 
 function renderCards(cards, options = {}) {
@@ -29,6 +30,7 @@ function renderCards(cards, options = {}) {
                 <div class="card-title">${c.name}</div>
                 <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
             </div>
+            ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
             <div class="card-media">
                 ${cardArtTag(c.name, 'card-art')}
             </div>
@@ -73,7 +75,14 @@ function renderManaTrack(capValue, availableValue) {
     }).join('')}</div>`;
 }
 
-function renderOpponentHand(cardCount) {
+function renderOpponentHand(cardCount, revealedCards) {
+    // When a card like Sinon forces the opponent to play open-handed, the
+    // snapshot includes their actual cards; show the art instead of card backs.
+    if (Array.isArray(revealedCards) && revealedCards.length > 0) {
+        return revealedCards
+            .map((card) => `<img class="opp-card-back opp-card-revealed" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}" title="${escapeHtml(card.name)}" loading="lazy" onerror="this.style.display='none';">`)
+            .join('');
+    }
     const count = Math.max(0, Number(cardCount) || 0);
     if (count === 0) return '<div class="tiny">No cards</div>';
     return Array.from({ length: count }, () => '<div class="opp-card-back" aria-hidden="true"></div>').join('');
@@ -83,26 +92,18 @@ function renderUnderworldStack(cards) {
     const list = Array.isArray(cards) ? cards : [];
     const count = list.length;
     if (count === 0) {
-        return `
-            <div class="underworld-stack-shell">
-                <div class="empty-card-slot-wrap"><div class="empty-card-slot" aria-hidden="true"></div></div>
-                <div class="pile-count">0</div>
-            </div>
-        `;
+        return '<div class="empty-card-slot" aria-hidden="true"></div>';
     }
-    const top = count ? list[count - 1] : null;
+    const top = list[count - 1];
     const topCard = top && top.name
         ? `<img class="underworld-top-art" src="${cardPngUrl(top.name)}" alt="${escapeHtml(top.name)}" loading="lazy" onerror="this.style.display='none';">`
         : '';
 
     return `
-        <div class="underworld-stack-shell">
-            <div class="deck-stack underworld-stack">
-                <span class="deck-card"></span>
-                <span class="deck-card"></span>
-                <span class="underworld-top-card">${topCard}</span>
-            </div>
-            <div class="pile-count">${count}</div>
+        <div class="deck-stack underworld-stack">
+            <span class="deck-card"></span>
+            <span class="deck-card"></span>
+            <span class="underworld-top-card">${topCard}</span>
         </div>
     `;
 }
@@ -234,7 +235,8 @@ export function layoutHand(ui) {
         return;
     }
 
-    const cardWidth = 170;
+    // Card width is set in CSS (smaller on phones), so measure it here.
+    const cardWidth = cards[0].getBoundingClientRect().width || 170;
     const availableWidth = Math.max(cardWidth, handEl.clientWidth || cardWidth);
     const totalSpread = Math.max(0, availableWidth - cardWidth);
     const step = cards.length === 1
@@ -246,7 +248,8 @@ export function layoutHand(ui) {
         cardEl.style.zIndex = String(index + 1);
     });
 
-    handEl.style.minHeight = '230px';
+    const cardHeight = cards[0].getBoundingClientRect().height || 218;
+    handEl.style.minHeight = `${Math.ceil(cardHeight + 12)}px`;
 }
 
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
@@ -290,26 +293,37 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
 
     fillSelectFromOptions(ui.deckA, snapshot.available_decks || [], ui.deckA.value || app.defaultDeckA);
     fillSelectFromOptions(ui.deckB, snapshot.available_decks || [], ui.deckB.value || app.defaultDeckB);
+
+    // Without checkpoints (e.g. the bundled Android build) the dropdown is
+    // useless, so hide the whole field.
+    const checkpoints = snapshot.available_checkpoints || [];
+    ui.checkpointField.classList.toggle('hidden', checkpoints.length === 0);
     fillSelectFromOptions(
         ui.checkpointPath,
-        snapshot.available_checkpoints || [],
+        checkpoints,
         ui.checkpointPath.value || 'stats/checkpoints/ai_nn_distributed_latest.pt'
     );
 
     ui.hud.innerHTML = '';
 
-    ui.vpSidebar.innerHTML = [
-        `<div class="vp-row"><div class="vp-side-label">You</div>${renderVpTrack(vp[human] ?? 0)}</div>`,
-        `<div class="vp-row"><div class="vp-side-label">Opp</div>${renderVpTrack(vp[ai] ?? 0)}</div>`,
+    ui.scorePanel.innerHTML = [
+        `<div class="score-side"><span class="score-name">You</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
+        '<div class="score-divider"></div>',
+        `<div class="score-side"><span class="score-name">Opp</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
     ].join('');
 
     ui.oppMana.innerHTML = renderManaTrack(manaCap[ai] ?? 0, mana[ai] ?? 0);
     ui.yourMana.innerHTML = renderManaTrack(manaCap[human] ?? 0, mana[human] ?? 0);
-    ui.oppHand.innerHTML = renderOpponentHand(snapshot.opponent_hand_size);
+    ui.oppHand.innerHTML = renderOpponentHand(snapshot.opponent_hand_size, snapshot.opponent_hand_revealed ? snapshot.opponent_hand : null);
+    if (ui.oppHandCount) {
+        ui.oppHandCount.textContent = String(Math.max(0, Number(snapshot.opponent_hand_size) || 0));
+    }
 
     const underworld = snapshot.underworld || {};
     ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[ai] || []);
     ui.yourUnderworld.innerHTML = renderUnderworldStack(underworld[human] || []);
+    ui.oppUnderworldCount.textContent = String((underworld[ai] || []).length);
+    ui.yourUnderworldCount.textContent = String((underworld[human] || []).length);
 
     ui.oppDeckCount.textContent = String(deckSizes[ai] ?? 0);
     ui.yourDeckCount.textContent = String(deckSizes[human] ?? 0);
@@ -346,9 +360,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
             ui.choiceTitle.textContent = `Choice for ${chooserLabel}`;
             ui.choicePrompt.textContent = p.prompt || p.choice_kind;
             ui.choiceSub.textContent = 'Pick one option.';
+            const dismissButton = app.legalMoveChoiceSet.size > 0
+                ? '<button class="choice-option-btn choice-dismiss" data-choice-dismiss>Pick on the board (drag the highlighted card to a lane)</button>'
+                : '';
             ui.choiceOptions.innerHTML = listedOptions
                 .map((opt) => `<button class="choice-option-btn" data-choice-option="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`)
-                .join('');
+                .join('') + dismissButton;
             ui.choiceOptions.querySelectorAll('[data-choice-option]').forEach((el) => {
                 el.addEventListener('click', () => {
                     const optionId = el.getAttribute('data-choice-option');
@@ -356,6 +373,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
                     onChooseOption(optionId);
                 });
             });
+            const dismissEl = ui.choiceOptions.querySelector('[data-choice-dismiss]');
+            if (dismissEl) {
+                dismissEl.addEventListener('click', () => {
+                    ui.choiceModal.classList.remove('open');
+                    ui.choiceModal.setAttribute('aria-hidden', 'true');
+                });
+            }
             ui.choiceModal.classList.add('open');
             ui.choiceModal.setAttribute('aria-hidden', 'false');
         } else {
@@ -388,10 +412,10 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
                     <span class="lane-score ${laneLeadClass}"><span class="you">${yourPower}</span> / <span class="opp">${oppPower}</span></span>
                 </div>
                 <div class="lane-row">
-                    <div class="stack-cards">${renderCards(oppCards)}</div>
+                    <div class="stack-cards" data-count="${oppCards.length}">${renderCards(oppCards)}</div>
                 </div>
                 <div class="lane-row lane-drop" data-location-id="${loc.location_id}">
-                    <div class="stack-cards">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet })}</div>
+                    <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet })}</div>
                 </div>
             </article>
         `;
@@ -404,12 +428,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
             const isPlayable = !isOpeningMulligan && app.playableCardSet.has(c.id);
             const isUnplayable = !isOpeningMulligan && !app.playableCardSet.has(c.id);
             return `
-                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''}" data-card-id="${c.id}" title="${isOpeningMulligan ? 'Click to toggle mulligan' : (isPlayable ? 'Playable now: drag to a location' : 'Not playable right now')}">
+                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''}" data-card-id="${c.id}" title="${isOpeningMulligan ? 'Tap to toggle mulligan' : (isPlayable ? 'Playable now: tap it, then tap a lane (or drag)' : 'Not playable right now')}">
                     <div class="hand-card-headline">
                         <span class="stat-badge cost">${c.cost ?? '?'}</span>
                         <div class="hand-title-main" style="--title-scale: ${titleScale};" title="${escapeHtml(c.name)}"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
                         <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
                     </div>
+                    ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
                     <div class="hand-media">
                         ${cardArtTag(c.name, 'hand-art')}
                     </div>
@@ -425,7 +450,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     if (isOpeningMulligan) {
         ui.mulliganPanel.classList.remove('hidden');
         ui.mulliganInfo.textContent = canActMulligan
-            ? `Selected: ${app.mulliganSelected.size}. Click cards with red X, then press Confirm mulligan.`
+            ? `Selected: ${app.mulliganSelected.size}. Tap cards to mark them with a red X, then press Confirm mulligan.`
             : 'Waiting for the other player to finish mulligan.';
     } else {
         app.mulliganSelected.clear();
@@ -435,15 +460,14 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     const isGameOver = snapshot.phase === 'GAME_OVER';
     ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
     ui.btnEndTurn.textContent = isGameOver ? 'New Game' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+    ui.btnEndTurn.classList.toggle('mulligan-confirm', isOpeningMulligan);
 
-    if (isOpeningMulligan) {
-        ui.status.textContent = '';
-    } else if (isGameOver) {
+    // The persistent "Your Turn | Tap a card..." banner was removed as clutter;
+    // the status line now only surfaces game-over text and transient warnings.
+    if (isGameOver) {
         ui.status.textContent = gameOverStatusText(snapshot, human);
     } else {
-        ui.status.textContent = current === human
-            ? 'Your Turn | Drag cards from your hand to a lane to play'
-            : 'Opponent Turn | Waiting for opponent';
+        ui.status.textContent = '';
     }
 
     renderActionHistory(snapshot, ui, config);

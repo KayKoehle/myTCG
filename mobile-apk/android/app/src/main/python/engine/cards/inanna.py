@@ -1,0 +1,192 @@
+"""Card behaviors for the Inanna's Descent into the Underworld deck."""
+from __future__ import annotations
+
+from typing import Any
+
+from .. import catalog, primitives as prim
+from ..catalog import card, is_being, named
+from ..effects import (
+    CardBehavior,
+    EffectResult,
+    Halt,
+    partner_here,
+    register,
+    register_choice,
+    revive_choice_on_enter,
+    send_hand_being_to_underworld,
+    swap_with_underworld_partner,
+    tutor_named,
+    underworld_costing_at_most,
+    underworld_named,
+)
+from ..state import GameState, PendingChoice
+
+INANNA = "Inanna, Goddess of Love and War"
+DUMUZID = "Dumuzid, Shepherd God"
+GESHTINANNA = "Geshtinanna, Dumuzid's Sister"
+
+
+# --- Inanna and her rescuers -------------------------------------------------
+
+def _inanna_revive(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "For every opponent, banish one of their beings if possible":
+    # mandatory, and the player reviving Inanna targets the being to banish.
+    opponent_idx = 1 - player_idx
+    options = [
+        cid
+        for _, _, cid in prim.find_cards_in_play(state, is_being)
+        if catalog.card_owner_idx(state, cid) == opponent_idx
+    ]
+    if options:
+        return Halt(
+            prim.with_pending_choice(
+                state, player_idx, "banish_enemy", card_id, location_idx,
+                prim.choose_options_for_cards(options), "Choose an enemy being to banish",
+            )
+        )
+    return state
+
+
+def _ninshubur_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    if any(card(cid).name == INANNA for cid in state.underworlds[player_idx]):
+        options = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
+        if options:
+            return Halt(
+                prim.with_pending_choice(
+                    state, player_idx, "banish_friendly_for_inanna", card_id, location_idx,
+                    prim.choose_options_for_cards(options, include_pass=True), "Choose a friendly card to banish and revive Inanna",
+                )
+            )
+    return state
+
+
+def _handle_banish_friendly_for_inanna(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    state = rt.banish_card(state, option)
+    return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(INANNA))
+
+
+register(INANNA, CardBehavior(on_revive=_inanna_revive))
+register("Ninšubur, Sukkal to Inanna", CardBehavior(on_enter=_ninshubur_enter))
+register_choice("banish_friendly_for_inanna", _handle_banish_friendly_for_inanna)
+register(
+    "Lulal, Inanna's Bodyguard",
+    CardBehavior(on_enter=revive_choice_on_enter(underworld_named(INANNA), "Revive Inanna", include_pass=False)),
+)
+register("Šara, Inanna's Beautician", CardBehavior(on_enter=tutor_named(INANNA)))
+
+
+# --- Dumuzid and Geshtinanna: the seasonal exchange ---------------------------
+
+def _handle_use_top_ability(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    if option == "Geshtinanna -> Dumuzid":
+        state = rt.banish_card(state, pending.source_card_id)
+        return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(DUMUZID))
+    if option == "Dumuzid -> Geshtinanna":
+        state = rt.banish_card(state, pending.source_card_id)
+        return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(GESHTINANNA))
+    return state
+
+
+register(
+    GESHTINANNA,
+    CardBehavior(
+        on_revive=lambda rt, state, player_idx, card_id, location_idx: prim.draw_from_deck(state, player_idx, 1),
+        top_ability=swap_with_underworld_partner(DUMUZID, "Geshtinanna -> Dumuzid", "You may banish Geshtinanna to revive Dumuzid"),
+    ),
+)
+register(
+    DUMUZID,
+    CardBehavior(
+        top_ability=swap_with_underworld_partner(GESHTINANNA, "Dumuzid -> Geshtinanna", "You may banish Dumuzid to revive Geshtinanna"),
+    ),
+)
+register_choice("use_top_ability", _handle_use_top_ability)
+register(
+    "Sirtur, Mourning Mother",
+    CardBehavior(on_enter=revive_choice_on_enter(underworld_named(DUMUZID, GESHTINANNA), "Choose Dumuzid or Geshtinanna to revive")),
+)
+
+
+# --- Enki's creations ---------------------------------------------------------
+
+register(
+    "Kur-Jara",
+    CardBehavior(
+        on_enter=revive_choice_on_enter(
+            underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Gala-Tura"),
+        )
+    ),
+)
+register(
+    "Gala-Tura",
+    CardBehavior(
+        on_enter=revive_choice_on_enter(
+            underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Kur-Jara"),
+        )
+    ),
+)
+register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-Jara", "Gala-Tura", count=2)))
+
+
+# --- Underworld dwellers ------------------------------------------------------
+
+_UNDERWORLD_GATE = send_hand_being_to_underworld("Choose a being from your hand to send to the Underworld")
+register("Gatekeeper Neti", CardBehavior(on_enter=_UNDERWORLD_GATE))
+register("Underworld Courier", CardBehavior(on_enter=_UNDERWORLD_GATE))
+
+
+def _galla_demons_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "You must banish one of your other beings if possible" — no passing.
+    options = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
+    if options:
+        return Halt(
+            prim.with_pending_choice(
+                state, player_idx, "banish_other_friendly", card_id, location_idx,
+                prim.choose_options_for_cards(options), "Choose another friendly card to banish",
+            )
+        )
+    return state
+
+
+def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    options = [f"hand|{cid}" for cid in state.hands[player_idx] if is_being(cid)]
+    options += [f"deck|{cid}" for cid in state.decks[player_idx] if is_being(cid)]
+    if options:
+        return Halt(
+            prim.with_pending_choice(
+                state, player_idx, "namtar_send_to_underworld", card_id, location_idx,
+                ["PASS", *options], "Choose a being from your hand or deck to send to the Underworld",
+            )
+        )
+    return state
+
+
+def _handle_namtar_send(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    zone, card_id = option.split("|", 1)
+    return prim.put_specific_zone_card_to_underworld(state, chooser_idx, zone, card_id)
+
+
+register("Galla Demons", CardBehavior(on_enter=_galla_demons_enter))
+register("Namtar, Sukkal to Ereshkigal", CardBehavior(on_enter=_namtar_enter))
+register_choice("namtar_send_to_underworld", _handle_namtar_send)
+
+
+# --- Anunnaki: judges witnessing every revival --------------------------------
+
+def _anunnaki_witness_revive(rt: Any, state: GameState, reviver_idx: int, revived_card_id: str, trigger_card_id: str, trigger_location_idx: int) -> GameState | None:
+    # "Each opponent must banish one of their beings": mandatory, opponent picks.
+    opponent_idx = 1 - reviver_idx
+    options = [
+        cid
+        for _, _, cid in prim.find_cards_in_play(state, is_being)
+        if catalog.card_owner_idx(state, cid) == opponent_idx
+    ]
+    if options:
+        return prim.with_pending_choice(
+            state, opponent_idx, "banish_enemy", trigger_card_id, trigger_location_idx,
+            prim.choose_options_for_cards(options), "Banish one of your beings",
+        )
+    return None
+
+
+register("Anunnaki, The Seven Judges", CardBehavior(on_friendly_revive_while_top=_anunnaki_witness_revive))

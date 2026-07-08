@@ -1,4 +1,6 @@
 export async function postJson(url, body) {
+    // Inside the Android app a native bridge handles API calls locally
+    // (fully offline). In the browser it is absent and we fall through to HTTP.
     if (window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function') {
         const raw = window.MyTCGLocalApi.postJson(url, JSON.stringify(body));
         const data = JSON.parse(raw);

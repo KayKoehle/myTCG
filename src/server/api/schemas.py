@@ -67,3 +67,8 @@ class AiMoveResponse(BaseModel):
     ok: bool = True
     action: dict[str, Any]
     snapshot: dict[str, Any]
+
+
+class MatchupStatsResponse(BaseModel):
+    ok: bool = True
+    stats: list[dict[str, Any]]

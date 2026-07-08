@@ -145,9 +145,18 @@ def load_finished_decks(
 
 
 def repo_root_from_engine_file(engine_file: Path) -> Path:
-    # In Android packaging, this file lives under .../python/engine/data_loader.py,
-    # with tables/ and decklists/ bundled directly under .../python/.
-    return engine_file.parents[1]
+    """Find the directory holding `tables/` and `decklists/`.
+
+    The engine package is used from two layouts:
+    - repo:    <root>/src/server/engine/  -> data at <root>/
+    - android: .../python/engine/         -> data at .../python/
+    Walking up keeps the engine files byte-identical in both trees.
+    """
+    for candidate in engine_file.parents:
+        if (candidate / "tables" / "all_cards.csv").exists():
+            return candidate
+    # Fall back to the historical repo layout for a clearer downstream error.
+    return engine_file.parents[3]
 
 
 def card_ids(card_library: dict[str, CardDefinition]) -> Iterable[str]:

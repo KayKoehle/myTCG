@@ -81,3 +81,6 @@ mobile-apk/android/.gradle/
 mobile-apk/android/build/
 mobile-apk/android/app/build/
 mobile-apk/android/local.properties
+mobile-apk/android/app/src/main/assets/public/
+mobile-apk/android/app/src/main/assets/capacitor.config.json
+mobile-apk/android/capacitor-cordova-android-plugins/

@@ -1,7 +1,8 @@
-const CACHE_NAME = 'mytcg-webapp-v1';
+const CACHE_NAME = 'mytcg-webapp-v4';
 const STATIC_ASSETS = [
-    '/play',
+    '/webapp/',
     '/webapp/styles.css',
+    '/webapp/pwa.js',
     '/webapp/js/main.js',
     '/webapp/js/controller.js',
     '/webapp/js/render.js',
@@ -11,6 +12,8 @@ const STATIC_ASSETS = [
     '/webapp/js/dom.js',
     '/webapp/manifest.webmanifest',
     '/webapp/icons/app-icon.svg',
+    '/webapp/icons/app-icon-192.png',
+    '/webapp/icons/app-icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

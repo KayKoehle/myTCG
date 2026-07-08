@@ -6,90 +6,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#10253b">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="icon" href="/webapp/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="icons/app-icon-192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" href="icons/app-icon-192.png">
     <title>MyTCG Snap Arena</title>
-    <link rel="stylesheet" href="/webapp/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
     <div class="app">
-        <aside class="panel sidebar">
-            <h1 class="title sidebar-top-hidden">MyTCG Snap Arena</h1>
-            <div class="tiny sidebar-top-hidden">You are on the left side. Opponent is on the right side.</div>
-
-            <details class="settings-shell">
-                <summary>
-                    <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <path fill="currentColor"
-                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" />
-                    </svg>
-                    <span>Settings</span>
-                </summary>
-                <div class="settings-body">
-                    <div class="grid2">
-                        <div>
-                            <label>Deck A</label>
-                            <select id="deckA"></select>
-                        </div>
-                        <div>
-                            <label>Deck B</label>
-                            <select id="deckB"></select>
-                        </div>
-                    </div>
-
-                    <label>Checkpoint</label>
-                    <select id="checkpointPath"></select>
-
-                    <div style="margin-top: 10px;">
-                        <button class="btn" id="btnNewGame" style="width:100%;">New Game</button>
-                    </div>
-                </div>
-            </details>
-
-            <section class="vp-sidebar" id="vpSidebar" aria-label="Victory points"></section>
-
-            <div class="mulligan-panel hidden" id="mulliganPanel">
-                <div class="mulligan-title">Mulligan</div>
-                <div class="mulligan-sub" id="mulliganInfo">Click cards to replace, then press Confirm mulligan.</div>
-            </div>
-
-            <div class="status" id="status">Ready.</div>
-
-            <section class="history-panel" aria-label="Past actions">
-                <div class="history-title">Past Actions</div>
-                <div class="history-list" id="actionHistory"></div>
-            </section>
-        </aside>
+        <header class="status-panel">
+            <button class="icon-btn" id="btnSettings" aria-label="Open settings">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor"
+                        d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" />
+                </svg>
+            </button>
+            <div class="score-panel" id="scorePanel"></div>
+            <button class="icon-btn" id="btnHistory" aria-label="Open past actions">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor"
+                        d="M13 3a9 9 0 1 0 8.94 10h-2.02A7 7 0 1 1 13 5c1.93 0 3.68.78 4.95 2.05L15 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 13 3zm-1 5v5l4.25 2.52.75-1.23-3.5-2.08V8h-1.5z" />
+                </svg>
+            </button>
+        </header>
 
         <main class="board">
+            <section class="opp-strip">
+                <div class="peek-pile">
+                    <div class="peek-label">Deck <span class="peek-count" id="oppDeckCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="deck-stack">
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="peek-hand">
+                    <div class="peek-label">Opponent Hand</div>
+                    <div class="peek-window peek-window-hand">
+                        <div class="opponent-hand" id="oppHand"></div>
+                    </div>
+                </div>
+
+                <div class="peek-pile">
+                    <div class="peek-label">Underworld <span class="peek-count" id="oppUnderworldCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="underworld-grid" id="oppUnderworld"></div>
+                    </div>
+                </div>
+            </section>
+            <div class="mana-zone" id="oppMana"></div>
+
             <div class="hud" id="hud"></div>
             <div id="pending"></div>
 
-            <section class="player-zone">
-                <aside class="hand-wrap underworld-pane">
-                    <h3 class="hand-title zone-title-muted">Opponent Underworld</h3>
-                    <div class="underworld-grid" id="oppUnderworld"></div>
-                </aside>
+            <div class="mulligan-panel hidden" id="mulliganPanel">
+                <div class="mulligan-title">Mulligan</div>
+                <div class="mulligan-sub" id="mulliganInfo">Tap cards to replace, then press Confirm mulligan.</div>
+            </div>
 
-                <section class="hand-wrap">
-                    <div class="hand-head">
-                        <h3 class="hand-title zone-title-muted">Opponent Hand</h3>
-                    </div>
-                    <div class="opponent-hand" id="oppHand"></div>
-                    <div class="mana-zone" id="oppMana"></div>
-                </section>
-
-                <aside class="pile" id="oppDeck">
-                    <div class="pile-label zone-title-muted">Opponent Deck</div>
-                    <div class="deck-stack">
-                        <span class="deck-card"></span>
-                        <span class="deck-card"></span>
-                        <span class="deck-card"></span>
-                    </div>
-                    <div class="pile-count" id="oppDeckCount">0</div>
-                </aside>
-            </section>
+            <div class="status" id="status">Ready.</div>
 
             <section>
                 <div class="lanes" id="lanes"></div>
@@ -99,29 +79,90 @@
                 <button class="btn turn" id="btnEndTurn">End Turn</button>
             </section>
 
-            <section class="player-zone">
-                <aside class="pile hand-wrap deck-like-underworld" id="yourDeck">
-                    <div class="pile-label">Your Deck</div>
-                    <div class="deck-stack">
-                        <span class="deck-card"></span>
-                        <span class="deck-card"></span>
-                        <span class="deck-card"></span>
+            <section class="hand-wrap your-hand-wrap">
+                <div class="mana-zone" id="yourMana"></div>
+                <div class="hand" id="hand"></div>
+            </section>
+
+            <section class="your-strip">
+                <div class="peek-pile">
+                    <div class="peek-label">Your Deck <span class="peek-count" id="yourDeckCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="deck-stack">
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                        </div>
                     </div>
-                    <div class="pile-count" id="yourDeckCount">0</div>
-                </aside>
+                </div>
 
-                <section class="hand-wrap">
-                    <h3 class="hand-title hand-title-blue">Your Hand</h3>
-                    <div class="mana-zone" id="yourMana"></div>
-                    <div class="hand" id="hand"></div>
-                </section>
-
-                <aside class="hand-wrap underworld-pane">
-                    <h3 class="hand-title">Your Underworld</h3>
-                    <div class="underworld-grid" id="yourUnderworld"></div>
-                </aside>
+                <div class="peek-pile">
+                    <div class="peek-label">Your Underworld <span class="peek-count" id="yourUnderworldCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="underworld-grid" id="yourUnderworld"></div>
+                    </div>
+                </div>
             </section>
         </main>
+    </div>
+
+    <div id="settingsModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="settingsTitle">Settings</h2>
+                <button class="sheet-close" id="btnCloseSettings" aria-label="Close settings">&times;</button>
+            </div>
+            <div class="grid2">
+                <div>
+                    <label>Deck A</label>
+                    <select id="deckA"></select>
+                </div>
+                <div>
+                    <label>Deck B</label>
+                    <select id="deckB"></select>
+                </div>
+            </div>
+
+            <div id="checkpointField" class="hidden">
+                <label>Checkpoint</label>
+                <select id="checkpointPath"></select>
+            </div>
+
+            <div style="margin-top: 14px;">
+                <button class="btn" id="btnNewGame" style="width:100%;">New Game</button>
+            </div>
+
+            <div class="stats-section">
+                <h3 class="stats-title">Deck matchup winrates</h3>
+                <div class="stats-list" id="matchupStats">
+                    <div class="tiny">No finished games yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="historyTitle">Past Actions</h2>
+                <button class="sheet-close" id="btnCloseHistory" aria-label="Close past actions">&times;</button>
+            </div>
+            <div class="history-list" id="actionHistory"></div>
+        </div>
+    </div>
+
+    <div id="cardInspector" class="inspector-modal" aria-hidden="true">
+        <div class="inspector-card" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle">
+            <div class="inspector-headline">
+                <span class="stat-badge cost" id="inspectorCost">?</span>
+                <h2 class="inspector-title" id="inspectorTitle"></h2>
+                <span class="stat-badge power" id="inspectorPower">?</span>
+            </div>
+            <div class="inspector-type" id="inspectorType"></div>
+            <div class="inspector-media" id="inspectorMedia"></div>
+            <p class="inspector-effect" id="inspectorEffect"></p>
+            <div class="inspector-hint">Tap anywhere to close</div>
+        </div>
     </div>
 
     <div id="choiceModal" class="choice-modal" aria-hidden="true">
@@ -133,8 +174,8 @@
         </div>
     </div>
 
-    <script type="module" src="/webapp/js/main.js"></script>
-    <script src="/webapp/pwa.js"></script>
+    <script type="module" src="js/main.js"></script>
+    <script src="pwa.js"></script>
 </body>
 
 </html>
