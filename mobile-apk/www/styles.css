@@ -36,6 +36,17 @@ summary,
     user-select: none;
 }
 
+/* Never let the browser's native image drag steal a card drag. */
+.hand-card img,
+.card img,
+.opp-card-back,
+.underworld-top-art,
+.inspector-art,
+.stackpop-art {
+    -webkit-user-drag: none;
+    user-drag: none;
+}
+
 body {
     margin: 0;
     -webkit-tap-highlight-color: transparent;
@@ -743,10 +754,6 @@ select {
     transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.stackpop-card:hover {
-    border-color: rgba(129, 223, 255, 0.6);
-}
-
 .stackpop-card .card-headline {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -834,8 +841,17 @@ select {
     padding: 10px;
     display: grid;
     gap: 8px;
-    grid-template-rows: auto 1fr 1fr;
+    grid-template-rows: auto 1fr auto 1fr;
     height: 560px;
+}
+
+/* The lane power score sits between the two rows: the opponent's total reads
+   next to their row above, yours next to your row below. */
+.lane-mid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: -4px 0;
 }
 
 .lane h3 {
@@ -1015,22 +1031,6 @@ select {
 
 .stack-cards .card .card-body {
     display: none;
-}
-
-@media (hover: hover) {
-    .stack-cards .card:hover {
-        z-index: 25;
-        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
-        transform: scale(1.01);
-    }
-
-    .stack-cards .card:hover .card-media {
-        height: 110px;
-    }
-
-    .stack-cards .card:hover .card-body {
-        display: grid;
-    }
 }
 
 .card {
@@ -1285,22 +1285,6 @@ select {
     cursor: grabbing;
 }
 
-@media (hover: hover) {
-    .hand-card:hover {
-        z-index: 50 !important;
-        transform: translateY(-8px) scale(1.02);
-        box-shadow: 0 16px 28px rgba(0, 0, 0, 0.42);
-    }
-
-    .hand-card:hover .hand-media {
-        display: none;
-    }
-
-    .hand-card:hover .hand-body {
-        display: grid;
-    }
-}
-
 .hand-card.selected {
     z-index: 60 !important;
     transform: translateY(-10px) scale(1.04);
@@ -1447,10 +1431,11 @@ select {
     color: #d9edf9;
 }
 
-.inspector-hint {
-    font-size: 11px;
-    color: var(--muted);
-    text-align: center;
+.inspector-action {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    background: linear-gradient(135deg, #3fd6b0, #1c9c86);
 }
 
 /* Phone layout: the whole board fits portrait, with three compact lanes
@@ -1489,6 +1474,10 @@ select {
         height: 16px;
         padding: 0 3px;
         font-size: 9px;
+    }
+
+    .hand {
+        min-height: 190px;
     }
 
     .hand-card {
@@ -1679,6 +1668,12 @@ select {
     opacity: 1;
 }
 
+/* "New Game" (game over) must not read like the orange End Turn button. */
+.btn.turn.new-game {
+    background: linear-gradient(135deg, #17b6ff, #0e7ac2);
+    box-shadow: 0 10px 24px rgba(14, 122, 194, 0.35);
+}
+
 /* --- Full location feedback -------------------------------------------------- */
 
 .lane {
@@ -1845,4 +1840,98 @@ select {
 @keyframes mullXFadeIn {
     from { opacity: 0; transform: scale(0.4); }
     to { opacity: 1; transform: scale(1); }
+}
+
+/* --- Card draw animation ---------------------------------------------------- */
+
+.draw-ghost {
+    position: fixed;
+    z-index: 400;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background:
+        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+/* --- Game over animation ------------------------------------------------------ */
+
+.game-result-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 440;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.game-result-overlay.game-win {
+    background:
+        radial-gradient(600px 420px at 50% 42%, rgba(255, 200, 79, 0.28), transparent 70%),
+        rgba(4, 12, 20, 0.72);
+}
+
+.game-result-overlay.game-loss {
+    background:
+        radial-gradient(600px 420px at 50% 42%, rgba(224, 74, 56, 0.22), transparent 70%),
+        rgba(2, 6, 10, 0.82);
+}
+
+.game-result-overlay.game-draw {
+    background: rgba(4, 12, 20, 0.72);
+}
+
+.game-result-crowns {
+    display: flex;
+    gap: 10px;
+}
+
+.game-result-crown {
+    width: min(17vw, 86px);
+    filter: drop-shadow(0 0 22px rgba(255, 200, 79, 0.55));
+}
+
+.game-result-overlay.game-loss .game-result-crown {
+    filter: drop-shadow(0 0 14px rgba(224, 74, 56, 0.4)) saturate(0.4) brightness(0.8);
+}
+
+.game-result-crown svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.game-result-title {
+    font-size: clamp(34px, 9vw, 58px);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.game-result-overlay.game-win .game-result-title {
+    color: #ffe9b0;
+    text-shadow: 0 0 26px rgba(255, 200, 79, 0.65), 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+
+.game-result-overlay.game-loss .game-result-title {
+    color: #ff9c8a;
+    text-shadow: 0 0 22px rgba(224, 74, 56, 0.55), 0 2px 12px rgba(0, 0, 0, 0.75);
+}
+
+.game-result-overlay.game-draw .game-result-title {
+    color: #d5e4f0;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+
+.game-result-sub {
+    font-size: clamp(13px, 3.6vw, 18px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #e8f4fc;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 }

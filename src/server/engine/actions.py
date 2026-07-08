@@ -31,4 +31,13 @@ class ChooseOptionAction:
     kind: Literal["choose_option"] = "choose_option"
 
 
-Action = Union[DrawCardAction, PlayCardAction, EndTurnAction, ChooseOptionAction]
+@dataclass(frozen=True)
+class UseAbilityAction:
+    """Activate a 'While on top' ability of a card in play during MAIN."""
+
+    player_id: int
+    card_id: str
+    kind: Literal["use_ability"] = "use_ability"
+
+
+Action = Union[DrawCardAction, PlayCardAction, EndTurnAction, ChooseOptionAction, UseAbilityAction]

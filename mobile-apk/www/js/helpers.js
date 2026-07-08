@@ -15,18 +15,6 @@ export function cardDisplayName(cardId, cardNameById) {
     return looksLikeCardId(cardId) ? 'Unknown card' : String(cardId || 'Unknown card');
 }
 
-export function actionLabel(action, cardNameById = new Map()) {
-    if (action.kind === 'play_card') {
-        return `Play ${cardDisplayName(action.card_id, cardNameById)} -> ${laneLabel(action.location_id)}`;
-    }
-    if (action.kind === 'choose_option') {
-        if (action.option_id === 'KEEP') return 'Mulligan: KEEP';
-        return `Choose: ${describeChoiceOption(action.option_id, cardNameById)}`;
-    }
-    if (action.kind === 'draw_card') return 'Draw card';
-    return action.kind;
-}
-
 export function ordinalLabel(value) {
     const n = Number(value);
     const mod100 = n % 100;
@@ -38,27 +26,15 @@ export function ordinalLabel(value) {
     return `${n}th`;
 }
 
-export function gameOverStatusText(snapshot, humanPlayerId) {
-    const history = Array.isArray(snapshot.action_history) ? snapshot.action_history : [];
-    for (let i = history.length - 1; i >= 0; i -= 1) {
-        const entry = String(history[i] || '');
-        if (!entry.startsWith('game_result:')) continue;
-        const winner = entry.split(':')[1] || '';
-        if (winner === 'DRAW') return 'Game Over | Draw game';
-        return winner === humanPlayerId
-            ? 'Game Over | You won the game'
-            : 'Game Over | Opponent won the game';
-    }
-    return 'Game Over | Start a new game';
-}
-
 export function cardPngUrl(cardName) {
     return `/assets/card_png/${encodeURIComponent(cardName)}.png`;
 }
 
 export function cardArtTag(cardName, cssClass) {
     const safeName = cardName || 'card';
-    return `<img class="${cssClass}" src="${cardPngUrl(safeName)}" alt="${safeName}" loading="lazy" onerror="this.style.display='none';">`;
+    // draggable="false" keeps the browser's native image drag from hijacking
+    // the pointer-based card drag on desktop.
+    return `<img class="${cssClass}" src="${cardPngUrl(safeName)}" alt="${safeName}" draggable="false" loading="lazy" onerror="this.style.display='none';">`;
 }
 
 export function effectLabel(card) {
@@ -159,6 +135,10 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
         if (parts.length === 2) {
             const maybeCardId = parts[0];
             const maybeLane = Number(parts[1]);
+            // "location|side" pairs (e.g. Enkidu joining Gilgamesh) carry no card id.
+            if (Number.isFinite(Number(parts[0])) && Number.isFinite(maybeLane)) {
+                return `Move to ${laneLabel(Number(parts[0]))}`;
+            }
             if (Number.isFinite(maybeLane)) {
                 return `${cardDisplayName(maybeCardId, cardNameById)} -> ${laneLabel(maybeLane)}`;
             }

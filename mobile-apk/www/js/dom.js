@@ -37,6 +37,7 @@ export function getUiElements() {
         inspectorPower: document.getElementById('inspectorPower'),
         inspectorMedia: document.getElementById('inspectorMedia'),
         inspectorEffect: document.getElementById('inspectorEffect'),
+        inspectorAction: document.getElementById('inspectorAction'),
         choiceModal: document.getElementById('choiceModal'),
         choiceTitle: document.getElementById('choiceTitle'),
         choicePrompt: document.getElementById('choicePrompt'),

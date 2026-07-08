@@ -8,7 +8,6 @@ import {
     escapeHtml,
     fillSelectFromOptions,
     findCardById,
-    gameOverStatusText,
     handTitleScale,
     humanLegalActions,
     laneLabel,
@@ -120,7 +119,7 @@ function renderOpponentHand(cardCount, revealedCards) {
     // snapshot includes their actual cards; show the art instead of card backs.
     if (Array.isArray(revealedCards) && revealedCards.length > 0) {
         return revealedCards
-            .map((card) => `<img class="opp-card-back opp-card-revealed" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}" title="${escapeHtml(card.name)}" loading="lazy" onerror="this.style.display='none';">`)
+            .map((card) => `<img class="opp-card-back opp-card-revealed" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}" draggable="false" loading="lazy" onerror="this.style.display='none';">`)
             .join('');
     }
     const count = Math.max(0, Number(cardCount) || 0);
@@ -271,7 +270,9 @@ export function layoutHand(ui) {
     if (!handEl) return;
     const cards = Array.from(handEl.querySelectorAll('.hand-card[data-card-id]'));
     if (!cards.length) {
-        handEl.style.minHeight = '0';
+        // An empty hand keeps its space (the CSS min-height stays in charge)
+        // so the layout doesn't jump when the last card is played.
+        handEl.style.minHeight = '';
         return;
     }
 
@@ -315,6 +316,7 @@ export function updateEndTurnButton(ui, app, config) {
     }
     ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
     ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
+    ui.btnEndTurn.classList.toggle('new-game', isGameOver && !opponentTurn);
 }
 
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, cardStack }) {
@@ -442,29 +444,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             value: opt,
             label: describeChoiceOption(opt, app.cardNameById, humanSideIdx),
         }));
-        const optionChips = canChoose
-            ? `<div class="pending-options">${listedOptions.map((opt) => `<span class="option-chip" data-choice-option="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</span>`).join('')}</div>`
-            : '';
-        const chooserLabel = Number(p.player_id) === config.player_id ? 'You' : 'Opponent';
-        ui.pending.innerHTML = `
-            <div class="pending">
-                <strong>Pending choice for ${chooserLabel}</strong><br>
-                ${escapeHtml(p.prompt || p.choice_kind)}<br>
-                <span class="tiny">Options: ${listedOptions.map((opt) => escapeHtml(opt.label)).join(', ')}</span>
-                ${optionChips}
-            </div>
-        `;
+        // The old orange "Pending choice ..." banner is gone: the human sees
+        // the choice modal / card-stack popup, the opponent's choices resolve
+        // silently.
+        ui.pending.innerHTML = '';
 
         if (canChoose) {
-            ui.pending.querySelectorAll('[data-choice-option]').forEach((el) => {
-                el.addEventListener('click', () => {
-                    const optionId = el.getAttribute('data-choice-option');
-                    if (!optionId) return;
-                    onChooseOption(optionId);
-                });
-            });
-
-            ui.choiceTitle.textContent = `Choice for ${chooserLabel}`;
+            ui.choiceTitle.textContent = 'Choice for You';
             ui.choicePrompt.textContent = p.prompt || p.choice_kind;
             ui.choiceSub.textContent = 'Pick one option.';
             const dismissButton = app.legalMoveChoiceSet.size > 0
@@ -516,10 +502,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             <article class="lane">
                 <div class="lane-head">
                     <div class="lane-head-left">${renderLaneSlots(laneCardCount, 7)}</div>
-                    <span class="lane-score ${laneLeadClass}"><span class="you">${yourPower}</span> / <span class="opp">${oppPower}</span></span>
                 </div>
                 <div class="lane-row lane-row-opp" data-location-id="${loc.location_id}">
                     <div class="stack-cards" data-count="${oppCards.length}">${renderCards(oppCards, { synergyCards: synergyRefSet })}</div>
+                </div>
+                <div class="lane-mid">
+                    <span class="lane-score ${laneLeadClass}"><span class="opp">${oppPower}</span> / <span class="you">${yourPower}</span></span>
                 </div>
                 <div class="lane-row lane-drop" data-location-id="${loc.location_id}">
                     <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet })}</div>
@@ -536,10 +524,10 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const isUnplayable = !isOpeningMulligan && !app.playableCardSet.has(c.id);
             const hasSynergy = !isOpeningMulligan && synergyHandSet.has(c.id);
             return `
-                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''} ${hasSynergy ? 'synergy' : ''}" data-card-id="${c.id}" title="${isOpeningMulligan ? 'Tap to toggle mulligan' : (isPlayable ? 'Playable now: tap it, then tap a lane (or drag)' : 'Not playable right now')}">
+                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''} ${hasSynergy ? 'synergy' : ''}" data-card-id="${c.id}">
                     <div class="hand-card-headline">
                         <span class="stat-badge cost">${c.cost ?? '?'}</span>
-                        <div class="hand-title-main" style="--title-scale: ${titleScale};" title="${escapeHtml(c.name)}"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
+                        <div class="hand-title-main" style="--title-scale: ${titleScale};"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
                         <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
                     </div>
                     ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
@@ -553,7 +541,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                 </div>
             `;
         }).join('')
-        : '<div class="tiny">No cards in hand</div>';
+        : '';
 
     // The mulligan instruction banner was removed; mulligan mode is now shown
     // purely by the red X marks on cards and the teal "Confirm mulligan" button.
@@ -561,16 +549,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         app.mulliganSelected.clear();
     }
 
-    const isGameOver = snapshot.phase === 'GAME_OVER';
     updateEndTurnButton(ui, app, config);
 
-    // The persistent "Your Turn | Tap a card..." banner was removed as clutter;
-    // the status line now only surfaces game-over text and transient warnings.
-    if (isGameOver) {
-        ui.status.textContent = gameOverStatusText(snapshot, human);
-    } else {
-        ui.status.textContent = '';
-    }
+    // The status line only surfaces transient warnings and errors; game over
+    // is announced by its own animation and the New Game button.
+    ui.status.textContent = '';
 
     renderActionHistory(snapshot, ui, config);
 }

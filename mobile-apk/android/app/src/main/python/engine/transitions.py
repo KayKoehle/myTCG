@@ -13,7 +13,7 @@ from dataclasses import replace
 from typing import Iterable
 
 from . import catalog, effects, primitives as prim
-from .actions import Action, ChooseOptionAction, DrawCardAction, EndTurnAction, PlayCardAction
+from .actions import Action, ChooseOptionAction, DrawCardAction, EndTurnAction, PlayCardAction, UseAbilityAction
 from .catalog import CARD_LIBRARY, DECK_LIBRARY, DEFAULT_DECK_A, DEFAULT_DECK_B, card as _card, card_owner_idx as _card_owner_idx
 from . import cards as _cards  # noqa: F401  (imported for effect registration)
 from .effects import Halt
@@ -288,10 +288,15 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
         watcher_hook = effects.behavior_of(hero_left_watcher).on_friendly_hero_left_while_top
         result = watcher_hook(RT, state, owner_idx, card_id, source_location_idx, hero_left_watcher)
         if result is not None:
-            return result
-    moved_hook = effects.behavior_of(card_id).on_self_moved
-    if moved_hook is not None:
-        return moved_hook(RT, state, owner_idx, card_id, source_location_idx, source_side_idx, target_location_idx, target_side_idx)
+            state = result
+    if state.pending_choice is None:
+        moved_hook = effects.behavior_of(card_id).on_self_moved
+        if moved_hook is not None:
+            state = moved_hook(RT, state, owner_idx, card_id, source_location_idx, source_side_idx, target_location_idx, target_side_idx)
+    # Monsters are defeated as soon as enough heroes stand with them — also
+    # when the heroes arrive by moving, not only when they are played.
+    if state.pending_choice is None:
+        state = _resolve_monster_rewards(state, target_location_idx, target_side_idx)
     return state
 
 
@@ -376,6 +381,18 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
                 return result
             break
     return _resolve_monster_rewards(state, location_idx, player_idx)
+
+
+def _resolve_all_monster_rewards(state: GameState) -> GameState:
+    """Sweep every stack for defeated monsters (used after choices resolve,
+    so a second monster still dies when the first one's reward paused the
+    pipeline with a PendingChoice)."""
+    for location_idx in range(len(state.locations)):
+        for side_idx in (0, 1):
+            state = _resolve_monster_rewards(state, location_idx, side_idx)
+            if state.pending_choice is not None:
+                return state
+    return state
 
 
 def _resolve_monster_rewards(state: GameState, location_idx: int, player_idx: int) -> GameState:
@@ -515,6 +532,24 @@ def _sacrifice_discount_tops(state: GameState, player_idx: int) -> list[tuple[st
     return tops
 
 
+def _affordable_sacrifice_banishes(state: GameState, player_idx: int, card_id: str) -> list[str]:
+    """Sacrifice tops whose banish actually makes `card_id` affordable.
+
+    The banish itself can change the play cost (e.g. The Ark discounts per
+    human in play, and the banished Slave is a human), so affordability must
+    be checked on the simulated post-banish state, not `cost - discount`.
+    """
+    affordable: list[str] = []
+    for top_id, discount in _sacrifice_discount_tops(state, player_idx):
+        simulated = banish_card(state, top_id)
+        discounts = list(simulated.next_artifact_discount)
+        discounts[player_idx] += discount
+        simulated = replace(simulated, next_artifact_discount=tuple(discounts))
+        if _play_cost(simulated, player_idx, card_id) <= simulated.mana_pool[player_idx]:
+            affordable.append(top_id)
+    return affordable
+
+
 def _consume_play_bonuses(state: GameState, player_idx: int, card_id: str) -> GameState:
     next_cost_discount = list(state.next_cost_discount)
     next_human_discount = list(state.next_human_discount)
@@ -558,9 +593,7 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
         for card_id in state.hands[idx]:
             play_cost = _play_cost(state, idx, card_id)
             if play_cost > state.mana_pool[idx]:
-                sacrifice_tops = _sacrifice_discount_tops(state, idx)
-                best_discount = max((discount for _, discount in sacrifice_tops), default=0)
-                can_use_sacrifice = catalog.is_artifact(card_id) and bool(sacrifice_tops) and max(0, play_cost - best_discount) <= state.mana_pool[idx]
+                can_use_sacrifice = catalog.is_artifact(card_id) and bool(_affordable_sacrifice_banishes(state, idx, card_id))
                 if not can_use_sacrifice:
                     continue
             for location_idx, location in enumerate(state.locations):
@@ -575,6 +608,22 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
                     if stack_limit is not None and len(own_stack) >= stack_limit:
                         continue
                 actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
+        # "While on top" abilities can also be used proactively during MAIN
+        # (e.g. moving Enkidu to Gilgamesh), not only at end of turn.
+        for location_idx, location in enumerate(state.locations):
+            for side_idx in (0, 1):
+                top = prim.top_card(location, side_idx)
+                if top is None:
+                    continue
+                ability_hook = effects.behavior_of(top).top_ability
+                if ability_hook is None:
+                    continue
+                if _card_owner_idx(state, top) != idx:
+                    continue
+                if _card(top).name in state.used_top_abilities[idx]:
+                    continue
+                if ability_hook(RT, state, idx, location_idx, top) is not None:
+                    actions.append(UseAbilityAction(player_id=current_player_id, card_id=top))
         return tuple(actions)
     return tuple()
 
@@ -614,14 +663,7 @@ def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
     mana_pool = list(state.mana_pool)
     if mana_cost > mana_pool[idx]:
         if catalog.is_artifact(action.card_id):
-            affordable_sacrifices: list[str] = []
-            for top_id, discount in _sacrifice_discount_tops(state, idx):
-                simulated = banish_card(state, top_id)
-                discounts = list(simulated.next_artifact_discount)
-                discounts[idx] += discount
-                simulated = replace(simulated, next_artifact_discount=tuple(discounts))
-                if _play_cost(simulated, idx, action.card_id) <= simulated.mana_pool[idx]:
-                    affordable_sacrifices.append(top_id)
+            affordable_sacrifices = _affordable_sacrifice_banishes(state, idx, action.card_id)
             if affordable_sacrifices:
                 return prim.with_pending_choice(
                     state,
@@ -650,6 +692,27 @@ def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
     return _apply_on_enter(state, idx, action.card_id, action.location_id)
 
 
+def _apply_use_ability(state: GameState, action: UseAbilityAction) -> GameState:
+    idx = _active_index(state, action.player_id)
+    found = prim.find_card_in_play(state, action.card_id)
+    if found is None:
+        raise ValueError("Card is not in play")
+    location_idx, _, _ = found
+    ability_hook = effects.behavior_of(action.card_id).top_ability
+    if ability_hook is None:
+        raise ValueError("Card has no top ability")
+    result = ability_hook(RT, state, idx, location_idx, action.card_id)
+    if result is None:
+        raise ValueError("Ability is not available right now")
+    used = [list(v) for v in state.used_top_abilities]
+    used[idx].append(_card(action.card_id).name)
+    return replace(
+        result,
+        used_top_abilities=(tuple(used[0]), tuple(used[1])),
+        action_history=state.action_history + (f"use_ability:{action.player_id}:{action.card_id}",),
+    )
+
+
 def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameState:
     pending = state.pending_choice
     if pending is None:
@@ -668,12 +731,17 @@ def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameSt
         return _apply_mulligan_choice(state, chooser_idx, option)
 
     if option == "PASS":
-        return state
+        return _resolve_all_monster_rewards(state)
 
     handler = effects.CHOICE_HANDLERS.get(kind)
     if handler is None:
         raise ValueError(f"Unhandled choice kind: {kind}")
-    return handler(RT, state, chooser_idx, option, pending)
+    state = handler(RT, state, chooser_idx, option, pending)
+    # A reward/choice may have added heroes next to further monsters (or a
+    # halted monster pipeline needs to continue) — settle them now.
+    if state.pending_choice is None and state.phase != "GAME_OVER":
+        state = _resolve_all_monster_rewards(state)
+    return state
 
 
 def _apply_mulligan_choice(state: GameState, chooser_idx: int, option: str) -> GameState:
@@ -827,6 +895,8 @@ def apply_action(state: GameState, action: Action) -> GameState:
         return _apply_play(state, action)
     if isinstance(action, EndTurnAction):
         return _apply_end_turn(state, action)
+    if isinstance(action, UseAbilityAction):
+        return _apply_use_ability(state, action)
     raise ValueError(f"Unknown action type: {type(action).__name__}")
 
 
@@ -861,6 +931,8 @@ def action_to_string(action: Action) -> str:
         return f"choose_option(p={action.player_id}, option={action.option_id})"
     if isinstance(action, PlayCardAction):
         return f"play_card(p={action.player_id}, card={action.card_id}, location={action.location_id})"
+    if isinstance(action, UseAbilityAction):
+        return f"use_ability(p={action.player_id}, card={action.card_id})"
     return str(action)
 
 

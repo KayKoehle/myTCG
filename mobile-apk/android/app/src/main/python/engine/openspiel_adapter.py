@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .actions import Action, ChooseOptionAction, DrawCardAction, EndTurnAction, PlayCardAction
+from .actions import Action, ChooseOptionAction, DrawCardAction, EndTurnAction, PlayCardAction, UseAbilityAction
 from .state import GameState
 from .transitions import action_to_string, apply_action, chance_outcomes, is_terminal, legal_actions, returns
 
@@ -85,4 +85,8 @@ def parse_action(
         if card_id is None or location_id is None:
             raise ValueError("play_card requires card_id and location_id")
         return PlayCardAction(player_id=player_id, card_id=card_id, location_id=location_id)
+    if kind == "use_ability":
+        if card_id is None:
+            raise ValueError("use_ability requires card_id")
+        return UseAbilityAction(player_id=player_id, card_id=card_id)
     raise ValueError(f"Unknown action kind: {kind}")

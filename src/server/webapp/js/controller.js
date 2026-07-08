@@ -1,6 +1,6 @@
 import { postJson } from './api.js';
 import { createCardStackPopup } from './cardstack.js';
-import { actionLabel, cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
+import { cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
 import { buildConfig, createAppState } from './state.js';
 
@@ -279,6 +279,25 @@ export function createGameController(ui) {
         ui.status.textContent = `Tap a highlighted lane to play ${cardDisplayName(cardId, app.cardNameById)}.`;
     }
 
+    // Activate a card's "while on top" ability from the inspector (e.g. move
+    // Enkidu to Gilgamesh). A single-target Enkidu move confirms itself.
+    async function useCardAbility(cardId) {
+        closeInspector();
+        await doAction({ kind: 'use_ability', card_id: cardId });
+        const pending = app.snapshot && app.snapshot.pending_choice;
+        if (pending
+            && Number(pending.player_id) === cfg().player_id
+            && pending.choice_kind === 'enkidu_join_gilgamesh') {
+            const target = (pending.options || []).find((opt) => opt !== 'PASS');
+            if (target) await doAction({ kind: 'choose_option', option_id: target });
+        }
+    }
+
+    function abilityButtonLabel(card) {
+        if (card.name === 'Enkidu') return 'Move to Gilgamesh';
+        return 'Use ability';
+    }
+
     function openInspector(card) {
         if (!card || !card.name) return;
         ui.inspectorTitle.textContent = card.name;
@@ -287,6 +306,20 @@ export function createGameController(ui) {
         ui.inspectorPower.textContent = card.power !== null && card.power !== undefined ? card.power : '?';
         ui.inspectorMedia.innerHTML = cardArtTag(card.name, 'inspector-art');
         ui.inspectorEffect.textContent = effectLabel(card);
+        const abilityAction = (card.id && app.snapshot)
+            ? humanLegalActions(app.snapshot, cfg().player_id).find((a) => a.kind === 'use_ability' && a.card_id === card.id)
+            : null;
+        if (abilityAction) {
+            ui.inspectorAction.textContent = abilityButtonLabel(card);
+            ui.inspectorAction.classList.remove('hidden');
+            ui.inspectorAction.onclick = (event) => {
+                event.stopPropagation();
+                useCardAbility(card.id);
+            };
+        } else {
+            ui.inspectorAction.classList.add('hidden');
+            ui.inspectorAction.onclick = null;
+        }
         ui.cardInspector.classList.add('open');
         ui.cardInspector.setAttribute('aria-hidden', 'false');
     }
@@ -435,10 +468,17 @@ export function createGameController(ui) {
         }
         const fresh = history.slice(app.historySeen);
         app.historySeen = history.length;
+        // The fourth crown ends the game: the game-over animation replaces the
+        // regular round-crown animation for that final round.
+        const gameEnded = fresh.some((e) => String(e || '').startsWith('game_result:'));
         for (const entry of fresh) {
             const raw = String(entry || '');
             if (raw.startsWith('round_result:')) {
-                animateRoundResult(raw);
+                if (!gameEnded) animateRoundResult(raw);
+            } else if (raw.startsWith('game_result:')) {
+                animateGameResult(raw);
+            } else if (raw.startsWith('draw_card:')) {
+                animateCardDraw(Number(raw.split(':')[1]));
             } else if (raw.startsWith('mulligan_keep:')) {
                 const parts = raw.split(':');
                 if (Number(parts[1]) === cfg().ai_player_id && Number(parts[2]) > 0) {
@@ -446,6 +486,117 @@ export function createGameController(ui) {
                 }
             }
         }
+    }
+
+    // A card back flies from the drawing player's deck pile into their hand.
+    function animateCardDraw(playerId) {
+        if (!window.Element.prototype.animate) return;
+        const isHuman = Number(playerId) === cfg().player_id;
+        const deckPile = (isHuman ? ui.yourDeckCount : ui.oppDeckCount).closest('.peek-pile');
+        const deckEl = deckPile ? deckPile.querySelector('.deck-stack') : null;
+        const handEl = isHuman ? ui.hand : ui.oppHand;
+        if (!deckEl || !handEl) return;
+        const from = deckEl.getBoundingClientRect();
+        const to = handEl.getBoundingClientRect();
+        if (!from.width || !to.width) return;
+
+        const w = isHuman ? 56 : 30;
+        const h = isHuman ? 80 : 42;
+        const ghost = document.createElement('div');
+        ghost.className = 'draw-ghost';
+        ghost.style.width = `${w}px`;
+        ghost.style.height = `${h}px`;
+        const startX = from.left + from.width / 2 - w / 2;
+        const startY = from.top + from.height / 2 - h / 2;
+        // Aim at the newest card's spot: the right end of the hand row.
+        const endX = to.left + to.width * 0.78 - w / 2;
+        const endY = to.top + to.height / 2 - h / 2;
+        ghost.style.left = `${startX}px`;
+        ghost.style.top = `${startY}px`;
+        document.body.appendChild(ghost);
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0, 0) scale(0.7) rotate(-6deg)', opacity: 0 },
+                { transform: 'translate(0, 0) scale(1) rotate(-6deg)', opacity: 1, offset: 0.25 },
+                { transform: `translate(${endX - startX}px, ${endY - startY}px) scale(1.05) rotate(0deg)`, opacity: 1, offset: 0.85 },
+                { transform: `translate(${endX - startX}px, ${endY - startY}px) scale(0.9) rotate(0deg)`, opacity: 0 },
+            ],
+            { duration: 620, easing: 'cubic-bezier(0.3, 0.7, 0.3, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // Game over: a full-screen animation distinct from the round-crown one,
+    // and different for victory and defeat.
+    function animateGameResult(entry) {
+        if (!window.Element.prototype.animate) return;
+        const winner = entry.split(':')[1] || '';
+        const isDraw = winner === 'DRAW';
+        const youWon = !isDraw && Number(winner) === cfg().player_id;
+
+        const overlay = document.createElement('div');
+        overlay.className = `game-result-overlay ${isDraw ? 'game-draw' : (youWon ? 'game-win' : 'game-loss')}`;
+        const crowns = document.createElement('div');
+        crowns.className = 'game-result-crowns';
+        const crownCount = isDraw ? 1 : 4;
+        for (let i = 0; i < crownCount; i += 1) {
+            const crown = document.createElement('div');
+            crown.className = 'game-result-crown';
+            crown.innerHTML = roundCrownSvg(youWon);
+            crowns.appendChild(crown);
+        }
+        const title = document.createElement('div');
+        title.className = 'game-result-title';
+        title.textContent = isDraw ? 'Draw' : (youWon ? 'Victory!' : 'Defeat');
+        const sub = document.createElement('div');
+        sub.className = 'game-result-sub';
+        sub.textContent = isDraw
+            ? 'The game ends with no winner'
+            : (youWon ? 'You claimed the fourth crown' : 'Your opponent claimed the fourth crown');
+        overlay.append(crowns, title, sub);
+        document.body.appendChild(overlay);
+
+        overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, fill: 'forwards' });
+        const crownEls = Array.from(crowns.children);
+        crownEls.forEach((crownEl, i) => {
+            if (youWon) {
+                crownEl.animate(
+                    [
+                        { transform: 'translateY(40px) scale(0.2)', opacity: 0 },
+                        { transform: 'translateY(-10px) scale(1.25)', opacity: 1, offset: 0.65 },
+                        { transform: 'translateY(0) scale(1)', opacity: 1 },
+                    ],
+                    { duration: 560, delay: 220 + i * 160, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1.25)', fill: 'both' }
+                );
+            } else {
+                crownEl.animate(
+                    [
+                        { transform: 'translateY(-60px) rotate(0deg)', opacity: 0 },
+                        { transform: 'translateY(6px) rotate(-8deg)', opacity: 1, offset: 0.55 },
+                        { transform: 'translateY(0) rotate(4deg)', opacity: 0.85, offset: 0.8 },
+                        { transform: 'translateY(2px) rotate(0deg)', opacity: 0.8 },
+                    ],
+                    { duration: 700, delay: 200 + i * 120, easing: 'ease-in', fill: 'both' }
+                );
+            }
+        });
+        title.animate(
+            [
+                { transform: 'scale(0.6)', opacity: 0 },
+                { transform: 'scale(1.06)', opacity: 1, offset: 0.7 },
+                { transform: 'scale(1)', opacity: 1 },
+            ],
+            { duration: 520, delay: 480, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1.15)', fill: 'both' }
+        );
+        sub.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: 900, fill: 'both' });
+
+        const fade = overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500, delay: 3600, fill: 'forwards' });
+        const cleanup = () => overlay.remove();
+        fade.addEventListener('finish', cleanup);
+        fade.addEventListener('cancel', cleanup);
+        setTimeout(() => { if (overlay.isConnected) overlay.remove(); }, 5200);
     }
 
     function roundCrownSvg(golden) {
@@ -737,10 +888,6 @@ export function createGameController(ui) {
             if (data.action && data.action.kind === 'play_card' && data.action.card_id) {
                 animateCardPlay(data.action.card_id, oppHandRect, { flip: true });
             }
-            const snap = data.snapshot || {};
-            if (!isOpeningMulligan(snap) && ui.status.textContent) {
-                ui.status.textContent = `AI action: ${actionLabel(data.action, app.cardNameById)} | ${ui.status.textContent}`;
-            }
         } catch (error) {
             ui.status.textContent = String(error);
         }
@@ -770,6 +917,10 @@ export function createGameController(ui) {
                 if (!snap || snap.phase === 'GAME_OVER') return;
                 const c = cfg();
                 const current = Number(snap.current_player_id);
+                // A pending choice for the human blocks everything — even when
+                // the turn has already passed to the AI (e.g. a top ability
+                // offered at end of turn). Calling the AI here would only 500.
+                if (snap.pending_choice && Number(snap.pending_choice.player_id) === c.player_id) return;
                 const pendingForAi = Boolean(
                     snap.pending_choice
                     && Number(snap.pending_choice.player_id) === c.ai_player_id

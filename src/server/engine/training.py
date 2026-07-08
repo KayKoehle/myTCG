@@ -167,6 +167,13 @@ def load_neural_policy(path: str | Path, device: str = "auto") -> NeuralPolicy:
     )
 
 
+# Hard cap on game length for rollouts and evaluations. Deterministic
+# (argmax vs argmax) play can cycle forever — the engine has no built-in
+# turn limit — so every game loop must bail out and score the game as a
+# draw (returns() yields (0, 0) for non-terminal states).
+MAX_GAME_STEPS = 1000
+
+
 def _evaluate_vs_previous(
     torch: Any,
     nn: Any,
@@ -195,7 +202,8 @@ def _evaluate_vs_previous(
                 eval_deck_a, eval_deck_b = rng.sample(deck_pool, 2)
             game = build_open_spiel_game(seed=seed + offset, deck_a=eval_deck_a, deck_b=eval_deck_b)
             state = game.new_initial_state()
-            while not state.is_terminal():
+            steps = 0
+            while not state.is_terminal() and steps < MAX_GAME_STEPS:
                 player = state.current_player()
                 legal = state.legal_actions()
                 if not legal:
@@ -207,6 +215,7 @@ def _evaluate_vs_previous(
                 mask[legal] = 0.0
                 action = int(torch.argmax(logits + mask).item())
                 state.apply_action(action)
+                steps += 1
             r0, r1 = state.returns() if state.is_terminal() else (0.0, 0.0)
             if r0 > r1:
                 score += 1.0
@@ -276,7 +285,7 @@ def train_neural_policy(
         ]
         trajectories: list[list[tuple[int, Any, int, Any, float, list[int]]]] = [[] for _ in range(env_count)]
 
-        while True:
+        for _macro_step in range(MAX_GAME_STEPS):
             active = [env_idx for env_idx, st in enumerate(states) if not st.is_terminal()]
             if not active:
                 break
@@ -460,7 +469,8 @@ def rollout_neural_policy(
     device = torch.device(neural_policy.device)
 
     with torch.no_grad():
-        while not state.is_terminal():
+        steps = 0
+        while not state.is_terminal() and steps < MAX_GAME_STEPS:
             player = state.current_player()
             legal = state.legal_actions()
             if not legal:
@@ -471,6 +481,7 @@ def rollout_neural_policy(
             mask[legal] = 0.0
             action = int(torch.argmax(logits + mask).item())
             state.apply_action(action)
+            steps += 1
 
     returns = state.returns() if state.is_terminal() else [0.0, 0.0]
     return float(returns[0]), float(returns[1])
@@ -661,7 +672,9 @@ def _async_actor_loop(
         invalid_episode = False
 
         with torch.no_grad():
-            while not state.is_terminal():
+            steps = 0
+            while not state.is_terminal() and steps < MAX_GAME_STEPS:
+                steps += 1
                 player = state.current_player()
                 legal = state.legal_actions()
                 if not legal:
@@ -699,7 +712,11 @@ def _async_actor_loop(
                     break
 
             if invalid_episode:
-                break
+                # Discard the corrupted trajectory but keep the actor alive:
+                # the episode is still reported below so the learner's episode
+                # accounting stays consistent. (A `break` here would leave the
+                # whole actor loop and silently kill the worker.)
+                obs_list = []
 
         returns = state.returns() if state.is_terminal() else [0.0, 0.0]
         learner_return = float(returns[0])
@@ -1177,11 +1194,13 @@ def rollout_policy(
     state = game.new_initial_state()
     rng = random.Random(policy_seed)
 
-    while not state.is_terminal():
+    steps = 0
+    while not state.is_terminal() and steps < MAX_GAME_STEPS:
         current = state.current_player()
         action_probs = avg_policy.action_probabilities(state, current)
         chosen = _sample_action(action_probs, rng)
         state.apply_action(chosen)
+        steps += 1
 
     returns = state.returns()
     return float(returns[0]), float(returns[1])

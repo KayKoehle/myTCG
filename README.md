@@ -334,4 +334,21 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
 
  ### TODO
 
-Webapp Bugs:
+Webapp Bugs (all fixed 2026-07-08):
+- [FIXED] Monsters in Gilgamesh's deck are not dying when I move my heroes to them — monster rewards now also resolve when heroes arrive by moving, not only when they are played.
+- [FIXED] Monsters in Gilgamesh's deck are not dying when there are multiple monsters — after a monster reward's choice resolves, the engine re-checks all stacks so every defeated monster dies.
+- [FIXED] Status bar with "pending choice..." pops up in orange during the opponent's turn — the orange pending banner is removed entirely, and the "AI action: ... | Game Over | ..." status text is gone.
+- [FIXED] Remove the "Tap anywhere to close" text — removed from the card inspector.
+- [FIXED] Even with no cards in hand, there should not be a "no card in hand" text and the space for the hand should not collapse — the hand area keeps its height and shows no placeholder text.
+- [FIXED] Hovering should not do anything ever — all hover effects and tooltips on cards (hand, board, popups) are removed.
+- [FIXED] The lane power display (opponent power / your power) now sits in the middle of the lane, between the opponent's row and yours.
+- [FIXED] The AI opponent was indeed never mulliganing (keeping the hand always scored best in its one-ply search). It now mulligans up to two cards: cost 5+ cards and duplicate names.
+- [FIXED] There is now a draw animation: a card back flies from the deck pile into the hand for both players.
+- [FIXED] Enkidu can move to Gilgamesh during your turn: tap Enkidu to open him fullscreen and use the "Move to Gilgamesh" button (a new use_ability action; still offered automatically at end of turn too).
+- [FIXED] Playing cards by dragging them from the hand to a location works again — the browser's native image drag was hijacking the pointer drag on desktop.
+- [FIXED] Retrained the AI on the current rules (distributed PPO self-play league across four decks, checkpoint stats/checkpoints/ai_nn_distributed_latest.pt, mobile weights re-exported).
+- [FIXED] The fourth crown now triggers a dedicated game-over animation, different for victory (golden crowns, "Victory!") and defeat (falling dimmed crowns, "Defeat").
+- [FIXED] The "New Game" button is now blue, distinct from the orange "End Turn" button.
+- [FIXED] "You may banish Dumuzid to revive Geshtinanna" no longer breaks the game at a full location — the webapp no longer asks the AI to move while a choice is still pending for you (the server rejected those calls in an endless error loop).
+- [FIXED] The Ark could be offered as playable via the Slave sacrifice-discount when it actually wasn't — banishing the Slave (a human) raises the Ark's per-human-discounted cost, so applying the "legal" play crashed with "Insufficient mana". Legality and apply now share the exact same banish simulation (`_affordable_sacrifice_banishes`), guarded by `test_every_legal_action_applies`.
+- [FIXED] AI training could stall forever mid-run: the Elo evaluation plays argmax-vs-argmax games and the engine has no turn limit, so a deterministic policy cycle never terminated. All game loops in training.py are now capped at MAX_GAME_STEPS=1000; capped games count as draws.

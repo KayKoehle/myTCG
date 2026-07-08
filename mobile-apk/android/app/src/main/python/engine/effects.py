@@ -275,6 +275,8 @@ def monster(heroes_required: int, reward: Callable[[Any, GameState, int, int, st
         if len(heroes_here) < heroes_required:
             return None
         state = rt.destroy_card(state, card_id)
+        if prim.find_card_in_play(state, card_id) is not None:
+            return None  # could not be destroyed: no reward, and no re-trigger loop
         result = reward(rt, state, player_idx, location_idx, card_id)
         return state if result is None else result
 

@@ -89,6 +89,11 @@ def build_open_spiel_game(seed: int = 42, deck_a: str = "epic_of_gilgamesh", dec
         def current_player(self):
             if is_terminal(self._state):
                 return pyspiel_mod.PlayerId.TERMINAL
+            # A pending choice can belong to the non-current player (e.g. a
+            # top ability offered at end of turn): the chooser is the one to
+            # act, so training credits their decisions to the right side.
+            if self._state.pending_choice is not None:
+                return self._state.pending_choice.chooser_idx
             return self._state.current_player_idx
 
         def _legal_actions(self, player):

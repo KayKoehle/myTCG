@@ -37,6 +37,8 @@ def format_action_history_entry(entry: str) -> str:
         return f"P{parts[1]} ended turn"
     if kind == "play_card" and len(parts) >= 4:
         return f"P{parts[1]} played {_card_name(parts[2])} to {_lane_name(int(parts[3]))}"
+    if kind == "use_ability" and len(parts) >= 3:
+        return f"P{parts[1]} used {_card_name(parts[2])}'s ability"
     if kind == "mulligan_select" and len(parts) >= 3:
         return f"P{parts[1]} selected {_card_name(parts[2])} for mulligan"
     if kind == "mulligan_keep" and len(parts) >= 3:

@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import random
 
-from .actions import Action
+from .actions import Action, ChooseOptionAction
+from .catalog import card
 from .state import GameState
 from .transitions import _location_power_for_side, apply_action, is_terminal, legal_actions, returns
 
@@ -57,6 +58,27 @@ def evaluate_state(state: GameState, ai_idx: int) -> float:
     return score
 
 
+def _choose_mulligan_action(state: GameState, ai_idx: int, ai_player_id: int) -> Action:
+    """Opening mulligan: throw back expensive cards and duplicate names.
+
+    The greedy evaluator would never mulligan (giving a card back always
+    scores worse than keeping it for one ply), so the opening hand is shaped
+    by a simple curve heuristic instead: at most two cards go back — cards
+    costing 5+ first, then extra copies of a name already kept.
+    """
+    hand = state.hands[ai_idx]
+    already_selected = len(state.mulligan_selected[ai_idx])
+    if already_selected < 2:
+        seen_names: set[str] = set()
+        for card_id in hand:
+            if card(card_id).cost >= 5:
+                return ChooseOptionAction(player_id=ai_player_id, option_id=card_id)
+            if card(card_id).name in seen_names:
+                return ChooseOptionAction(player_id=ai_player_id, option_id=card_id)
+            seen_names.add(card(card_id).name)
+    return ChooseOptionAction(player_id=ai_player_id, option_id="KEEP")
+
+
 def choose_heuristic_action(state: GameState, ai_player_id: int, rng: random.Random | None = None) -> Action:
     """Greedy one-ply: try every legal action, keep the best-evaluating one.
 
@@ -67,6 +89,10 @@ def choose_heuristic_action(state: GameState, ai_player_id: int, rng: random.Ran
         raise ValueError("No legal actions available for AI")
     ai_idx = state.player_ids.index(ai_player_id)
     rng = rng or random.Random(0)
+
+    pending = state.pending_choice
+    if pending is not None and pending.choice_kind == "opening_mulligan" and pending.chooser_idx == ai_idx:
+        return _choose_mulligan_action(state, ai_idx, ai_player_id)
 
     best_actions: list[Action] = []
     best_score = float("-inf")
