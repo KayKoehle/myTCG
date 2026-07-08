@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_being, is_deity, is_human, named
-from ..effects import CardBehavior, EffectResult, Halt, defect_to_enemy_side, register, register_choice, tutor_named
+from ..effects import CardBehavior, EffectResult, Halt, defect_to_enemy_side, partners_in_play, partners_in_underworld, register, register_choice, tutor_named
 from ..state import GameState, LocationState, PendingChoice
 
 TROJAN_HORSE = "The Trojan Horse"
@@ -152,7 +152,8 @@ def _odysseus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, lo
         return Halt(
             prim.with_pending_choice(
                 state, player_idx, "odysseus_move", card_id, location_idx,
-                prim.build_move_options(state, movable, include_pass=True), "Choose a card and destination to move",
+                prim.build_move_options(state, movable, include_pass=True, allow_side_switch=True),
+                "Choose a card and destination to move",
             )
         )
     return state
@@ -218,17 +219,23 @@ def _menelaus_power(rt: Any, state: GameState, card_id: str, location_idx: int, 
     return base + max(0, opp_cards - own_cards) * 2
 
 
-def _diomedes_enemy_penalty(rt: Any, state: GameState, location: LocationState, side_idx: int, powers: dict[str, int]) -> int:
-    deity_cards = [cid for cid in location.stacks[side_idx] if is_deity(cid)]
-    if not deity_cards:
-        return 0
-    strongest = max(deity_cards, key=lambda cid: powers[cid])
-    return powers[strongest]
+def _diomedes_nullify_deity(rt: Any, state: GameState, location: LocationState, side_idx: int, card_id: str, power: int) -> int:
+    # "Their strongest deity's power here is counted as 0." Applied per card so
+    # the nullified deity also *shows* 0 in the UI, not just in lane scoring.
+    if not is_deity(card_id):
+        return power
+    deity_powers = {
+        cid: rt.power_before_overrides(state, cid, location.location_id, side_idx)
+        for cid in location.stacks[side_idx]
+        if is_deity(cid)
+    }
+    strongest = max(deity_powers, key=lambda cid: deity_powers[cid])
+    return 0 if card_id == strongest else power
 
 
-register("Patroclus", CardBehavior(on_enter=_patroclus_enter))
-register("Achilles", CardBehavior(on_enter=_achilles_enter))
+register("Patroclus", CardBehavior(on_enter=_patroclus_enter, synergy_partners=partners_in_play(None, "Achilles")))
+register("Achilles", CardBehavior(on_enter=_achilles_enter, synergy_partners=partners_in_underworld("Patroclus")))
 register("Menelaus, the Wronged King", CardBehavior(power=_menelaus_power))
 register("Ajax, the Great", CardBehavior(blocks_enemy_move_while_top=True))
 register("Agamemnon, King of Mycenae", CardBehavior(max_enemy_stack_while_top=3))
-register("Diomedes, the God-Smiter", CardBehavior(enemy_power_penalty_while_top=_diomedes_enemy_penalty))
+register("Diomedes, the God-Smiter", CardBehavior(enemy_card_power_override_while_top=_diomedes_nullify_deity))

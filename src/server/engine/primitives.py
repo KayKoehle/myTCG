@@ -300,13 +300,26 @@ def permutations(items: list[str]) -> list[str]:
     return results
 
 
-def build_move_options(state: GameState, card_ids: Iterable[str], include_pass: bool = True) -> list[str]:
+def build_move_options(state: GameState, card_ids: Iterable[str], include_pass: bool = True, allow_side_switch: bool = False) -> list[str]:
+    """Encode legal move destinations as "card|location|side" options.
+
+    Staying in place is never offered, and neither is a full location — except
+    switching sides at the card's own location, which keeps the total there
+    unchanged. `allow_side_switch` additionally offers the enemy side (e.g.
+    Odysseus moving a card "to any location at any side").
+    """
     options: list[str] = ["PASS"] if include_pass else []
     for card_id in card_ids:
         found = find_card_in_play(state, card_id)
         if found is None:
             continue
-        _, side_idx, _ = found
-        for location_idx in range(len(state.locations)):
-            options.append(f"{card_id}|{location_idx}|{side_idx}")
+        current_loc, current_side, _ = found
+        target_sides = (0, 1) if allow_side_switch else (current_side,)
+        for location_idx, location in enumerate(state.locations):
+            for target_side in target_sides:
+                if location_idx == current_loc and target_side == current_side:
+                    continue
+                if location_idx != current_loc and location_total_cards(location) >= location.capacity:
+                    continue
+                options.append(f"{card_id}|{location_idx}|{target_side}")
     return options

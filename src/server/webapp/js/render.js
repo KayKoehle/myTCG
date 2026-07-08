@@ -7,6 +7,7 @@ import {
     effectLabel,
     escapeHtml,
     fillSelectFromOptions,
+    findCardById,
     gameOverStatusText,
     handTitleScale,
     humanLegalActions,
@@ -16,15 +17,54 @@ import {
     typeLabel,
 } from './helpers.js';
 
+// Action verbs for the card-stack selection popup, keyed by the engine's
+// pending choice_kind. Falls back to a generic "Choose".
+const CHOICE_VERB_BY_KIND = {
+    banish_enemy: 'Banish',
+    banish_other_friendly: 'Banish',
+    banish_friendly_for_inanna: 'Banish',
+    ishtar_banish_small_enemy: 'Banish',
+    slave_banish_for_artifact_discount: 'Banish',
+    destroy_enemy_here: 'Destroy',
+    discard_from_hand: 'Discard',
+    return_human_to_hand: 'Return',
+    revive_underworld_here: 'Revive',
+    put_hand_to_underworld: 'Bury',
+    namtar_send_to_underworld: 'Send',
+    move_hero_to_here: 'Move',
+    farmer_free_human: 'Free',
+    enkidu_join_gilgamesh: 'Join',
+};
+
+// Decide whether a pending choice is a simple "pick one card" selection that
+// the card-stack popup can present. Options that encode a target (contain '|',
+// e.g. moves) or that resolve to no cards fall back to the legacy text modal.
+function classifyCardChoice(pending, snapshot, cardNameById) {
+    const cardEntries = [];
+    const extraEntries = [];
+    for (const opt of (pending.options || [])) {
+        if (typeof opt !== 'string') return null;
+        if (opt.includes('|')) return null;
+        const card = findCardById(snapshot, opt);
+        if (card) {
+            cardEntries.push({ card, option: opt });
+        } else {
+            extraEntries.push({ value: opt, label: describeChoiceOption(opt, cardNameById) });
+        }
+    }
+    if (cardEntries.length === 0) return null;
+    return { cardEntries, extraEntries };
+}
+
 function renderCards(cards, options = {}) {
-    const { movableCards = new Set(), emptyAsCardSlot = false } = options;
+    const { movableCards = new Set(), synergyCards = new Set(), emptyAsCardSlot = false } = options;
     if (!cards || cards.length === 0) {
         return emptyAsCardSlot
             ? '<div class="empty-card-slot-wrap"><div class="empty-card-slot" aria-hidden="true"></div></div>'
             : '';
     }
     return cards.map((c) => `
-        <div class="card ${c.id && movableCards.has(c.id) ? 'movable-choice' : ''}" ${c.id ? `data-board-card-id="${c.id}"` : ''}>
+        <div class="card ${c.id && movableCards.has(c.id) ? 'movable-choice' : ''} ${c.id && synergyCards.has(c.id) ? 'synergy-ref' : ''}" ${c.id ? `data-board-card-id="${c.id}"` : ''}>
             <div class="card-headline">
                 <span class="stat-badge cost">${c.cost ?? '?'}</span>
                 <div class="card-title">${c.name}</div>
@@ -252,7 +292,32 @@ export function layoutHand(ui) {
     handEl.style.minHeight = `${Math.ceil(cardHeight + 12)}px`;
 }
 
-export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
+// The End Turn button doubles as "New Game" (game over), "Confirm mulligan"
+// (opening mulligan), and a disabled "Opponent's Turn" indicator while the AI
+// is acting. Kept in one place so the controller can re-apply it mid-flip.
+export function updateEndTurnButton(ui, app, config) {
+    const snapshot = app.snapshot;
+    if (!snapshot) return;
+    const isGameOver = snapshot.phase === 'GAME_OVER';
+    const isOpeningMulligan = snapshot.phase === 'MULLIGAN'
+        && snapshot.pending_choice
+        && snapshot.pending_choice.choice_kind === 'opening_mulligan';
+    const canActMulligan = isOpeningMulligan && Number(snapshot.pending_choice.player_id) === config.player_id;
+    const opponentTurn = app.opponentTurnActive && !isGameOver;
+    const legal = humanLegalActions(snapshot, config.player_id);
+
+    if (opponentTurn) {
+        ui.btnEndTurn.disabled = true;
+        ui.btnEndTurn.textContent = "Opponent's Turn";
+    } else {
+        ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
+        ui.btnEndTurn.textContent = isGameOver ? 'New Game' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+    }
+    ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
+    ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
+}
+
+export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, cardStack }) {
     app.snapshot = snapshot;
     app.cardNameById = buildCardNameMap(snapshot);
 
@@ -260,6 +325,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     const ai = String(config.ai_player_id);
     const current = String(snapshot.current_player_id);
     const vp = snapshot.victory_points;
+    // Engine-internal side indexes (options like "card|loc|side" use them):
+    // stacks/vp dicts are keyed by player id in side order, so the key
+    // position is the side index.
+    const playerIds = Object.keys(vp || { '1': 0, '2': 0 });
+    const humanSideIdx = Math.max(0, playerIds.indexOf(human));
     const mana = snapshot.mana_pool;
     const manaCap = snapshot.mana_cap || {};
     const deckSizes = snapshot.deck_sizes || {};
@@ -280,7 +350,8 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
             if (parts.length === 3) {
                 const cardId = parts[0];
                 const loc = Number(parts[1]);
-                app.legalMoveChoiceSet.add(`${cardId}|${loc}`);
+                const side = Number(parts[2]);
+                app.legalMoveChoiceSet.add(`${cardId}|${loc}|${side}`);
                 app.movableChoiceCardSet.add(cardId);
             }
         }
@@ -315,22 +386,61 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
     ui.oppMana.innerHTML = renderManaTrack(manaCap[ai] ?? 0, mana[ai] ?? 0);
     ui.yourMana.innerHTML = renderManaTrack(manaCap[human] ?? 0, mana[human] ?? 0);
     ui.oppHand.innerHTML = renderOpponentHand(snapshot.opponent_hand_size, snapshot.opponent_hand_revealed ? snapshot.opponent_hand : null);
+    if (ui.oppHandCount) {
+        ui.oppHandCount.textContent = String(Math.max(0, Number(snapshot.opponent_hand_size) || 0));
+    }
+
+    // Live synergies: hand cards whose "if" clause is fulfilled, and the
+    // cards elsewhere that fulfil it (board cards or the own underworld).
+    const handSynergies = snapshot.hand_synergies || {};
+    const synergyHandSet = new Set(Object.keys(handSynergies));
+    const synergyRefSet = new Set();
+    for (const partners of Object.values(handSynergies)) {
+        for (const partnerId of (partners || [])) synergyRefSet.add(partnerId);
+    }
 
     const underworld = snapshot.underworld || {};
     ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[ai] || []);
     ui.yourUnderworld.innerHTML = renderUnderworldStack(underworld[human] || []);
+    const underworldSynergy = (underworld[human] || []).some((card) => card && synergyRefSet.has(card.id));
+    ui.yourUnderworld.classList.toggle('synergy-glow', underworldSynergy);
     ui.oppUnderworldCount.textContent = String((underworld[ai] || []).length);
     ui.yourUnderworldCount.textContent = String((underworld[human] || []).length);
 
     ui.oppDeckCount.textContent = String(deckSizes[ai] ?? 0);
     ui.yourDeckCount.textContent = String(deckSizes[human] ?? 0);
 
-    if (snapshot.pending_choice && !isOpeningMulligan) {
+    // A simple "pick one card" choice for the human is presented in the card
+    // stack popup (tap to inspect, then a confirm button like "Banish Achilles").
+    const cardChoice = (snapshot.pending_choice
+        && !isOpeningMulligan
+        && Number(snapshot.pending_choice.player_id) === config.player_id
+        && cardStack)
+        ? classifyCardChoice(snapshot.pending_choice, snapshot, app.cardNameById)
+        : null;
+
+    if (cardChoice) {
+        const p = snapshot.pending_choice;
+        ui.pending.innerHTML = '';
+        ui.choiceModal.classList.remove('open');
+        ui.choiceModal.setAttribute('aria-hidden', 'true');
+        ui.choiceOptions.innerHTML = '';
+        cardStack.open({
+            mode: 'select',
+            title: p.prompt || p.choice_kind,
+            confirmVerb: CHOICE_VERB_BY_KIND[p.choice_kind] || 'Choose',
+            cards: cardChoice.cardEntries,
+            extras: cardChoice.extraEntries,
+            onConfirm: (optionId) => onChooseOption(optionId),
+            onExtra: (value) => onChooseOption(value),
+        });
+    } else if (snapshot.pending_choice && !isOpeningMulligan) {
+        if (cardStack) cardStack.close();
         const p = snapshot.pending_choice;
         const canChoose = Number(p.player_id) === config.player_id && p.choice_kind !== 'opening_mulligan';
         const listedOptions = (p.options || []).map((opt) => ({
             value: opt,
-            label: describeChoiceOption(opt, app.cardNameById),
+            label: describeChoiceOption(opt, app.cardNameById, humanSideIdx),
         }));
         const optionChips = canChoose
             ? `<div class="pending-options">${listedOptions.map((opt) => `<span class="option-chip" data-choice-option="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</span>`).join('')}</div>`
@@ -385,13 +495,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
             ui.choiceOptions.innerHTML = '';
         }
     } else {
+        if (cardStack) cardStack.close();
         ui.pending.innerHTML = '';
         ui.choiceModal.classList.remove('open');
         ui.choiceModal.setAttribute('aria-hidden', 'true');
         ui.choiceOptions.innerHTML = '';
     }
 
-    const playerIds = Object.keys(snapshot.victory_points || { '1': 0, '2': 0 });
     const opp = playerIds.find((p) => p !== human) || (human === '1' ? '2' : '1');
 
     ui.lanes.innerHTML = snapshot.locations.map((loc) => {
@@ -408,11 +518,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
                     <div class="lane-head-left">${renderLaneSlots(laneCardCount, 7)}</div>
                     <span class="lane-score ${laneLeadClass}"><span class="you">${yourPower}</span> / <span class="opp">${oppPower}</span></span>
                 </div>
-                <div class="lane-row">
-                    <div class="stack-cards">${renderCards(oppCards)}</div>
+                <div class="lane-row lane-row-opp" data-location-id="${loc.location_id}">
+                    <div class="stack-cards" data-count="${oppCards.length}">${renderCards(oppCards, { synergyCards: synergyRefSet })}</div>
                 </div>
                 <div class="lane-row lane-drop" data-location-id="${loc.location_id}">
-                    <div class="stack-cards">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet })}</div>
+                    <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet })}</div>
                 </div>
             </article>
         `;
@@ -424,8 +534,9 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
             const titleScale = handTitleScale(c.name);
             const isPlayable = !isOpeningMulligan && app.playableCardSet.has(c.id);
             const isUnplayable = !isOpeningMulligan && !app.playableCardSet.has(c.id);
+            const hasSynergy = !isOpeningMulligan && synergyHandSet.has(c.id);
             return `
-                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''}" data-card-id="${c.id}" title="${isOpeningMulligan ? 'Tap to toggle mulligan' : (isPlayable ? 'Playable now: tap it, then tap a lane (or drag)' : 'Not playable right now')}">
+                <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''} ${hasSynergy ? 'synergy' : ''}" data-card-id="${c.id}" title="${isOpeningMulligan ? 'Tap to toggle mulligan' : (isPlayable ? 'Playable now: tap it, then tap a lane (or drag)' : 'Not playable right now')}">
                     <div class="hand-card-headline">
                         <span class="stat-badge cost">${c.cost ?? '?'}</span>
                         <div class="hand-title-main" style="--title-scale: ${titleScale};" title="${escapeHtml(c.name)}"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
@@ -444,28 +555,21 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption }) {
         }).join('')
         : '<div class="tiny">No cards in hand</div>';
 
-    if (isOpeningMulligan) {
-        ui.mulliganPanel.classList.remove('hidden');
-        ui.mulliganInfo.textContent = canActMulligan
-            ? `Selected: ${app.mulliganSelected.size}. Tap cards to mark them with a red X, then press Confirm mulligan.`
-            : 'Waiting for the other player to finish mulligan.';
-    } else {
+    // The mulligan instruction banner was removed; mulligan mode is now shown
+    // purely by the red X marks on cards and the teal "Confirm mulligan" button.
+    if (!isOpeningMulligan) {
         app.mulliganSelected.clear();
-        ui.mulliganPanel.classList.add('hidden');
     }
 
     const isGameOver = snapshot.phase === 'GAME_OVER';
-    ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
-    ui.btnEndTurn.textContent = isGameOver ? 'New Game' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+    updateEndTurnButton(ui, app, config);
 
-    if (isOpeningMulligan) {
-        ui.status.textContent = '';
-    } else if (isGameOver) {
+    // The persistent "Your Turn | Tap a card..." banner was removed as clutter;
+    // the status line now only surfaces game-over text and transient warnings.
+    if (isGameOver) {
         ui.status.textContent = gameOverStatusText(snapshot, human);
     } else {
-        ui.status.textContent = current === human
-            ? 'Your Turn | Tap a card, then tap a lane to play it (drag also works)'
-            : 'Opponent Turn | Waiting for opponent';
+        ui.status.textContent = '';
     }
 
     renderActionHistory(snapshot, ui, config);

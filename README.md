@@ -335,17 +335,3 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
  ### TODO
 
 Webapp Bugs:
-- when a player has more than 4 cards on a location, visually it does not fit anymore
-- When cards are presented as selection, like "choose a card to banish", some information about the card should be visible, like cost, power, etc. So the pop up should have the card options in a stack, like on the locations, then the user can click them to view them, can select them and then click a confirmation button, that says sth like "Banish Achilles", or "Move Enkidu". If there is only one card to pick that one should be visible in already the expanded size
-- there should be an animation, when a round ends, and then a crown should pop up and fly to the winning player, or on a draw there should be a different animation.
-- remove the status message box with the stuff like "Your Turn | Tap a card, then tap a lane to play it (drag also works)", it is not needed
-- End Turn Button should have different coloring than Confirm Mulligan Button
-- Underworld stacks should be clickable and then the same pop up with a card stack should appear, showing the cards in the underworld. This should reuse code from the other pop ups
-- When a location is full, and a being cannot be moved to it or revived on there, there should be a text that fades in and explains that the location is full, currently one selects the being to move/ revive and then nothing happens. Instead, one should not get the option to perform this illegal action and get the text that fades in and out at that location. The bars and the 7/7 number should get highlighted at the same time
-- Make the card type of God/Godess/Deity consistent. All Being - God/ Being - Goddess should be Being - Deity
-- Diomedes, the God Smiter does not lower the power of an opponents Deity. The affected Deities power should also be shown as 0 in the UI
-- When a card refers to an other card in play, like Gala-Tura and Kur-Jara, the referred card should be highlighted and the card to play should also get highlighted, when the "If-clause" of the effect is fulfilled. Same of course also for other cards, like "Clay", "Achilles", "Patroclus", and more. Or Ninsubur, when Innana is indeed in the Underworld
-- After the "Opponent Hand" text, there should also be a number with the number of cards in their hand
-- There should be an animation, when the opponent mulligans cards, maybe showing how the selected cards are getting 'X'ed and then and animation with cards going back to their deck and back into their hand.
-- Odysseus should be able to move cards to any side, i.e. give the trojan horse to the opponent/ make it switch sides. This then triggers the effect.
-- The AI opponents turn should not be instant in the webapp. The animation could be slower. The End Turn button should show (Opponents Turn) during that time and be unclickable and differently colored. Even if the opponent has no cards to play, the turn should last at least 2 seconds. The End Turn/ Opponents Turn button should have an animation, where it looks like the button flips like the cards flip.

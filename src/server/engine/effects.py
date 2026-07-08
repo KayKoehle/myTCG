@@ -58,6 +58,10 @@ MovedHook = Callable[[Any, GameState, int, str, int, int, int, int], GameState]
 HeroLeftHook = Callable[[Any, GameState, int, str, int, str], "GameState | None"]
 # (rt, state, location, side_idx, powers) -> int  (delta for that side's total)
 TopPowerHook = Callable[[Any, GameState, LocationState, int, dict[str, int]], int]
+# (rt, state, location, side_idx, card_id, power) -> int (replacement power for that enemy card)
+EnemyPowerOverrideHook = Callable[[Any, GameState, LocationState, int, str, int], int]
+# (rt, state, player_idx, card_id) -> list of card ids that fulfil this card's "if" clause
+SynergyHook = Callable[[Any, GameState, int, str], list[str]]
 # (rt, state, reviver_idx, revived_card_id, trigger_card_id, trigger_location_idx) -> GameState | None (None: nothing to do)
 ReviveWitnessHook = Callable[[Any, GameState, int, str, str, int], "GameState | None"]
 # (rt, state, chooser_idx, option, pending) -> GameState
@@ -100,8 +104,12 @@ class CardBehavior:
     sacrifice_artifact_discount_while_top: int = 0
     # While on top: extra power added to the owner's side total here.
     friendly_power_bonus_while_top: TopPowerHook | None = None
-    # While on top: power subtracted from the enemy side total here.
-    enemy_power_penalty_while_top: TopPowerHook | None = None
+    # While on top: replaces the power of individual enemy cards here (applied
+    # inside dynamic power, so both round scoring and the UI see it).
+    enemy_card_power_override_while_top: EnemyPowerOverrideHook | None = None
+    # Cards elsewhere that fulfil this card's "if" clause right now (used by
+    # the UI to highlight live synergies; never consulted by the rules).
+    synergy_partners: SynergyHook | None = None
     # Set aside at game start (scenario cards like the Deluge).
     set_aside_at_start: bool = False
 
@@ -209,6 +217,11 @@ def revive_choice_on_enter(
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
         if condition is not None and not condition(state, player_idx, location_idx, card_id):
             return state
+        # A full location cannot take the revived card, so don't offer a
+        # choice that would silently do nothing.
+        location = state.locations[location_idx]
+        if prim.location_total_cards(location) >= location.capacity:
+            return state
         options = candidates(state, player_idx, location_idx)
         if not options:
             return state
@@ -275,6 +288,30 @@ def swap_with_underworld_partner(partner_name: str, option_label: str, prompt: s
         if any(card(cid).name == partner_name for cid in state.underworlds[player_idx]):
             return prim.with_pending_choice(state, player_idx, "use_top_ability", card_id, location_idx, ["PASS", option_label], prompt)
         return None
+
+    return hook
+
+
+def partners_in_play(predicate: Predicate | None = None, *names: str) -> SynergyHook:
+    """Synergy: friendly matching cards currently in play fulfil the clause."""
+    pred = predicate if predicate is not None else catalog.named_any(*names)
+
+    def hook(rt: Any, state: GameState, player_idx: int, card_id: str) -> list[str]:
+        return [
+            cid
+            for _, side_idx, cid in prim.find_cards_in_play(state, pred)
+            if side_idx == player_idx and cid != card_id
+        ]
+
+    return hook
+
+
+def partners_in_underworld(*names: str) -> SynergyHook:
+    """Synergy: matching cards in the owner's underworld fulfil the clause."""
+    name_set = set(names)
+
+    def hook(rt: Any, state: GameState, player_idx: int, card_id: str) -> list[str]:
+        return [cid for cid in state.underworlds[player_idx] if card(cid).name in name_set]
 
     return hook
 

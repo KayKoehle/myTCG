@@ -64,11 +64,6 @@
             <div class="hud" id="hud"></div>
             <div id="pending"></div>
 
-            <div class="mulligan-panel hidden" id="mulliganPanel">
-                <div class="mulligan-title">Mulligan</div>
-                <div class="mulligan-sub" id="mulliganInfo">Tap cards to replace, then press Confirm mulligan.</div>
-            </div>
-
             <div class="status" id="status">Ready.</div>
 
             <section>
@@ -171,6 +166,20 @@
             <p class="choice-prompt" id="choicePrompt"></p>
             <div class="choice-sub" id="choiceSub"></div>
             <div class="choice-options" id="choiceOptions"></div>
+        </div>
+    </div>
+
+    <div id="stackModal" class="stack-modal" aria-hidden="true">
+        <div class="stack-dialog" role="dialog" aria-modal="true" aria-labelledby="stackTitle">
+            <div class="stack-head">
+                <h2 class="stack-title" id="stackTitle"></h2>
+                <button class="sheet-close" id="stackClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="stack-list" id="stackList"></div>
+            <div class="stack-extras" id="stackExtras"></div>
+            <div class="stack-actions">
+                <button class="btn stack-confirm" id="stackConfirm" disabled></button>
+            </div>
         </div>
     </div>
 

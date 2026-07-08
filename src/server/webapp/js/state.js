@@ -15,7 +15,14 @@ export function createAppState() {
         cardNameById: new Map(),
         mulliganSelected: new Set(),
         autoRunning: false,
+        actionPending: false,
         dragEndedAt: 0,
+        opponentTurnActive: false,
+        opponentTurnStartedAt: 0,
+        // History-driven animations (round crowns, opponent mulligans) fire on
+        // entries added after these markers; reset per match.
+        animMatchId: null,
+        historySeen: 0,
     };
 }
 

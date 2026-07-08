@@ -10,6 +10,8 @@ from ..effects import (
     EffectResult,
     Halt,
     partner_here,
+    partners_in_play,
+    partners_in_underworld,
     register,
     register_choice,
     revive_choice_on_enter,
@@ -66,11 +68,14 @@ def _handle_banish_friendly_for_inanna(rt: Any, state: GameState, chooser_idx: i
 
 
 register(INANNA, CardBehavior(on_revive=_inanna_revive))
-register("Ninšubur, Sukkal to Inanna", CardBehavior(on_enter=_ninshubur_enter))
+register("Ninšubur, Sukkal to Inanna", CardBehavior(on_enter=_ninshubur_enter, synergy_partners=partners_in_underworld(INANNA)))
 register_choice("banish_friendly_for_inanna", _handle_banish_friendly_for_inanna)
 register(
     "Lulal, Inanna's Bodyguard",
-    CardBehavior(on_enter=revive_choice_on_enter(underworld_named(INANNA), "Revive Inanna", include_pass=False)),
+    CardBehavior(
+        on_enter=revive_choice_on_enter(underworld_named(INANNA), "Revive Inanna", include_pass=False),
+        synergy_partners=partners_in_underworld(INANNA),
+    ),
 )
 register("Šara, Inanna's Beautician", CardBehavior(on_enter=tutor_named(INANNA)))
 
@@ -103,7 +108,10 @@ register(
 register_choice("use_top_ability", _handle_use_top_ability)
 register(
     "Sirtur, Mourning Mother",
-    CardBehavior(on_enter=revive_choice_on_enter(underworld_named(DUMUZID, GESHTINANNA), "Choose Dumuzid or Geshtinanna to revive")),
+    CardBehavior(
+        on_enter=revive_choice_on_enter(underworld_named(DUMUZID, GESHTINANNA), "Choose Dumuzid or Geshtinanna to revive"),
+        synergy_partners=partners_in_underworld(DUMUZID, GESHTINANNA),
+    ),
 )
 
 
@@ -114,7 +122,8 @@ register(
     CardBehavior(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Gala-Tura"),
-        )
+        ),
+        synergy_partners=partners_in_play(None, "Gala-Tura"),
     ),
 )
 register(
@@ -122,7 +131,8 @@ register(
     CardBehavior(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Kur-Jara"),
-        )
+        ),
+        synergy_partners=partners_in_play(None, "Kur-Jara"),
     ),
 )
 register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-Jara", "Gala-Tura", count=2)))

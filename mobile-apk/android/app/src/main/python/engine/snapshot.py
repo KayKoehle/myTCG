@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import effects
 from .catalog import CARD_LIBRARY, card_owner_idx
 from .state import GameState
-from .transitions import available_decks, deck_card_ids, dynamic_card_power, legal_actions
+from .transitions import RT, available_decks, deck_card_ids, dynamic_card_power, legal_actions
 
 _LANE_NAMES = {0: "left lane", 1: "middle lane", 2: "right lane"}
 
@@ -75,6 +76,21 @@ def _hand_card(card_id: str) -> dict[str, Any]:
         "type": card.type_name,
         "subtype": card.subtype,
     }
+
+
+def hand_synergies(state: GameState, viewer_idx: int) -> dict[str, list[str]]:
+    """For each hand card whose "if" clause is fulfilled right now, the card
+    ids (board or own underworld) that fulfil it. Purely informational — the
+    webapp highlights both sides of the synergy."""
+    result: dict[str, list[str]] = {}
+    for card_id in state.hands[viewer_idx]:
+        hook = effects.behavior_of(card_id).synergy_partners
+        if hook is None:
+            continue
+        partners = hook(RT, state, viewer_idx, card_id)
+        if partners:
+            result[card_id] = list(partners)
+    return result
 
 
 def build_state_snapshot(
@@ -157,6 +173,7 @@ def build_state_snapshot(
         },
         "available_checkpoints": available_checkpoints or [],
         "hand": [_hand_card(c) for c in state.hands[viewer_idx]],
+        "hand_synergies": hand_synergies(state, viewer_idx),
         "opponent_hand_size": len(state.hands[opp_idx]),
         "opponent_hand_revealed": opponent_hand_revealed,
         "opponent_hand": [_hand_card(c) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,

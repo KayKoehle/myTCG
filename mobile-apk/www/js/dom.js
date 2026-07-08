@@ -12,8 +12,6 @@ export function getUiElements() {
         historyModal: document.getElementById('historyModal'),
         btnCloseSettings: document.getElementById('btnCloseSettings'),
         btnCloseHistory: document.getElementById('btnCloseHistory'),
-        mulliganPanel: document.getElementById('mulliganPanel'),
-        mulliganInfo: document.getElementById('mulliganInfo'),
         status: document.getElementById('status'),
         scorePanel: document.getElementById('scorePanel'),
         actionHistory: document.getElementById('actionHistory'),
@@ -44,5 +42,11 @@ export function getUiElements() {
         choicePrompt: document.getElementById('choicePrompt'),
         choiceSub: document.getElementById('choiceSub'),
         choiceOptions: document.getElementById('choiceOptions'),
+        stackModal: document.getElementById('stackModal'),
+        stackTitle: document.getElementById('stackTitle'),
+        stackList: document.getElementById('stackList'),
+        stackExtras: document.getElementById('stackExtras'),
+        stackConfirm: document.getElementById('stackConfirm'),
+        stackClose: document.getElementById('stackClose'),
     };
 }

@@ -257,3 +257,93 @@ def test_ishtar_makes_opponent_banish_a_cheap_being():
     assert pending is not None and pending.choice_kind == "ishtar_banish_small_enemy"
     assert pending.chooser_idx == 1
     assert cheap_enemy in pending.options
+
+
+# --- Diomedes -----------------------------------------------------------------------
+
+
+def test_diomedes_zeroes_the_strongest_enemy_deity_in_dynamic_power():
+    state = start_game(GIL, TROY)
+    diomedes = by_name(TROY, "Diomedes, the God-Smiter")
+    ishtar = by_name(GIL, "Ishtar")          # deity, power 7 (strongest)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")  # deity, power 1
+    state = put_in_play(state, ishtar, 0, 0)
+    state = put_in_play(state, ninsun, 0, 0)
+    state = put_in_play(state, diomedes, 0, 1)  # on top of the enemy side
+
+    assert dynamic_card_power(state, ishtar, 0, 0) == 0, "strongest deity shows 0 in the UI"
+    assert dynamic_card_power(state, ninsun, 0, 0) == CARD_LIBRARY[ninsun].power
+    # Lane scoring uses the same per-card powers.
+    total = rules._location_power_for_side(state, state.locations[0], 0)
+    assert total == CARD_LIBRARY[ninsun].power
+
+    # Buried, Diomedes stops smiting.
+    state = put_in_play(state, by_name(TROY, "Greek Soldiers"), 0, 1)
+    assert dynamic_card_power(state, ishtar, 0, 0) == CARD_LIBRARY[ishtar].power
+
+
+# --- Odysseus and move destinations ---------------------------------------------------
+
+
+def test_odysseus_offers_moves_to_both_sides_and_flips_the_trojan_horse():
+    state = start_game(GIL, TROY)
+    horse = by_name(TROY, "The Trojan Horse")
+    odysseus = by_name(TROY, "Odysseus")
+    state = put_in_play(state, horse, 0, 1)
+    state = put_in_play(state, odysseus, 0, 1)
+
+    after = _apply_on_enter(state, 1, odysseus, 0)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "odysseus_move"
+    assert f"{horse}|0|0" in pending.options, "the horse can switch to the enemy side"
+    assert f"{horse}|0|1" not in pending.options, "staying in place is not offered"
+
+    moved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[1], option_id=f"{horse}|0|0"))
+    assert horse in moved.locations[0].stacks[0]
+
+
+def test_move_options_skip_full_locations():
+    state = start_game(GIL, TROY)
+    mover = by_name(GIL, "Gilgamesh")
+    state = put_in_play(state, mover, 0, 0)
+    fillers = ["Clay", "Trapper", "Shamhat", "Alewife Siduri", "Ninsun, Mother of Gilgamesh", "Enkidu", "Ferryman Urshanabi"]
+    for name in fillers:
+        state = put_in_play(state, by_name(GIL, name), 1, 0)
+
+    from server.engine import primitives as prim
+
+    options = prim.build_move_options(state, [mover])
+    assert all(not opt.startswith(f"{mover}|1|") for opt in options if opt != "PASS"), "full middle lane is not offered"
+    assert f"{mover}|2|0" in options
+
+
+def test_revive_choice_not_offered_at_a_full_location():
+    state = start_game(INA, TROY)
+    lulal = by_name(INA, "Lulal, Inanna's Bodyguard")
+    inanna = by_name(INA, "Inanna, Goddess of Love and War")
+    state = put_in_underworld(state, inanna, 0)
+    fillers = ["Kur-Jara", "Gala-Tura", "Gatekeeper Neti", "Galla Demons", "Sirtur, Mourning Mother", "Šara, Inanna's Beautician"]
+    for name in fillers:
+        state = put_in_play(state, by_name(INA, name), 0, 0)
+    state = put_in_play(state, lulal, 0, 0)  # 7th card: the location is now full
+
+    after = _apply_on_enter(state, 0, lulal, 0)
+    assert after.pending_choice is None, "no revive offer when the revived card has no room"
+
+
+# --- Synergy hints for the UI ----------------------------------------------------------
+
+
+def test_hand_synergies_reported_in_snapshot():
+    state = start_game(GIL, TROY)
+    achilles = by_name(TROY, "Achilles")
+    patroclus = by_name(TROY, "Patroclus")
+    state = put_in_hand(state, achilles, 1)
+    state = put_in_underworld(state, patroclus, 1)
+
+    snap = build_state_snapshot(state, "m", state.player_ids[1], GIL, TROY)
+    assert snap["hand_synergies"].get(achilles) == [patroclus]
+
+    # The other player sees no synergy for a hand that is not theirs.
+    snap_p0 = build_state_snapshot(state, "m", state.player_ids[0], GIL, TROY)
+    assert achilles not in snap_p0["hand_synergies"]

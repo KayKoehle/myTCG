@@ -568,30 +568,6 @@ select {
     display: block;
 }
 
-.mulligan-panel {
-    margin-top: 10px;
-    border: 1px solid rgba(255, 138, 58, 0.7);
-    background: rgba(87, 45, 20, 0.32);
-    border-radius: 10px;
-    padding: 10px;
-}
-
-.mulligan-panel.hidden {
-    display: none;
-}
-
-.mulligan-title {
-    font-weight: 700;
-    font-size: 13px;
-    margin-bottom: 4px;
-}
-
-.mulligan-sub {
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 8px;
-}
-
 .hud-card strong {
     display: block;
     margin-top: 3px;
@@ -695,6 +671,154 @@ select {
     border-color: rgba(255, 160, 94, 0.95);
     box-shadow: 0 0 0 1px rgba(255, 160, 94, 0.35);
     transform: translateY(-1px);
+}
+
+/* --- Card-stack popup (selection + underworld view) ----------------------- */
+
+.stack-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 210;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(2, 8, 14, 0.82);
+    backdrop-filter: blur(3px);
+}
+
+.stack-modal.open {
+    display: flex;
+}
+
+.stack-dialog {
+    width: min(440px, 96vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 16px;
+    padding: 14px;
+    background: linear-gradient(165deg, rgba(20, 55, 85, 0.98), rgba(11, 33, 53, 0.98));
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.stack-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.stack-title {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.25;
+    color: #f5fbff;
+}
+
+.stack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    padding: 2px;
+    flex: 1;
+}
+
+.stackpop-empty {
+    text-align: center;
+    padding: 18px 0;
+}
+
+.stackpop-card {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 10px;
+    padding: 8px;
+    background: rgba(11, 34, 54, 0.9);
+    display: grid;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.stackpop-card:hover {
+    border-color: rgba(129, 223, 255, 0.6);
+}
+
+.stackpop-card .card-headline {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.stackpop-card .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Collapsed: only the headline + type line show, so the stack reads compactly
+   like a location. The art and effect reveal when a card is expanded. */
+.stackpop-media,
+.stackpop-effect {
+    display: none;
+}
+
+.stackpop-card.expanded .stackpop-media,
+.stackpop-card.expanded .stackpop-effect {
+    display: block;
+}
+
+.stackpop-art {
+    display: block;
+    width: 100%;
+    max-height: 34vh;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.stackpop-effect {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #d9edf9;
+}
+
+.stackpop-card.selected {
+    border-color: rgba(129, 223, 255, 0.95);
+    box-shadow: 0 0 0 2px rgba(62, 188, 245, 0.4);
+    background: rgba(14, 44, 68, 0.95);
+}
+
+.stack-extras {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.stack-actions {
+    margin-top: 10px;
+}
+
+.stack-confirm {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    background: linear-gradient(135deg, #3fd6b0, #1c9c86);
+}
+
+.stack-confirm:disabled {
+    background: rgba(14, 29, 44, 0.85);
+    color: var(--muted);
+    cursor: not-allowed;
+    filter: none;
+    transform: none;
 }
 
 .lanes {
@@ -1542,4 +1666,183 @@ select {
 .choice-dismiss {
     border-style: dashed;
     opacity: 0.9;
+}
+
+/* --- Opponent turn button state -------------------------------------------- */
+
+.btn.turn.opponent-turn,
+.btn.turn.opponent-turn:disabled {
+    background: linear-gradient(135deg, #5a708a, #33455c);
+    box-shadow: 0 10px 24px rgba(20, 34, 52, 0.4);
+    color: #c8d9ea;
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+/* --- Full location feedback -------------------------------------------------- */
+
+.lane {
+    position: relative;
+}
+
+.lane-full-notice {
+    position: absolute;
+    top: 42%;
+    left: 8%;
+    right: 8%;
+    z-index: 120;
+    text-align: center;
+    padding: 10px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 106, 90, 0.85);
+    background: rgba(48, 14, 12, 0.92);
+    color: #ffd9d3;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    pointer-events: none;
+    opacity: 0;
+    animation: laneFullFade 1.8s ease forwards;
+}
+
+@keyframes laneFullFade {
+    0% { opacity: 0; transform: translateY(6px); }
+    18% { opacity: 1; transform: translateY(0); }
+    72% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.lane-capacity.capacity-flash .lane-slot.filled {
+    animation: laneSlotFlash 1.8s ease;
+}
+
+.lane-capacity.capacity-flash .lane-capacity-text {
+    animation: laneCountFlash 1.8s ease;
+}
+
+@keyframes laneSlotFlash {
+    0%, 100% {
+        border-color: rgba(91, 200, 255, 0.95);
+        background: linear-gradient(180deg, rgba(129, 223, 255, 0.95), rgba(29, 157, 219, 0.95));
+        box-shadow: 0 0 5px rgba(62, 188, 245, 0.45);
+    }
+    15%, 70% {
+        border-color: rgba(255, 118, 100, 1);
+        background: linear-gradient(180deg, rgba(255, 156, 138, 0.98), rgba(224, 74, 56, 0.98));
+        box-shadow: 0 0 8px rgba(255, 106, 90, 0.75);
+    }
+}
+
+@keyframes laneCountFlash {
+    0%, 100% { color: #9ec0d6; }
+    15%, 70% { color: #ff9c8a; font-weight: 800; }
+}
+
+/* --- Synergy highlights ------------------------------------------------------ */
+/* A hand card whose "if" clause is fulfilled glows gold, and so do the cards
+   (on the board or in the underworld pile) that fulfil it. */
+
+.hand-card.synergy {
+    border-color: rgba(255, 200, 79, 0.95);
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.3), 0 0 18px rgba(255, 200, 79, 0.3);
+    animation: synergyPulse 1.8s ease-in-out infinite;
+}
+
+.hand-card.playable.synergy {
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.4), 0 0 20px rgba(255, 200, 79, 0.38);
+}
+
+.card.synergy-ref {
+    border-color: rgba(255, 200, 79, 0.95);
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.3), 0 0 14px rgba(255, 200, 79, 0.3);
+    animation: synergyPulse 1.8s ease-in-out infinite;
+}
+
+.underworld-grid.synergy-glow .underworld-stack {
+    border-radius: 8px;
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.4), 0 0 16px rgba(255, 200, 79, 0.45);
+    animation: synergyPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes synergyPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.18); }
+}
+
+/* --- Round result animation --------------------------------------------------- */
+
+.round-result-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 420;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(4, 12, 20, 0.55);
+    pointer-events: none;
+}
+
+.round-crown {
+    width: min(38vw, 190px);
+    filter: drop-shadow(0 0 26px rgba(255, 200, 79, 0.55));
+}
+
+.round-result-overlay.draw .round-crown {
+    filter: drop-shadow(0 0 18px rgba(180, 200, 218, 0.45));
+}
+
+.round-crown svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.round-result-text {
+    font-size: clamp(16px, 4.5vw, 26px);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #ffe9b0;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+
+.round-result-overlay.win-opp .round-result-text {
+    color: #ffc4a1;
+}
+
+.round-result-overlay.draw .round-result-text {
+    color: #d5e4f0;
+}
+
+/* --- Opponent mulligan animation ------------------------------------------------ */
+
+.mull-ghost {
+    position: fixed;
+    z-index: 400;
+    width: 28px;
+    height: 40px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    background:
+        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mull-ghost-x {
+    color: #ff6a5a;
+    font-size: 22px;
+    font-weight: 900;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+    animation: mullXFadeIn 0.4s ease both;
+}
+
+@keyframes mullXFadeIn {
+    from { opacity: 0; transform: scale(0.4); }
+    to { opacity: 1; transform: scale(1); }
 }

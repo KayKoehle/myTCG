@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_being, is_hero, is_human, is_monster, named
-from ..effects import CardBehavior, EffectResult, Halt, monster, register, register_choice, tutor_effect, tutor_named
+from ..effects import CardBehavior, EffectResult, Halt, monster, partners_in_play, register, register_choice, tutor_effect, tutor_named
 from ..state import GameState
 
 
@@ -49,6 +49,9 @@ def _enkidu_top_ability(rt: Any, state: GameState, player_idx: int, location_idx
     for gil_loc, gil_side, gil_id in prim.find_cards_in_play(state, named("Gilgamesh")):
         if catalog.card_owner_idx(state, gil_id) != player_idx:
             continue
+        gil_location = state.locations[gil_loc]
+        if prim.location_total_cards(gil_location) >= gil_location.capacity:
+            continue
         found = prim.find_card_in_play(state, card_id)
         if found is not None and (found[0], found[1]) != (gil_loc, gil_side):
             return prim.with_pending_choice(
@@ -64,7 +67,7 @@ def _handle_enkidu_join(rt: Any, state: GameState, chooser_idx: int, option: str
 
 
 register("Gilgamesh", CardBehavior(power=_gilgamesh_power, immortal=_gilgamesh_enkidu_immortal))
-register("Enkidu", CardBehavior(power=_enkidu_power, immortal=_gilgamesh_enkidu_immortal, top_ability=_enkidu_top_ability))
+register("Enkidu", CardBehavior(power=_enkidu_power, immortal=_gilgamesh_enkidu_immortal, top_ability=_enkidu_top_ability, synergy_partners=partners_in_play(None, "Gilgamesh")))
 register_choice("enkidu_join_gilgamesh", _handle_enkidu_join)
 
 
@@ -93,7 +96,16 @@ def _alewife_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loc
 
 
 def _ferryman_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    hero_cards = [cid for _, side_idx, cid in prim.find_cards_in_play(state, is_hero) if side_idx == player_idx]
+    # No room here: don't offer a move that would silently fail. Heroes that
+    # already stand here have nowhere to move to either.
+    location = state.locations[location_idx]
+    if prim.location_total_cards(location) >= location.capacity:
+        return state
+    hero_cards = [
+        cid
+        for loc_idx, side_idx, cid in prim.find_cards_in_play(state, is_hero)
+        if side_idx == player_idx and loc_idx != location_idx
+    ]
     if hero_cards:
         return Halt(
             prim.with_pending_choice(
@@ -108,8 +120,8 @@ def _shamhat_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loc
     return rt.play_named_from_anywhere(state, player_idx, location_idx, "Enkidu")
 
 
-register("Clay", CardBehavior(on_enter=_clay_enter))
-register("Ninsun, Mother of Gilgamesh", CardBehavior(on_enter=_ninsun_enter))
+register("Clay", CardBehavior(on_enter=_clay_enter, synergy_partners=partners_in_play(is_human)))
+register("Ninsun, Mother of Gilgamesh", CardBehavior(on_enter=_ninsun_enter, synergy_partners=partners_in_play(None, "Gilgamesh")))
 register("Alewife Siduri", CardBehavior(on_enter=_alewife_enter))
 register("Ferryman Urshanabi", CardBehavior(on_enter=_ferryman_enter))
 register("Trapper", CardBehavior(on_enter=tutor_named("Enkidu")))

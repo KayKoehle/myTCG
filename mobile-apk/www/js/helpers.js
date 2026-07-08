@@ -139,7 +139,7 @@ export function buildCardNameMap(snapshot) {
     return cardNameById;
 }
 
-export function describeChoiceOption(optionId, cardNameById) {
+export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = null) {
     if (optionId === 'PASS') return 'Pass';
     if (optionId === 'KEEP') return 'Keep current hand';
     if (optionId === 'BOTTOM') return 'Move top card to bottom';
@@ -173,7 +173,10 @@ export function describeChoiceOption(optionId, cardNameById) {
             const maybeLane = Number(parts[1]);
             const maybeSide = Number(parts[2]);
             if (Number.isFinite(maybeLane) && Number.isFinite(maybeSide)) {
-                return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane)}`;
+                const sideSuffix = viewerSideIdx === null
+                    ? ''
+                    : (maybeSide === Number(viewerSideIdx) ? ' (your side)' : ' (opponent side)');
+                return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane)}${sideSuffix}`;
             }
         }
     }

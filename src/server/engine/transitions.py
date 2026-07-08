@@ -151,13 +151,27 @@ def _reset_turn_state(state: GameState) -> GameState:
 # Card powers
 # --------------------------------------------------------------------------
 
-def dynamic_card_power(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
+def power_before_overrides(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
+    """A card's power from its own printing, modifiers, and power hook —
+    before enemy top-card overrides (e.g. Diomedes) are applied."""
     base = _card(card_id).power
     mods = prim.mod_map(state, _card_owner_idx(state, card_id))
     base += mods.get(card_id, 0)
     power_hook = effects.behavior_of(card_id).power
     if power_hook is not None:
         base = power_hook(RT, state, card_id, location_idx, side_idx, base)
+    return base
+
+
+def dynamic_card_power(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
+    base = power_before_overrides(state, card_id, location_idx, side_idx)
+    location = state.locations[location_idx]
+    if card_id in location.stacks[side_idx]:
+        enemy_top = prim.top_card(location, 1 - side_idx)
+        if enemy_top is not None:
+            override_hook = effects.behavior_of(enemy_top).enemy_card_power_override_while_top
+            if override_hook is not None:
+                base = override_hook(RT, state, location, side_idx, card_id, base)
     return base
 
 
@@ -170,11 +184,8 @@ def _location_power_for_side(state: GameState, location, side_idx: int) -> int:
         bonus_hook = effects.behavior_of(own_top).friendly_power_bonus_while_top
         if bonus_hook is not None:
             own_total += bonus_hook(RT, state, location, side_idx, powers)
-    enemy_top = prim.top_card(location, 1 - side_idx)
-    if enemy_top is not None:
-        penalty_hook = effects.behavior_of(enemy_top).enemy_power_penalty_while_top
-        if penalty_hook is not None:
-            own_total -= penalty_hook(RT, state, location, side_idx, powers)
+    # Enemy top-card overrides (e.g. Diomedes) are already inside each card's
+    # dynamic power, so the per-card sum needs no extra penalty here.
     return own_total
 
 
@@ -891,6 +902,10 @@ class _Runtime:
     @staticmethod
     def dynamic_power(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
         return dynamic_card_power(state, card_id, location_idx, side_idx)
+
+    @staticmethod
+    def power_before_overrides(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
+        return power_before_overrides(state, card_id, location_idx, side_idx)
 
 
 RT = _Runtime()
