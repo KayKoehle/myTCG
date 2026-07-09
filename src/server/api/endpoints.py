@@ -93,6 +93,7 @@ def register_ws_routes(app: FastAPI):
             deck_b=request.deck_b,
             deck_a_cards=request.deck_a_cards,
             deck_b_cards=request.deck_b_cards,
+            decks=request.decks,
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return StateResponse(snapshot=snapshot)
@@ -111,6 +112,7 @@ def register_ws_routes(app: FastAPI):
             deck_b=request.deck_b,
             deck_a_cards=request.deck_a_cards,
             deck_b_cards=request.deck_b_cards,
+            decks=request.decks,
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
@@ -136,6 +138,7 @@ def register_ws_routes(app: FastAPI):
             deck_b=request.deck_b,
             deck_a_cards=request.deck_a_cards,
             deck_b_cards=request.deck_b_cards,
+            decks=request.decks,
         )
         return AiMoveResponse(action=action, snapshot=snapshot)
 

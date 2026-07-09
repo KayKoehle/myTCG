@@ -1,19 +1,27 @@
 {
+  "epic_of_gilgamesh__vs__epic_of_gilgamesh": {
+    "first_wins": 1,
+    "games": 1
+  },
   "epic_of_gilgamesh__vs__inannas_descent": {
-    "games": 1,
-    "second_wins": 1
+    "games": 2,
+    "second_wins": 2
   },
   "epic_of_gilgamesh__vs__siege_of_troy": {
-    "first_wins": 2,
-    "games": 14,
-    "second_wins": 12
+    "first_wins": 3,
+    "games": 16,
+    "second_wins": 13
   },
   "inannas_descent__vs__siege_of_troy": {
-    "first_wins": 3,
-    "games": 4,
+    "first_wins": 4,
+    "games": 5,
     "second_wins": 1
   },
   "inannas_descent__vs__the_flood": {
+    "first_wins": 2,
+    "games": 2
+  },
+  "the_flood__vs__the_flood": {
     "first_wins": 1,
     "games": 1
   }

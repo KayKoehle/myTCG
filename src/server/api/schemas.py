@@ -12,6 +12,8 @@ class ActionRequest(BaseModel):
     deck_b: str = "siege_of_troy"
     deck_a_cards: Optional[list[str]] = None
     deck_b_cards: Optional[list[str]] = None
+    # One deck name per seat (2-6 players); overrides deck_a/deck_b when set.
+    decks: Optional[list[str]] = None
     card_id: Optional[str] = None
     location_id: Optional[int] = None
     option_id: Optional[str] = None
@@ -49,6 +51,7 @@ class StateRequest(BaseModel):
     deck_b: str = "siege_of_troy"
     deck_a_cards: Optional[list[str]] = None
     deck_b_cards: Optional[list[str]] = None
+    decks: Optional[list[str]] = None
 
 
 class StateResponse(BaseModel):
@@ -65,6 +68,7 @@ class AiMoveRequest(BaseModel):
     deck_b: str = "siege_of_troy"
     deck_a_cards: Optional[list[str]] = None
     deck_b_cards: Optional[list[str]] = None
+    decks: Optional[list[str]] = None
     checkpoint_path: str = "stats/checkpoints/ai_nn_distributed_latest.pt"
     device: str = "auto"
 

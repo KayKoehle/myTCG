@@ -60,6 +60,8 @@ def format_action_history_entry(entry: str) -> str:
         if parts[1] == "DRAW":
             return "Game ended in a draw"
         return f"P{parts[1]} won the game"
+    if kind == "surrender" and len(parts) >= 2:
+        return f"P{parts[1]} surrendered"
     return entry
 
 
@@ -82,6 +84,7 @@ def _hand_card(card_id: str, dynamic_cost: int | None = None) -> dict[str, Any]:
         "id": card_id,
         "name": card.name,
         "effect": card.effect,
+        "anecdote": card.anecdote,
         "cost": card.cost if dynamic_cost is None else dynamic_cost,
         "base_cost": card.cost,
         "power": card.power,
@@ -139,16 +142,19 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
         # Matches transitions.dynamic_card_power's call convention: the hook
         # is invoked with the *target* card's own side_idx, not the ability
         # holder's.
-        enemy_side = 1 - side_idx
-        enemy_top = prim.top_card(location, enemy_side)
-        if enemy_top is None:
-            return False
-        base = power_before_overrides(state, enemy_top, location.location_id, enemy_side)
-        overridden = behavior.enemy_card_power_override_while_top(RT, state, location, enemy_side, enemy_top, base)
-        return overridden != base
+        for enemy_side in prim.other_side_indices(state, side_idx):
+            enemy_top = prim.top_card(location, enemy_side)
+            if enemy_top is None:
+                continue
+            base = power_before_overrides(state, enemy_top, location.location_id, enemy_side)
+            overridden = behavior.enemy_card_power_override_while_top(RT, state, location, enemy_side, enemy_top, base)
+            if overridden != base:
+                return True
+        return False
 
     if name == "Menelaus, the Wronged King":
-        return len(location.stacks[1 - side_idx]) > len(location.stacks[side_idx])
+        enemy_count = sum(len(stack) for i, stack in enumerate(location.stacks) if i != side_idx)
+        return enemy_count > len(location.stacks[side_idx])
 
     return False
 
@@ -159,6 +165,7 @@ def _card_details(card_id: str) -> dict[str, Any]:
         "id": card_id,
         "name": card.name,
         "effect": card.effect,
+        "anecdote": card.anecdote,
         "cost": card.cost,
         "power": card.power,
         "type": card.type_name,
@@ -189,12 +196,19 @@ def build_state_snapshot(
     state: GameState,
     match_id: str,
     viewer_player_id: int,
-    deck_a: str,
-    deck_b: str,
+    deck_a: str = "",
+    deck_b: str = "",
     available_checkpoints: list[str] | None = None,
+    deck_display_names: list[str] | None = None,
 ) -> dict[str, Any]:
     viewer_idx = state.player_ids.index(viewer_player_id)
-    opp_idx = 1 - viewer_idx
+    n = state.n_players
+    if deck_display_names is None:
+        deck_display_names = [deck_a, deck_b] if n == 2 else list(state.deck_names)
+    pid = [str(player_id) for player_id in state.player_ids]
+
+    def per_player(value_for):
+        return {pid[i]: value_for(i) for i in range(n)}
     # state.deck_names (not the requested deck_a/deck_b) so mirror-match
     # aliases and custom decks resolve to names too.
     known_card_ids = deck_card_ids(state.deck_names)
@@ -220,6 +234,7 @@ def build_state_snapshot(
             "id": card_id,
             "name": card.name,
             "effect": card.effect,
+            "anecdote": card.anecdote,
             "cost": card.cost,
             "power": card.power if dynamic_power is None else dynamic_power,
             "base_power": card.power,
@@ -229,48 +244,40 @@ def build_state_snapshot(
             "while_top_active": while_top_active,
         }
 
-    opponent_hand_revealed = hand_is_revealed(state, opp_idx)
+    hand_revealed = {i: hand_is_revealed(state, i) for i in range(n)}
+    # 2-player compatibility fields keep pointing at "the" opponent; in FFA
+    # the per-player dicts below carry every seat.
+    opp_idx = next((i for i in range(n) if i != viewer_idx), viewer_idx)
+    opponent_hand_revealed = hand_revealed[opp_idx]
 
     return {
         "match_id": match_id,
         "seed": state.seed,
-        "decks": {
-            str(state.player_ids[0]): deck_a,
-            str(state.player_ids[1]): deck_b,
-        },
+        "players": pid,
+        "viewer_player_id": viewer_player_id,
+        "decks": per_player(lambda i: deck_display_names[i] if i < len(deck_display_names) else state.deck_names[i]),
         "card_name_by_id": card_name_by_id,
         "available_decks": list(available_decks()),
         "phase": state.phase,
-        "mulligan_done": {
-            str(state.player_ids[0]): state.mulligan_done[0],
-            str(state.player_ids[1]): state.mulligan_done[1],
-        },
-        "mulligan_selected_count": {
-            str(state.player_ids[0]): len(state.mulligan_selected[0]),
-            str(state.player_ids[1]): len(state.mulligan_selected[1]),
-        },
+        "mulligan_done": per_player(lambda i: state.mulligan_done[i]),
+        "mulligan_selected_count": per_player(lambda i: len(state.mulligan_selected[i])),
         "turn_number": state.turn_number,
         "round_number": state.round_number,
         "current_player_id": state.current_player_id,
-        "victory_points": {
-            str(state.player_ids[0]): state.victory_points[0],
-            str(state.player_ids[1]): state.victory_points[1],
-        },
-        "mana_pool": {
-            str(state.player_ids[0]): state.mana_pool[0],
-            str(state.player_ids[1]): state.mana_pool[1],
-        },
-        "mana_cap": {
-            str(state.player_ids[0]): min(7, state.player_turn_counts[0]),
-            str(state.player_ids[1]): min(7, state.player_turn_counts[1]),
-        },
-        "deck_sizes": {
-            str(state.player_ids[0]): len(state.decks[0]),
-            str(state.player_ids[1]): len(state.decks[1]),
-        },
+        "victory_points": per_player(lambda i: state.victory_points[i]),
+        "mana_pool": per_player(lambda i: state.mana_pool[i]),
+        "mana_cap": per_player(lambda i: min(7, state.player_turn_counts[i])),
+        "deck_sizes": per_player(lambda i: len(state.decks[i])),
         "available_checkpoints": available_checkpoints or [],
         "hand": [_hand_card(c, play_cost(state, viewer_idx, c)) for c in state.hands[viewer_idx]],
         "hand_synergies": hand_synergies(state, viewer_idx),
+        "hand_sizes": per_player(lambda i: len(state.hands[i])),
+        "hands_revealed": per_player(lambda i: hand_revealed[i]),
+        "revealed_hands": {
+            pid[i]: [_hand_card(c, play_cost(state, i, c)) for c in state.hands[i]]
+            for i in range(n)
+            if hand_revealed[i] and i != viewer_idx
+        },
         "opponent_hand_size": len(state.hands[opp_idx]),
         "opponent_hand_revealed": opponent_hand_revealed,
         "opponent_hand": [_hand_card(c, play_cost(state, opp_idx, c)) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,
@@ -304,35 +311,29 @@ def build_state_snapshot(
                 "location_id": loc.location_id,
                 "capacity": loc.capacity,
                 "weight": loc.weight,
+                "accessible": [pid[i] for i in loc.accessible],
                 "stacks": {
-                    str(state.player_ids[0]): [
-                        _public_card(c, dynamic_card_power(state, c, loc.location_id, 0), _while_top_active(state, loc, 0, c))
-                        for c in loc.stacks[0]
-                    ],
-                    str(state.player_ids[1]): [
-                        _public_card(c, dynamic_card_power(state, c, loc.location_id, 1), _while_top_active(state, loc, 1, c))
-                        for c in loc.stacks[1]
-                    ],
+                    pid[i]: [
+                        _public_card(c, dynamic_card_power(state, c, loc.location_id, i), _while_top_active(state, loc, i, c))
+                        for c in loc.stacks[i]
+                    ]
+                    for i in range(n)
                 },
             }
             for loc in state.locations
         ],
-        "underworld": {
-            str(state.player_ids[0]): [_public_card(c) for c in state.underworlds[0]],
-            str(state.player_ids[1]): [_public_card(c) for c in state.underworlds[1]],
-        },
+        "underworld": per_player(lambda i: [_public_card(c) for c in state.underworlds[i]]),
         "action_history": list(state.action_history),
         "action_history_pretty": [format_action_history_entry(entry) for entry in state.action_history],
     }
 
 
 def observation_string(state: GameState, player_idx: int) -> str:
-    """Compact text observation used by the neural policy."""
-    reveal_hand = hand_is_revealed(state, 1 - player_idx)
+    """Compact text observation used by the neural policy.
 
-    own_hand = ",".join(state.hands[player_idx])
-    opp_cards = state.hands[1 - player_idx]
-    opponent_hand = ",".join(opp_cards) if reveal_hand else f"size={len(opp_cards)}"
+    The 2-player output stays byte-identical to what existing checkpoints
+    were trained on; N-player matches extend the same scheme per seat.
+    """
 
     def _public_card_id(card_id: str) -> str:
         owner_idx = card_owner_idx(state, card_id)
@@ -340,19 +341,33 @@ def observation_string(state: GameState, player_idx: int) -> str:
             return "FACEDOWN"
         return card_id
 
+    n = state.n_players
+    own_hand = ",".join(state.hands[player_idx])
+
+    opponent_parts: list[str] = []
+    for opp_idx in range(n):
+        if opp_idx == player_idx:
+            continue
+        opp_cards = state.hands[opp_idx]
+        opponent_parts.append(",".join(opp_cards) if hand_is_revealed(state, opp_idx) else f"size={len(opp_cards)}")
+    opponent_hand = "/".join(opponent_parts)
+
     board_parts: list[str] = []
     for location in state.locations:
-        left = ",".join(_public_card_id(cid) for cid in location.stacks[0])
-        right = ",".join(_public_card_id(cid) for cid in location.stacks[1])
-        board_parts.append(f"L{location.location_id}[0]={left};L{location.location_id}[1]={right}")
+        board_parts.append(
+            ";".join(
+                f"L{location.location_id}[{side}]={','.join(_public_card_id(cid) for cid in location.stacks[side])}"
+                for side in range(n)
+            )
+        )
 
-    underworld_0 = ",".join(state.underworlds[0])
-    underworld_1 = ",".join(state.underworlds[1])
+    underworlds = ";".join(f"underworld{i}={','.join(state.underworlds[i])}" for i in range(n))
+    deck_sizes = ",".join(str(len(deck)) for deck in state.decks)
     return (
         f"player={player_idx};phase={state.phase};turn={state.turn_number};current={state.current_player_idx};"
-        f"vp={state.victory_points};mana={state.mana_pool};deck_sizes=({len(state.decks[0])},{len(state.decks[1])});"
+        f"vp={state.victory_points};mana={state.mana_pool};deck_sizes=({deck_sizes});"
         f"own_hand={own_hand};opponent_hand={opponent_hand};"
-        f"underworld0={underworld_0};underworld1={underworld_1};"
+        f"{underworlds};"
         f"pending_choice={state.pending_choice};"
         f"board={'|'.join(board_parts)}"
     )

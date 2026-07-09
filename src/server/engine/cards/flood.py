@@ -120,7 +120,7 @@ def _enlil_enter(rt: Any, state: GameState, player_idx: int, card_id: str, locat
 
 def _handle_enlil_unleash(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     location_idx = pending.location_id
-    for side_idx in (0, 1):
+    for side_idx in range(state.n_players):
         for card_id in list(state.locations[location_idx].stacks[side_idx]):
             if not is_human(card_id):
                 continue

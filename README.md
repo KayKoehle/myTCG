@@ -85,7 +85,7 @@ cd android
 If your system JDK is not 21, run step 4 as:
 
 ```bash
-JAVA_HOME="C:/Program Files/Android/Android Studio/jbr" ./gradlew assembleDebug
+$env:JAVA_HOME = "C:/Program Files/Android/Android Studio/jbr"; ./gradlew assembleDebug
 ```
 
 Install `app-debug.apk` on your phone (enable "install from unknown sources").
@@ -335,13 +335,9 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
  ### TODO
 
 - Add some Sound Effects. We can include a ComfyUI Workflow that generates Sound Effects. We should have Sound Effects for getting a crown, getting a coin, start of turn, mulligan and shuffling, end of turn, winning, losing, and each card should have their own sound/ battlecry when they are getting played, being banished, being revived, and being discarded. If there are any sound effects that make sense also add them.
-- New Game Modes ( BO1, BO3, 3 Player FFA, 4 Player FFA, 5 Player FFA)
+- Add theme music
 
-- In the collection, when I click a card, it should pop up so I can read it
-- In the collection, there should be a way to search cards by name, use a small embedding model here, so it finds stuff even when I have some typos. Also there should be a way to sort and filter cards by power, cost, type
-- In the collection, there should be a "new deck" button, which allows me to create a new deck, which is not a basic deck
-- In the collection, it should be easier to select a deck, similar to equipping a cosmetic in the shop
-- In the collection, some statistics should be shown. Like WR of each deck, and card specific Win Rates.
-- In the collection, let's not add cards to a deck by swapping them with existing cards in a deck. Instead, one can remove cards from a deck, and add cards from the collection to the deck. However, some cards only make sense with other cards. So for example Enkidu and Gilgamesh, Achilles and Patroclus, Kur-Jara and Gala-Tura should be shown as a stack of cards, and can only be added together. When I am building a deck, there should be a row with recommmended cards to add. The row is visible, if there are no recommended cards, but for example when I am building a deck with The Ark, some humans should be recommended for example. The card recommender should not be a simple list of if-else code, but should be somehow smart, maybe and embedding model or a dedicated RecSys model. 
-- During mulligan, I should be able to read cards so I know what they actually do
-- [FIXED] Remove the settings button in the PLAY mode. It is not needed anymore — the header gear icon and its click handler are gone from the game screen.
+- I see a "THIS WEEKEND" event banner, but it is not a weekend today.
+- when switching play game modes, the deck image flickers
+- card images also flicker also during opponents mulligan
+- when the opponent plays cards the card images also flicker, they show the effect text for a brief second, then show the image again

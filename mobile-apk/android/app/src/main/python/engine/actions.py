@@ -40,4 +40,14 @@ class UseAbilityAction:
     kind: Literal["use_ability"] = "use_ability"
 
 
-Action = Union[DrawCardAction, PlayCardAction, EndTurnAction, ChooseOptionAction, UseAbilityAction]
+@dataclass(frozen=True)
+class SurrenderAction:
+    """Concede the match immediately, regardless of whose turn it is."""
+
+    player_id: int
+    kind: Literal["surrender"] = "surrender"
+
+
+Action = Union[
+    DrawCardAction, PlayCardAction, EndTurnAction, ChooseOptionAction, UseAbilityAction, SurrenderAction
+]

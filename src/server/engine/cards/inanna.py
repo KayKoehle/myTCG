@@ -14,7 +14,9 @@ from ..effects import (
     partners_in_underworld,
     register,
     register_choice,
+    register_opponent_chain,
     revive_choice_on_enter,
+    start_opponent_chain,
     send_hand_being_to_underworld,
     swap_with_underworld_partner,
     tutor_named,
@@ -30,23 +32,27 @@ GESHTINANNA = "Geshtinanna, Dumuzid's Sister"
 
 # --- Inanna and her rescuers -------------------------------------------------
 
-def _inanna_revive(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    # "For every opponent, banish one of their beings if possible":
-    # mandatory, and the player reviving Inanna targets the being to banish.
-    opponent_idx = 1 - player_idx
+def _inanna_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opponent_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx
     ]
-    if options:
-        return Halt(
-            prim.with_pending_choice(
-                state, player_idx, "banish_enemy", card_id, location_idx,
-                prim.choose_options_for_cards(options), "Choose an enemy being to banish",
-            )
-        )
+    if not options:
+        return None
+    return ("actor", "banish_enemy", prim.choose_options_for_cards(options), "Choose an enemy being to banish")
+
+
+def _inanna_revive(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "For every opponent, banish one of their beings if possible":
+    # mandatory, and the player reviving Inanna targets the being to banish.
+    chained = start_opponent_chain(rt, state, player_idx, "inanna_banish", card_id, location_idx)
+    if chained is not None:
+        return Halt(chained)
     return state
+
+
+register_opponent_chain("inanna_banish", _inanna_chain_step)
 
 
 def _ninshubur_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
@@ -187,20 +193,22 @@ register_choice("namtar_send_to_underworld", _handle_namtar_send)
 
 # --- Anunnaki: judges witnessing every revival --------------------------------
 
-def _anunnaki_witness_revive(rt: Any, state: GameState, reviver_idx: int, revived_card_id: str, trigger_card_id: str, trigger_location_idx: int) -> GameState | None:
-    # "Each opponent must banish one of their beings": mandatory, opponent picks.
-    opponent_idx = 1 - reviver_idx
+def _anunnaki_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opponent_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx
     ]
-    if options:
-        return prim.with_pending_choice(
-            state, opponent_idx, "banish_enemy", trigger_card_id, trigger_location_idx,
-            prim.choose_options_for_cards(options), "Banish one of your beings",
-        )
-    return None
+    if not options:
+        return None
+    return ("opponent", "banish_enemy", prim.choose_options_for_cards(options), "Banish one of your beings")
 
 
+def _anunnaki_witness_revive(rt: Any, state: GameState, reviver_idx: int, revived_card_id: str, trigger_card_id: str, trigger_location_idx: int) -> GameState | None:
+    # "Each opponent must banish one of their beings": mandatory, each
+    # opponent picks their own sacrifice.
+    return start_opponent_chain(rt, state, reviver_idx, "anunnaki_banish", trigger_card_id, trigger_location_idx)
+
+
+register_opponent_chain("anunnaki_banish", _anunnaki_chain_step)
 register("Anunnaki, The Seven Judges", CardBehavior(on_friendly_revive_while_top=_anunnaki_witness_revive))

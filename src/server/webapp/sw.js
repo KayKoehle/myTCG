@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mytcg-webapp-v15';
+const CACHE_NAME = 'mytcg-webapp-v21';
 const STATIC_ASSETS = [
     '/webapp/',
     '/webapp/styles.css',
@@ -7,6 +7,8 @@ const STATIC_ASSETS = [
     '/webapp/js/controller.js',
     '/webapp/js/menu.js',
     '/webapp/js/profile.js',
+    '/webapp/js/embedding.js',
+    '/webapp/js/quests.js',
     '/webapp/js/render.js',
     '/webapp/js/cardstack.js',
     '/webapp/js/helpers.js',

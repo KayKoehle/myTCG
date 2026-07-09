@@ -1,38 +1,88 @@
 import { postJson } from './api.js';
-import { cardArtTag, cardPngUrl, escapeHtml } from './helpers.js';
+import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
+import { createCardRecommender, createCardSearch } from './embedding.js';
+import { getQuestBoard } from './quests.js';
 import {
     BOARDS,
     CARD_BACKS,
-    DECK_IDS,
     DECK_META,
+    DECK_SIZE,
     EMOTES,
+    allDeckIds,
     applyCosmetics,
     buyItem,
+    cardDeckStats,
+    createCustomDeck,
     deckCardIds,
+    deckCosmetic,
     deckDisplayName,
+    deckEmoteLoadout,
     deckIsEdited,
     deckMatchConfig,
+    deckWinRate,
+    decksUnlocked,
+    deleteCustomDeck,
     equipItem,
     equippedItem,
+    GAME_MODES,
+    gameModeById,
     getCrowns,
+    getFavoriteMode,
     getSelectedDeckId,
+    setFavoriteMode,
+    isCustomDeck,
+    MAX_ACTIVE_EMOTES,
+    ownedEmotes,
     ownsItem,
     renameDeck,
     resetDeck,
     selectDeck,
     setDeckCards,
+    setDeckCosmetic,
+    setDeckEmoteLoadout,
+    shopUnlocked,
+    DECK_IDS,
 } from './profile.js';
+
+// Companion cards belong together: the collection and the deck grid show them
+// as one stack and deck building adds them as a unit.
+const COMPANION_GROUPS = [
+    ['Gilgamesh', 'Enkidu'],
+    ['Achilles', 'Patroclus'],
+    ['Kur-Jara', 'Gala-Tura'],
+];
+
+function companionPartnerName(cardName) {
+    for (const [a, b] of COMPANION_GROUPS) {
+        if (cardName === a) return b;
+        if (cardName === b) return a;
+    }
+    return null;
+}
 
 // Menu / Decks / Shop screens. The game screen itself stays owned by the
 // game controller; this controller only decides which screen is visible and
 // starts matches (player's selected deck vs. a random stock AI deck).
-export function createMenuController(ui, game) {
+export function createMenuController(ui, game, cardStack) {
     // Stock deck lists + full card details, fetched once from /api/collection.
     let stockCardsByDeck = null; // Map deckId -> [card, ...] (deck order)
     let collectionError = null;
     let editorDeckId = null; // deck being edited on the Decks screen
-    let editorSelectedCardId = null; // deck card marked for a swap
     let shopTab = 'cardBack';
+    let confirmingDelete = false; // two-tap guard for deleting a custom deck
+    let styleOpen = false; // deck-style section stays collapsed across re-renders
+
+    // Collection browsing state.
+    let searchQuery = '';
+    let sortMode = 'name';
+    let typeFilter = '';
+    let costFilter = '';
+    let powerFilter = '';
+    let controlsBuilt = false;
+
+    // Embedding models, fitted once on the loaded collection.
+    let cardSearch = null; // (query) -> [{card, score}] | null
+    let recommender = null; // (deckCards, candidates, limit) -> [{card, score}]
 
     const SHOP_TABS = [
         { kind: 'cardBack', label: 'Card Backs', items: CARD_BACKS },
@@ -49,6 +99,9 @@ export function createMenuController(ui, game) {
                 stockCardsByDeck.set(deck.deck_id, deck.cards || []);
             }
             collectionError = null;
+            const cards = allCollectionCards();
+            cardSearch = createCardSearch(cards);
+            recommender = createCardRecommender(cards);
         } catch (error) {
             collectionError = String(error);
         }
@@ -64,6 +117,15 @@ export function createMenuController(ui, game) {
         if (!stockCardsByDeck) return null;
         for (const cards of stockCardsByDeck.values()) {
             const found = cards.find((c) => c.id === cardId);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    function cardByName(cardName) {
+        if (!stockCardsByDeck) return null;
+        for (const cards of stockCardsByDeck.values()) {
+            const found = cards.find((c) => c.name === cardName);
             if (found) return found;
         }
         return null;
@@ -101,105 +163,558 @@ export function createMenuController(ui, game) {
 
     // --- Main menu -----------------------------------------------------------
 
+    // The art shown for a deck: the stock signature card, or a custom deck's
+    // first card (once the collection is loaded).
+    function deckArtCardName(deckId) {
+        if (DECK_META[deckId]) return DECK_META[deckId].mainCard;
+        const firstId = deckCardIds(deckId, stockIds(deckId))[0];
+        const card = firstId ? cardById(firstId) : null;
+        return card ? card.name : null;
+    }
+
+    function deckArtHtml(deckId) {
+        const mainCard = deckArtCardName(deckId);
+        if (!mainCard) return '<div class="deck-art-empty">?</div>';
+        return `<img src="${cardPngUrl(mainCard)}" alt="${escapeHtml(mainCard)}" draggable="false" loading="lazy" onerror="this.style.display='none';">`;
+    }
+
+    // Favorite game mode: the Play button always launches it directly; the
+    // chip row underneath changes (and persists) the favorite.
+    function renderModeRow() {
+        if (!ui.menuModeRow) return;
+        const favorite = getFavoriteMode();
+        ui.menuModeRow.innerHTML = GAME_MODES.map((mode) => `
+            <button class="mode-chip ${mode.id === favorite ? 'active' : ''}" role="radio"
+                aria-checked="${mode.id === favorite}" data-mode-id="${mode.id}"
+                title="${escapeHtml(mode.name)}">${escapeHtml(mode.label)}</button>
+        `).join('');
+        ui.menuModeRow.querySelectorAll('[data-mode-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setFavoriteMode(btn.dataset.modeId);
+                renderMenu();
+            });
+        });
+        if (ui.menuPlaySub) {
+            const mode = gameModeById(favorite);
+            ui.menuPlaySub.textContent = mode.sub;
+        }
+    }
+
     function renderMenu() {
         updateCrowns();
         const deckId = getSelectedDeckId();
-        const mainCard = DECK_META[deckId].mainCard;
-        ui.menuDeckArt.innerHTML = `<img src="${cardPngUrl(mainCard)}" alt="${escapeHtml(mainCard)}" draggable="false" loading="lazy" onerror="this.style.display='none';">`;
+        ui.menuDeckArt.innerHTML = deckArtHtml(deckId);
         ui.menuDeckName.textContent = deckDisplayName(deckId);
+        renderModeRow();
+
+        const decksLocked = !decksUnlocked();
+        const shopLocked = !shopUnlocked();
+        ui.btnMenuDecks.classList.toggle('locked', decksLocked);
+        ui.btnMenuShop.classList.toggle('locked', shopLocked);
+        if (ui.menuDecksLock) ui.menuDecksLock.classList.toggle('hidden', !decksLocked);
+        if (ui.menuShopLock) ui.menuShopLock.classList.toggle('hidden', !shopLocked);
+
+        renderQuestPanel();
     }
 
     function openMenu() {
+        // Back on the menu the default cosmetics apply again (a match may have
+        // switched to a deck's own card back / board).
+        applyCosmetics();
         renderMenu();
         showScreen('menu');
     }
 
+    // --- Quests ----------------------------------------------------------------
+
+    function questRowHtml(item, label) {
+        const pct = Math.round(Math.min(1, item.progress / item.def.target) * 100);
+        return `
+            <div class="quest-row ${item.done ? 'done' : ''}">
+                <div class="quest-row-main">
+                    <div class="quest-title">${escapeHtml(item.def.title)}</div>
+                    <div class="quest-bar"><div class="quest-bar-fill" style="width:${pct}%"></div></div>
+                </div>
+                <div class="quest-side">
+                    <span class="quest-progress">${item.done ? '✓' : `${item.progress}/${item.def.target}`}</span>
+                    <span class="quest-reward">${item.def.reward}<span class="crown-icon"></span></span>
+                </div>
+            </div>
+        `;
+    }
+
+    // "new in 4h 32m" — how long until the next quest rotation.
+    function countdownText(ms) {
+        const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    }
+
+    function renderQuestPanel() {
+        if (!ui.menuQuests) return;
+        const board = getQuestBoard();
+        ui.menuQuests.classList.remove('hidden');
+        if (!board.unlocked) {
+            // Locked panels look like the locked Decks/Shop tiles.
+            ui.menuQuests.innerHTML = `
+                <div class="quest-section quest-locked">🔒 Play 3 games to unlock quests</div>
+            `;
+            return;
+        }
+        const { def: eventDef, active: eventActive } = board.weekend;
+        ui.menuQuests.innerHTML = `
+            <div class="weekend-banner ${eventActive ? 'live' : ''}">
+                <div class="weekend-head">
+                    <span class="weekend-label">${eventActive ? 'Weekend event — live now' : 'This weekend'}</span>
+                    <span class="weekend-name">${escapeHtml(eventDef.name)}</span>
+                </div>
+                <div class="weekend-desc">${escapeHtml(eventDef.desc)}</div>
+            </div>
+            <div class="quest-section">
+                <div class="quest-section-title">Daily quests
+                    <span class="quest-countdown">new in ${countdownText(board.dailyResetMs)}</span></div>
+                ${board.daily.map((item) => questRowHtml(item)).join('')}
+            </div>
+            <div class="quest-section">
+                <div class="quest-section-title">Weekly quests
+                    <span class="quest-countdown">new in ${countdownText(board.weeklyResetMs)}</span></div>
+                ${board.weekly.map((item) => questRowHtml(item)).join('')}
+            </div>
+        `;
+    }
+
+    // --- Play ---------------------------------------------------------------------
+
     async function play() {
         await ensureCollection();
         const deckId = getSelectedDeckId();
+        const ids = deckCardIds(deckId, stockIds(deckId));
+        if (ids.length !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(deckId)}" needs exactly ${DECK_SIZE} cards (it has ${ids.length}).`);
+            openDecks();
+            return;
+        }
         const deckA = deckMatchConfig(deckId, stockIds(deckId));
-        // The AI draws a random stock deck. Mirror matches are fine: the
-        // engine aliases shared card ids for side B.
-        const aiDeckId = DECK_IDS[Math.floor(Math.random() * DECK_IDS.length)];
+        // Every AI rival draws a random stock deck. Mirror matches are fine:
+        // the engine aliases card ids shared between seats.
+        const mode = gameModeById(getFavoriteMode());
+        const aiDecks = Array.from(
+            { length: Math.max(1, mode.players - 1) },
+            () => DECK_IDS[Math.floor(Math.random() * DECK_IDS.length)]
+        );
+        applyCosmetics(deckId); // this deck's card back / board / emotes
         showScreen('game');
         await game.startGame({
             deckAName: deckA.name,
             deckACards: deckA.cards,
-            deckBName: aiDeckId,
+            deckBName: aiDecks[0],
+            decks: mode.players > 2 ? [deckA.name, ...aiDecks] : null,
+            statsMeta: { deckId, cardIds: ids },
         });
     }
 
-    // --- Decks screen ----------------------------------------------------------
+    // --- Card grouping (companion stacks) ------------------------------------
 
-    function miniCardHtml(card, { inDeck = false, selected = false } = {}) {
+    // Groups a card list into entries: single cards, or a companion stack when
+    // both partners are present in the list. Order is preserved.
+    function groupCards(cards) {
+        const entries = [];
+        const consumed = new Set();
+        for (const card of cards) {
+            if (consumed.has(card.id)) continue;
+            const partnerName = companionPartnerName(card.name);
+            const partner = partnerName ? cards.find((c) => c.name === partnerName && !consumed.has(c.id)) : null;
+            if (partner) {
+                consumed.add(card.id);
+                consumed.add(partner.id);
+                entries.push({ kind: 'stack', cards: [card, partner] });
+            } else {
+                consumed.add(card.id);
+                entries.push({ kind: 'card', cards: [card] });
+            }
+        }
+        return entries;
+    }
+
+    // Win rate of a card inside the deck being edited (never global).
+    function deckWrBadgeHtml(card) {
+        if (!editorDeckId) return '';
+        const s = cardDeckStats(editorDeckId, card.id);
+        if (!s) return '';
+        return `<div class="mini-wr">${Math.round(s.rate * 100)}% WR</div>`;
+    }
+
+    function miniCardHtml(card, { inDeck = false, badgeHtml = '' } = {}) {
         if (!card) return '';
         return `
-            <div class="mini-card ${inDeck ? 'in-deck' : ''} ${selected ? 'selected' : ''}" data-card-id="${escapeHtml(card.id)}">
+            <div class="mini-card ${inDeck ? 'in-deck' : ''}" data-card-id="${escapeHtml(card.id)}">
                 <div class="mini-head">
                     <span class="stat-badge cost">${card.cost ?? '?'}</span>
                     <span class="stat-badge power">${card.power !== null && card.power !== undefined ? card.power : '?'}</span>
                 </div>
                 <div class="mini-media">${cardArtTag(card.name, 'mini-art')}</div>
                 <div class="mini-name">${escapeHtml(card.name || '')}</div>
-                ${inDeck ? '<div class="mini-flag">In deck</div>' : ''}
+                ${badgeHtml}
             </div>
         `;
     }
 
-    function renderDeckRow() {
-        const selectedId = getSelectedDeckId();
-        ui.decksTitle.textContent = 'Decks';
-        ui.decksTop.innerHTML = `
-            <div class="deck-row">
-                ${DECK_IDS.map((deckId) => {
-                    const mainCard = DECK_META[deckId].mainCard;
-                    return `
-                        <button class="deck-tile ${deckId === selectedId ? 'selected' : ''}" data-deck-id="${deckId}">
-                            <div class="deck-tile-art">
-                                <img src="${cardPngUrl(mainCard)}" alt="${escapeHtml(mainCard)}" draggable="false" loading="lazy" onerror="this.style.display='none';">
-                            </div>
-                            <div class="deck-tile-name">${escapeHtml(deckDisplayName(deckId))}</div>
-                            <div class="deck-tile-tags">
-                                ${deckId === selectedId ? '<span class="deck-tag deck-tag-selected">Selected</span>' : ''}
-                                ${deckIsEdited(deckId) ? '<span class="deck-tag">Edited</span>' : ''}
-                            </div>
-                        </button>
-                    `;
-                }).join('')}
+    // cardBadge: per-card badge html (deck win rate, match score);
+    // action: quick add/remove corner button.
+    function entryHtml(entry, index, { inDeck = false, cardBadge = null, action = null } = {}) {
+        const actionHtml = action
+            ? `<button class="mini-act ${action}" data-entry-act="${action}"
+                aria-label="${action === 'add' ? 'Add to deck' : 'Remove from deck'}">${action === 'add' ? '+' : '−'}</button>`
+            : '';
+        const badgeOf = (card) => (cardBadge ? cardBadge(card) : '');
+        if (entry.kind === 'stack') {
+            return `
+                <div class="mini-stack ${inDeck ? 'in-deck' : ''}" data-entry-index="${index}">
+                    ${entry.cards.map((card) => miniCardHtml(card, { badgeHtml: badgeOf(card) })).join('')}
+                    <div class="mini-stack-tag">Companions</div>
+                    ${actionHtml}
+                </div>
+            `;
+        }
+        return `
+            <div class="mini-entry" data-entry-index="${index}">
+                ${miniCardHtml(entry.cards[0], { inDeck, badgeHtml: badgeOf(entry.cards[0]) })}
+                ${actionHtml}
             </div>
         `;
-        ui.decksTop.querySelectorAll('.deck-tile[data-deck-id]').forEach((tile) => {
-            tile.addEventListener('click', () => {
-                const deckId = tile.dataset.deckId;
-                selectDeck(deckId);
-                editorDeckId = deckId;
-                editorSelectedCardId = null;
-                renderDecks();
-            });
+    }
+
+    // --- Card popup (read / add / remove) --------------------------------------
+
+    function entryTitle(entry) {
+        return entry.cards.map((c) => c.name).join(' & ');
+    }
+
+    // Deck-scoped stats line for the popup: "60% win rate in this deck
+    // (5 games) · 75% when played (4 plays)". Nothing outside a deck context.
+    function cardStatsNote(card) {
+        if (!editorDeckId) return null;
+        const s = cardDeckStats(editorDeckId, card.id);
+        if (!s) return null;
+        const inDeckPart = `${Math.round(s.rate * 100)}% win rate in this deck (${s.games} game${s.games === 1 ? '' : 's'})`;
+        const playedPart = s.played
+            ? `${Math.round(s.playedRate * 100)}% when played (${s.played} play${s.played === 1 ? '' : 's'})`
+            : 'not played yet';
+        return `${inDeckPart} · ${playedPart}.`;
+    }
+
+    function entryNote(entry) {
+        const parts = [];
+        if (entry.kind === 'stack') parts.push('Companions — they join and leave a deck together.');
+        for (const card of entry.cards) {
+            const note = cardStatsNote(card);
+            if (note) parts.push(entry.cards.length > 1 ? `${card.name} — ${note}` : note);
+        }
+        return parts.join(' ');
+    }
+
+    // Every collection/deck card opens in the shared card-stack popup so it
+    // can actually be read; deck building actions ride along as buttons.
+    function openCardPopup(entry, { action = null, actionLabel = '', onAction = null } = {}) {
+        cardStack.open({
+            mode: 'view',
+            expandAll: true,
+            title: entryTitle(entry),
+            cards: entry.cards.map((card) => ({ card, option: card.id })),
+            note: entryNote(entry),
+            extras: action ? [{ value: action, label: actionLabel, kind: action }] : [],
+            onExtra: () => {
+                if (onAction) onAction();
+            },
         });
     }
+
+    // --- Decks screen -----------------------------------------------------------
 
     function currentEditorIds() {
         return deckCardIds(editorDeckId, stockIds(editorDeckId));
     }
 
+    function deckStatsLine(deckId) {
+        const wr = deckWinRate(deckId);
+        if (!wr) return '<span class="deck-tile-stats muted">No games yet</span>';
+        return `<span class="deck-tile-stats">${Math.round(wr.rate * 100)}% WR · ${wr.games} game${wr.games === 1 ? '' : 's'}</span>`;
+    }
+
+    function renderDeckList() {
+        const selectedId = getSelectedDeckId();
+        ui.decksTitle.textContent = 'Decks';
+        ui.decksTop.innerHTML = `
+            <div class="deck-row">
+                ${allDeckIds().map((deckId) => {
+                    const selected = deckId === selectedId;
+                    const size = deckCardIds(deckId, stockIds(deckId)).length;
+                    const sizeWarn = size !== DECK_SIZE ? `<span class="deck-tag deck-tag-warn">${size}/${DECK_SIZE}</span>` : '';
+                    return `
+                        <div class="deck-tile ${selected ? 'selected' : ''}" data-deck-id="${deckId}">
+                            <div class="deck-tile-art">${deckArtHtml(deckId)}</div>
+                            <div class="deck-tile-name">${escapeHtml(deckDisplayName(deckId))}</div>
+                            ${deckStatsLine(deckId)}
+                            <div class="deck-tile-tags">
+                                ${isCustomDeck(deckId) ? '<span class="deck-tag">Custom</span>' : ''}
+                                ${deckIsEdited(deckId) ? '<span class="deck-tag">Edited</span>' : ''}
+                                ${sizeWarn}
+                            </div>
+                            <div class="deck-tile-actions">
+                                ${selected
+                                    ? '<button class="btn deck-action-btn deck-selected-btn" disabled>Selected</button>'
+                                    : '<button class="btn deck-action-btn" data-deck-action="select">Select</button>'}
+                                <button class="btn deck-action-btn ghost" data-deck-action="edit">Edit</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+                <button class="deck-tile deck-tile-new" id="deckNewBtn">
+                    <div class="deck-new-plus">+</div>
+                    <div class="deck-tile-name">New deck</div>
+                </button>
+            </div>
+        `;
+
+        ui.decksTop.querySelectorAll('.deck-tile[data-deck-id]').forEach((tile) => {
+            const deckId = tile.dataset.deckId;
+            tile.querySelectorAll('[data-deck-action]').forEach((btn) => {
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    if (btn.dataset.deckAction === 'select') {
+                        selectDeck(deckId);
+                        renderDecks();
+                        renderMenu();
+                    } else {
+                        openEditor(deckId);
+                    }
+                });
+            });
+            // Tapping the tile body also opens the editor (like tapping a
+            // shop item's preview).
+            tile.addEventListener('click', () => openEditor(deckId));
+        });
+        const newBtn = ui.decksTop.querySelector('#deckNewBtn');
+        if (newBtn) {
+            newBtn.addEventListener('click', () => {
+                openEditor(createCustomDeck());
+            });
+        }
+    }
+
+    function openEditor(deckId) {
+        editorDeckId = deckId;
+        confirmingDelete = false;
+        styleOpen = false;
+        renderDecks();
+    }
+
+    // --- Per-deck cosmetics (deck editor section) --------------------------------
+
+    function cosmeticRowHtml(kind, label, items) {
+        const current = deckCosmetic(editorDeckId, kind); // null = default
+        const ownedItems = items.filter((item) => ownsItem(kind, item.id));
+        const defaultItem = items.find((item) => item.id === equippedItem(kind));
+        const previewHtml = (item) => (kind === 'cardBack'
+            ? `<span class="cos-mini cos-mini-back" data-cardback="${item.id}"></span>`
+            : `<span class="cos-mini cos-mini-board" data-board="${item.id}"></span>`);
+        return `
+            <div class="cos-row">
+                <span class="cos-row-label">${label}</span>
+                <div class="cos-chips">
+                    <button class="cos-chip ${current === null ? 'active' : ''}" data-cos-kind="${kind}" data-cos-id=""
+                        title="Use your default (${escapeHtml(defaultItem ? defaultItem.name : 'Classic')})">Default</button>
+                    ${ownedItems.map((item) => `
+                        <button class="cos-chip cos-chip-preview ${current === item.id ? 'active' : ''}"
+                            data-cos-kind="${kind}" data-cos-id="${item.id}" title="${escapeHtml(item.name)}">
+                            ${previewHtml(item)}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function emoteRowHtml() {
+        const owned = ownedEmotes();
+        const loadout = deckEmoteLoadout(editorDeckId);
+        const active = new Set((loadout || owned.map((e) => e.id)).slice(0, MAX_ACTIVE_EMOTES));
+        return `
+            <div class="cos-row">
+                <span class="cos-row-label">Emotes</span>
+                <div class="cos-chips">
+                    ${owned.map((emote) => `
+                        <button class="cos-chip cos-emote-chip ${active.has(emote.id) ? 'active' : ''}"
+                            data-emote-id="${emote.id}">${escapeHtml(emote.text)}</button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function bindCosmeticRows() {
+        ui.decksTop.querySelectorAll('[data-cos-kind]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setDeckCosmetic(editorDeckId, btn.dataset.cosKind, btn.dataset.cosId || null);
+                renderDecks();
+            });
+        });
+        const owned = ownedEmotes();
+        ui.decksTop.querySelectorAll('[data-emote-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const current = new Set((deckEmoteLoadout(editorDeckId) || owned.map((e) => e.id)).slice(0, MAX_ACTIVE_EMOTES));
+                const emoteId = btn.dataset.emoteId;
+                if (current.has(emoteId)) {
+                    if (current.size === 1) {
+                        showToast('Keep at least one emote in the loadout.');
+                        return;
+                    }
+                    current.delete(emoteId);
+                } else {
+                    if (current.size >= MAX_ACTIVE_EMOTES) {
+                        showToast(`Pick at most ${MAX_ACTIVE_EMOTES} emotes — remove one first.`);
+                        return;
+                    }
+                    current.add(emoteId);
+                }
+                // A loadout covering everything owned is just the default.
+                const next = current.size === owned.length ? null : Array.from(current);
+                setDeckEmoteLoadout(editorDeckId, next);
+                renderDecks();
+            });
+        });
+    }
+
+    // --- Recommendations ---------------------------------------------------------
+
+    // Embedding-based recommendations: candidates outside the deck ranked by
+    // cosine similarity to the deck's centroid vector (see embedding.js).
+    function recommendedEntries() {
+        if (!recommender || !stockCardsByDeck) return [];
+        const ids = new Set(currentEditorIds());
+        const deckCards = currentEditorIds().map(cardById).filter(Boolean);
+        if (!deckCards.length) return [];
+        const candidates = allCollectionCards().filter((card) => !ids.has(card.id));
+        const recs = recommender(deckCards, candidates, 12);
+        const scoreById = new Map(recs.map((r) => [r.card.id, r.score]));
+        // Companion halves surface as one stack; keep relevance order.
+        const entries = [];
+        const seen = new Set();
+        for (const { card, score } of recs) {
+            if (seen.has(card.id)) continue;
+            const partnerName = companionPartnerName(card.name);
+            const partner = partnerName ? cardByName(partnerName) : null;
+            if (partner && !ids.has(partner.id)) {
+                seen.add(card.id);
+                seen.add(partner.id);
+                entries.push({ kind: 'stack', cards: [card, partner], score: Math.max(score, scoreById.get(partner.id) || 0) });
+            } else if (!partner || ids.has(partner.id)) {
+                seen.add(card.id);
+                entries.push({ kind: 'card', cards: [card], score });
+            }
+            if (entries.length >= 6) break;
+        }
+        return entries;
+    }
+
+    let lastRecommendedEntries = [];
+
+    // Cosine similarity displayed relative to the best candidate: the top
+    // recommendation reads 100%, the rest scale down from there.
+    function matchBadgeHtml(entry, topScore) {
+        if (!topScore) return '';
+        const pct = Math.max(1, Math.round((entry.score / topScore) * 100));
+        return `<div class="mini-match">${pct}% match</div>`;
+    }
+
+    function recommendedRowHtml() {
+        lastRecommendedEntries = recommendedEntries();
+        const topScore = lastRecommendedEntries.length ? lastRecommendedEntries[0].score : 0;
+        const body = lastRecommendedEntries.length
+            ? lastRecommendedEntries.map((entry, i) => entryHtml(entry, i, {
+                cardBadge: () => matchBadgeHtml(entry, topScore),
+                action: 'add',
+            })).join('')
+            : `<div class="rec-empty tiny">${currentEditorIds().length
+                ? 'No recommendations right now.'
+                : 'Add a few cards and recommendations will appear here.'}</div>`;
+        return `
+            <div class="rec-wrap">
+                <div class="collection-label">Recommended for this deck</div>
+                <div class="rec-row" id="recRow">${body}</div>
+            </div>
+        `;
+    }
+
+    // --- Deck editor -----------------------------------------------------------
+
+    function addEntryToDeck(entry) {
+        const ids = currentEditorIds();
+        const newIds = entry.cards.map((c) => c.id).filter((id) => !ids.includes(id));
+        if (!newIds.length) return;
+        if (ids.length + newIds.length > DECK_SIZE) {
+            showToast(`A deck holds ${DECK_SIZE} cards — remove ${ids.length + newIds.length - DECK_SIZE} first.`);
+            return;
+        }
+        setDeckCards(editorDeckId, [...ids, ...newIds], stockIds(editorDeckId));
+        renderDecks();
+    }
+
+    function removeEntryFromDeck(entry) {
+        const removeIds = new Set(entry.cards.map((c) => c.id));
+        const ids = currentEditorIds().filter((id) => !removeIds.has(id));
+        setDeckCards(editorDeckId, ids, stockIds(editorDeckId));
+        renderDecks();
+    }
+
+    // The +/- corner buttons: act directly, without opening the card popup.
+    function bindQuickActions(container, entriesFor) {
+        container.querySelectorAll('.mini-act').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const el = btn.closest('[data-entry-index]');
+                const entry = el && entriesFor()[Number(el.dataset.entryIndex)];
+                if (!entry) return;
+                if (btn.dataset.entryAct === 'add') addEntryToDeck(entry);
+                else removeEntryFromDeck(entry);
+            });
+        });
+    }
+
     function renderDeckEditor() {
         const deckId = editorDeckId;
         const ids = currentEditorIds();
+        const custom = isCustomDeck(deckId);
+        const deckEntries = groupCards(ids.map(cardById).filter(Boolean));
         ui.decksTitle.textContent = 'Edit deck';
         ui.decksTop.innerHTML = `
             <div class="deck-editor">
                 <div class="deck-editor-head">
                     <input class="deck-name-input" id="deckNameInput" maxlength="30"
                         value="${escapeHtml(deckDisplayName(deckId))}" aria-label="Deck name">
-                    <button class="btn deck-reset-btn" id="deckResetBtn" title="Restore the stock deck list and name">Reset</button>
+                    <span class="deck-count ${ids.length === DECK_SIZE ? 'ok' : 'warn'}">${ids.length}/${DECK_SIZE}</span>
+                    ${custom
+                        ? `<button class="btn deck-reset-btn danger-ghost" id="deckDeleteBtn">${confirmingDelete ? 'Really delete?' : 'Delete'}</button>`
+                        : '<button class="btn deck-reset-btn" id="deckResetBtn" title="Restore the stock deck list and name">Reset</button>'}
                 </div>
-                <div class="deck-editor-hint">${editorSelectedCardId
-                    ? 'Now tap a collection card below to swap it in.'
-                    : 'Tap a deck card, then a collection card below to swap.'}</div>
                 <div class="deck-grid">
-                    ${ids.map((cardId) => miniCardHtml(cardById(cardId), { selected: cardId === editorSelectedCardId })).join('')}
+                    ${deckEntries.length
+                        ? deckEntries.map((entry, i) => entryHtml(entry, i, { cardBadge: deckWrBadgeHtml, action: 'remove' })).join('')
+                        : Array.from({ length: DECK_SIZE }, () => '<div class="deck-slot-empty" aria-hidden="true"></div>').join('')}
                 </div>
+                <details class="cos-section" id="deckStyleSection" ${styleOpen ? 'open' : ''}>
+                    <summary class="collection-label cos-summary">Deck style</summary>
+                    <div class="cos-body">
+                        ${cosmeticRowHtml('cardBack', 'Card back', CARD_BACKS)}
+                        ${cosmeticRowHtml('board', 'Board', BOARDS)}
+                        ${emoteRowHtml()}
+                    </div>
+                </details>
+                ${recommendedRowHtml()}
             </div>
         `;
 
@@ -209,70 +724,243 @@ export function createMenuController(ui, game) {
             nameInput.value = deckDisplayName(deckId);
             renderMenu();
         });
-        ui.decksTop.querySelector('#deckResetBtn').addEventListener('click', () => {
-            resetDeck(deckId);
-            editorSelectedCardId = null;
-            renderDecks();
-            renderMenu();
-        });
-        ui.decksTop.querySelectorAll('.mini-card[data-card-id]').forEach((cardEl) => {
-            cardEl.addEventListener('click', () => {
-                const cardId = cardEl.dataset.cardId;
-                editorSelectedCardId = editorSelectedCardId === cardId ? null : cardId;
+        const resetBtn = ui.decksTop.querySelector('#deckResetBtn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                resetDeck(deckId);
                 renderDecks();
+                renderMenu();
+            });
+        }
+        const deleteBtn = ui.decksTop.querySelector('#deckDeleteBtn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                if (!confirmingDelete) {
+                    confirmingDelete = true;
+                    deleteBtn.textContent = 'Really delete?';
+                    setTimeout(() => {
+                        confirmingDelete = false;
+                        if (deleteBtn.isConnected) deleteBtn.textContent = 'Delete';
+                    }, 2600);
+                    return;
+                }
+                deleteCustomDeck(deckId);
+                editorDeckId = null;
+                renderDecks();
+                renderMenu();
+            });
+        }
+
+        const styleSection = ui.decksTop.querySelector('#deckStyleSection');
+        if (styleSection) {
+            styleSection.addEventListener('toggle', () => {
+                styleOpen = styleSection.open;
+            });
+        }
+
+        // Deck cards: popup with a Remove action.
+        const deckGrid = ui.decksTop.querySelector('.deck-grid');
+        deckGrid.querySelectorAll('[data-entry-index]').forEach((el) => {
+            el.addEventListener('click', () => {
+                const entry = deckEntries[Number(el.dataset.entryIndex)];
+                if (!entry) return;
+                openCardPopup(entry, {
+                    action: 'remove',
+                    actionLabel: entry.kind === 'stack' ? 'Remove both from deck' : 'Remove from deck',
+                    onAction: () => removeEntryFromDeck(entry),
+                });
             });
         });
+        bindQuickActions(deckGrid, () => deckEntries);
+
+        // Recommended cards: popup with an Add action.
+        const recRow = ui.decksTop.querySelector('.rec-row');
+        recRow.querySelectorAll('[data-entry-index]').forEach((el) => {
+            el.addEventListener('click', () => {
+                const entry = lastRecommendedEntries[Number(el.dataset.entryIndex)];
+                if (!entry) return;
+                openCardPopup(entry, {
+                    action: 'add',
+                    actionLabel: entry.kind === 'stack' ? 'Add both to deck' : 'Add to deck',
+                    onAction: () => addEntryToDeck(entry),
+                });
+            });
+        });
+        bindQuickActions(recRow, () => lastRecommendedEntries);
+
+        bindCosmeticRows();
     }
 
-    function renderCollection() {
+    // --- Collection browser -------------------------------------------------------
+
+    function inNumericRange(value, range) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return false;
+        const [min, max] = range;
+        return n >= min && (max === null || n <= max);
+    }
+
+    const COST_FILTERS = {
+        low: { label: 'Cost 0–1', range: [0, 1] },
+        mid: { label: 'Cost 2–3', range: [2, 3] },
+        high: { label: 'Cost 4+', range: [4, null] },
+    };
+
+    const POWER_FILTERS = {
+        low: { label: 'Power 0–2', range: [0, 2] },
+        mid: { label: 'Power 3–5', range: [3, 5] },
+        high: { label: 'Power 6+', range: [6, null] },
+    };
+
+    const SORTERS = {
+        name: (a, b) => String(a.name).localeCompare(String(b.name)),
+        'cost-asc': (a, b) => (Number(a.cost) || 0) - (Number(b.cost) || 0),
+        'cost-desc': (a, b) => (Number(b.cost) || 0) - (Number(a.cost) || 0),
+        'power-asc': (a, b) => (Number(a.power) || 0) - (Number(b.power) || 0),
+        'power-desc': (a, b) => (Number(b.power) || 0) - (Number(a.power) || 0),
+    };
+
+    function visibleCollectionCards() {
+        let cards = allCollectionCards();
+        if (typeFilter) cards = cards.filter((c) => String(c.type || '') === typeFilter);
+        if (costFilter) cards = cards.filter((c) => inNumericRange(c.cost, COST_FILTERS[costFilter].range));
+        if (powerFilter) cards = cards.filter((c) => inNumericRange(c.power, POWER_FILTERS[powerFilter].range));
+
+        if (searchQuery.trim() && cardSearch) {
+            // Embedding search: relevance order, typo tolerant.
+            const results = cardSearch(searchQuery) || [];
+            const rank = new Map(results.map((r, i) => [r.card.id, i]));
+            cards = cards
+                .filter((c) => rank.has(c.id))
+                .sort((a, b) => rank.get(a.id) - rank.get(b.id));
+        } else if (SORTERS[sortMode]) {
+            cards = cards.slice().sort(SORTERS[sortMode]);
+        }
+        return cards;
+    }
+
+    function renderCollectionControls() {
+        if (!ui.collectionControls) return;
+        if (!stockCardsByDeck) return; // type options need the collection
+        if (controlsBuilt) return;
+        controlsBuilt = true;
+
+        const types = Array.from(new Set(allCollectionCards().map((c) => String(c.type || '')).filter(Boolean))).sort();
+        ui.collectionControls.innerHTML = `
+            <input type="search" class="collection-search" id="collectionSearch"
+                placeholder="Search cards…" autocomplete="off" spellcheck="false">
+            <div class="collection-filters">
+                <select id="collectionSort" aria-label="Sort cards">
+                    <option value="name">Name A–Z</option>
+                    <option value="cost-asc">Cost: low first</option>
+                    <option value="cost-desc">Cost: high first</option>
+                    <option value="power-asc">Power: low first</option>
+                    <option value="power-desc">Power: high first</option>
+                </select>
+                <select id="collectionType" aria-label="Filter by type">
+                    <option value="">All types</option>
+                    ${types.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+                </select>
+                <select id="collectionCost" aria-label="Filter by cost">
+                    <option value="">Any cost</option>
+                    ${Object.entries(COST_FILTERS).map(([key, f]) => `<option value="${key}">${f.label}</option>`).join('')}
+                </select>
+                <select id="collectionPower" aria-label="Filter by power">
+                    <option value="">Any power</option>
+                    ${Object.entries(POWER_FILTERS).map(([key, f]) => `<option value="${key}">${f.label}</option>`).join('')}
+                </select>
+            </div>
+        `;
+
+        ui.collectionControls.querySelector('#collectionSearch').addEventListener('input', (event) => {
+            searchQuery = event.target.value;
+            renderCollectionGrid();
+        });
+        const bindSelect = (id, apply) => {
+            ui.collectionControls.querySelector(id).addEventListener('change', (event) => {
+                apply(event.target.value);
+                renderCollectionGrid();
+            });
+        };
+        bindSelect('#collectionSort', (v) => { sortMode = v; });
+        bindSelect('#collectionType', (v) => { typeFilter = v; });
+        bindSelect('#collectionCost', (v) => { costFilter = v; });
+        bindSelect('#collectionPower', (v) => { powerFilter = v; });
+    }
+
+    let lastCollectionEntries = [];
+
+    function renderCollectionGrid() {
         if (collectionError) {
             ui.collectionGrid.innerHTML = `<div class="tiny">Collection unavailable: ${escapeHtml(collectionError)}</div>`;
             return;
         }
-        const cards = allCollectionCards();
-        if (!cards.length) {
+        const cards = visibleCollectionCards();
+        if (!allCollectionCards().length) {
             ui.collectionGrid.innerHTML = '<div class="tiny">Loading collection…</div>';
             return;
         }
+        ui.collectionLabel.textContent = 'Your collection';
+        if (!cards.length) {
+            ui.collectionGrid.innerHTML = '<div class="tiny">No cards match your search or filters.</div>';
+            return;
+        }
+
         const deckIds = editorDeckId ? new Set(currentEditorIds()) : new Set();
-        ui.collectionLabel.textContent = editorDeckId
-            ? 'Your collection — tap a card to swap it into the deck'
-            : 'Your collection';
-        ui.collectionGrid.innerHTML = cards
-            .map((card) => miniCardHtml(card, { inDeck: deckIds.has(card.id) }))
+        lastCollectionEntries = groupCards(cards);
+        ui.collectionGrid.innerHTML = lastCollectionEntries
+            .map((entry, i) => {
+                const inDeck = entry.cards.every((c) => deckIds.has(c.id));
+                return entryHtml(entry, i, {
+                    inDeck,
+                    action: editorDeckId ? (inDeck ? 'remove' : 'add') : null,
+                });
+            })
             .join('');
 
-        ui.collectionGrid.querySelectorAll('.mini-card[data-card-id]').forEach((cardEl) => {
-            cardEl.addEventListener('click', () => {
-                if (!editorDeckId) return;
-                const cardId = cardEl.dataset.cardId;
-                if (deckIds.has(cardId)) {
-                    // Its copy in the deck grid is the same card: mark it for a swap.
-                    editorSelectedCardId = editorSelectedCardId === cardId ? null : cardId;
-                    renderDecks();
+        ui.collectionGrid.querySelectorAll('[data-entry-index]').forEach((el) => {
+            el.addEventListener('click', () => {
+                const entry = lastCollectionEntries[Number(el.dataset.entryIndex)];
+                if (!entry) return;
+                if (!editorDeckId) {
+                    openCardPopup(entry); // browse mode: just read the card
                     return;
                 }
-                if (!editorSelectedCardId) return;
-                const ids = currentEditorIds().map((id) => (id === editorSelectedCardId ? cardId : id));
-                setDeckCards(editorDeckId, ids, stockIds(editorDeckId));
-                editorSelectedCardId = null;
-                renderDecks();
+                const allInDeck = entry.cards.every((c) => deckIds.has(c.id));
+                if (allInDeck) {
+                    openCardPopup(entry, {
+                        action: 'remove',
+                        actionLabel: entry.kind === 'stack' ? 'Remove both from deck' : 'Remove from deck',
+                        onAction: () => removeEntryFromDeck(entry),
+                    });
+                    return;
+                }
+                openCardPopup(entry, {
+                    action: 'add',
+                    actionLabel: entry.kind === 'stack' ? 'Add both to deck' : 'Add to deck',
+                    onAction: () => addEntryToDeck(entry),
+                });
             });
         });
+        if (editorDeckId) bindQuickActions(ui.collectionGrid, () => lastCollectionEntries);
     }
 
     function renderDecks() {
         if (editorDeckId) {
             renderDeckEditor();
         } else {
-            renderDeckRow();
+            renderDeckList();
         }
-        renderCollection();
+        renderCollectionControls();
+        renderCollectionGrid();
     }
 
     async function openDecks() {
+        if (!decksUnlocked()) {
+            showToast('Play your first game to unlock Decks.');
+            return;
+        }
         editorDeckId = null;
-        editorSelectedCardId = null;
         showScreen('decks');
         renderDecks();
         await ensureCollection();
@@ -342,6 +1030,10 @@ export function createMenuController(ui, game) {
     }
 
     function openShop() {
+        if (!shopUnlocked()) {
+            showToast('Earn your first crown to unlock the Shop.');
+            return;
+        }
         showScreen('shop');
         renderShop();
     }
@@ -362,8 +1054,8 @@ export function createMenuController(ui, game) {
         ui.btnDecksBack.addEventListener('click', () => {
             if (editorDeckId) {
                 editorDeckId = null;
-                editorSelectedCardId = null;
                 renderDecks();
+                renderMenu();
             } else {
                 openMenu();
             }
@@ -372,7 +1064,13 @@ export function createMenuController(ui, game) {
             openMenu();
         });
         renderMenu();
-        ensureCollection(); // warm the collection cache in the background
+        // Quest countdowns tick while the menu is visible.
+        setInterval(() => {
+            if (ui.menuScreen && ui.menuScreen.classList.contains('active')) renderQuestPanel();
+        }, 60000);
+        // Warm the collection cache in the background; custom deck art on the
+        // menu tile resolves once it lands.
+        ensureCollection().then(() => renderMenu());
     }
 
     return { init, openMenu, showScreen };

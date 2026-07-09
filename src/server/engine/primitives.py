@@ -76,7 +76,7 @@ def clear_pending_choice(state: GameState) -> GameState:
 
 def find_card_in_play(state: GameState, card_id: str) -> tuple[int, int, int] | None:
     for location_idx, location in enumerate(state.locations):
-        for side_idx in (0, 1):
+        for side_idx in range(len(location.stacks)):
             if card_id in location.stacks[side_idx]:
                 return location_idx, side_idx, location.stacks[side_idx].index(card_id)
     return None
@@ -85,7 +85,7 @@ def find_card_in_play(state: GameState, card_id: str) -> tuple[int, int, int] | 
 def find_cards_in_play(state: GameState, predicate: Predicate) -> list[tuple[int, int, str]]:
     found: list[tuple[int, int, str]] = []
     for location_idx, location in enumerate(state.locations):
-        for side_idx in (0, 1):
+        for side_idx in range(len(location.stacks)):
             for card_id in location.stacks[side_idx]:
                 if predicate(card_id):
                     found.append((location_idx, side_idx, card_id))
@@ -115,7 +115,7 @@ def top_cards_named(state: GameState, owner_idx: int, name: str) -> list[tuple[i
 
 
 def location_total_cards(location: LocationState) -> int:
-    return len(location.stacks[0]) + len(location.stacks[1])
+    return sum(len(stack) for stack in location.stacks)
 
 
 def friendly_cards_here(state: GameState, player_idx: int, location_idx: int, exclude: set[str] | None = None, predicate: Predicate | None = None) -> list[str]:
@@ -126,16 +126,26 @@ def friendly_cards_here(state: GameState, player_idx: int, location_idx: int, ex
     return cards
 
 
+def other_side_indices(state: GameState, player_idx: int) -> list[int]:
+    """All seats except `player_idx`, in seat order."""
+    return [i for i in range(state.n_players) if i != player_idx]
+
+
 def enemy_cards_here(state: GameState, player_idx: int, location_idx: int, predicate: Predicate | None = None) -> list[str]:
-    cards = list(state.locations[location_idx].stacks[1 - player_idx])
+    location = state.locations[location_idx]
+    cards = [cid for side in other_side_indices(state, player_idx) for cid in location.stacks[side]]
     if predicate is not None:
         cards = [cid for cid in cards if predicate(cid)]
     return cards
 
 
 def player_has_card_on_opponent_side(state: GameState, player_idx: int, location_idx: int) -> bool:
-    opponent_side = 1 - player_idx
-    return any(catalog.card_owner_idx(state, card_id) == player_idx for card_id in state.locations[location_idx].stacks[opponent_side])
+    location = state.locations[location_idx]
+    return any(
+        catalog.card_owner_idx(state, card_id) == player_idx
+        for side in other_side_indices(state, player_idx)
+        for card_id in location.stacks[side]
+    )
 
 
 # --- raw stack mutation (no triggers, no immortality checks) ---------------
@@ -314,10 +324,16 @@ def build_move_options(state: GameState, card_ids: Iterable[str], include_pass: 
         if found is None:
             continue
         current_loc, current_side, _ = found
-        target_sides = (0, 1) if allow_side_switch else (current_side,)
+        owner_idx = catalog.card_owner_idx(state, card_id)
         for location_idx, location in enumerate(state.locations):
+            # Cards may never be moved to a location their owner cannot reach.
+            if owner_idx not in location.accessible:
+                continue
+            target_sides = tuple(location.accessible) if allow_side_switch else (current_side,)
             for target_side in target_sides:
                 if location_idx == current_loc and target_side == current_side:
+                    continue
+                if not allow_side_switch and current_side not in location.accessible:
                     continue
                 if location_idx != current_loc and location_total_cards(location) >= location.capacity:
                     continue

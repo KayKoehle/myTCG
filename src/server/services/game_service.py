@@ -17,8 +17,15 @@ from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 class Match:
     match_id: str
     state: GameState
-    deck_a: str
-    deck_b: str
+    deck_names: list[str]
+
+    @property
+    def deck_a(self) -> str:
+        return self.deck_names[0]
+
+    @property
+    def deck_b(self) -> str:
+        return self.deck_names[1] if len(self.deck_names) > 1 else self.deck_names[0]
 
 
 class GameService:
@@ -28,8 +35,13 @@ class GameService:
         self.matchup_stats = MatchupStats(matchup_stats_path)
 
     def _record_if_finished(self, match: Match, previous_state: GameState) -> None:
-        """Record the matchup result once, on the transition into GAME_OVER."""
+        """Record the matchup result once, on the transition into GAME_OVER.
+
+        Matchup stats are head-to-head; FFA matches are not recorded.
+        """
         if previous_state.phase == "GAME_OVER" or match.state.phase != "GAME_OVER":
+            return
+        if len(match.deck_names) != 2:
             return
         outcome = returns(match.state)
         if outcome[0] > outcome[1]:
@@ -44,11 +56,11 @@ class GameService:
         self,
         match_id: str,
         seed: int = 42,
-        player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> Match:
         # Player-edited decks arrive as explicit card lists; register them
         # under the (non-stock) name the client picked before dealing.
@@ -56,11 +68,11 @@ class GameService:
             register_custom_deck(deck_a, deck_a_cards)
         if deck_b_cards:
             register_custom_deck(deck_b, deck_b_cards)
+        deck_names = list(decks) if decks else [deck_a, deck_b]
         match = Match(
             match_id=match_id,
-            state=create_initial_state(seed=seed, player_ids=player_ids, deck_a=deck_a, deck_b=deck_b),
-            deck_a=deck_a,
-            deck_b=deck_b,
+            state=create_initial_state(seed=seed, decks=deck_names),
+            deck_names=deck_names,
         )
         self._matches[match_id] = match
         return match
@@ -69,20 +81,20 @@ class GameService:
         self,
         match_id: str,
         seed: int = 42,
-        player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> Match:
         return self._matches.get(match_id) or self.create_match(
             match_id=match_id,
             seed=seed,
-            player_ids=player_ids,
             deck_a=deck_a,
             deck_b=deck_b,
             deck_a_cards=deck_a_cards,
             deck_b_cards=deck_b_cards,
+            decks=decks,
         )
 
     def collection(self) -> dict[str, Any]:
@@ -101,10 +113,11 @@ class GameService:
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> GameState:
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
-            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
         )
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
@@ -123,6 +136,7 @@ class GameService:
             deck_a=match.deck_a,
             deck_b=match.deck_b,
             available_checkpoints=available_checkpoints,
+            deck_display_names=match.deck_names,
         )
 
     def _get_cached_policy(self, checkpoint_path: str, device: str) -> Any:
@@ -146,10 +160,11 @@ class GameService:
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
-            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
         )
         state = match.state
         ai_idx = state.player_ids.index(ai_player_id)

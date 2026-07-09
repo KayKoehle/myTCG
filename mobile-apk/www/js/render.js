@@ -16,6 +16,27 @@ import {
     statChangeClass,
     typeLabel,
 } from './helpers.js';
+import { DECK_META } from './profile.js';
+
+// Short display name for a rival, derived from the deck they play
+// ("The Trojan Siege Deck" -> "Trojan Siege"); falls back to "Rival N".
+function rivalName(snapshot, playerId, seatIdx) {
+    const deckId = snapshot.decks && snapshot.decks[playerId];
+    const meta = deckId && DECK_META[deckId];
+    if (meta && meta.defaultName) {
+        return meta.defaultName.replace(/^The\s+/i, '').replace(/\s+Deck$/i, '');
+    }
+    if (deckId && typeof deckId === 'string' && !deckId.includes('__custom')) {
+        const pretty = deckId.replace(/[-_]+/g, ' ').trim();
+        if (pretty) return pretty.replace(/\b\w/g, (ch) => ch.toUpperCase());
+    }
+    return `Rival ${seatIdx}`;
+}
+
+// Seat color class for a rival (by their position among the opponents).
+function seatClass(opponentIdx) {
+    return `seat-c${(opponentIdx % 4) + 1}`;
+}
 
 // Action verbs for the card-stack selection popup, keyed by the engine's
 // pending choice_kind. Falls back to a generic "Choose".
@@ -215,10 +236,22 @@ function renderActionHistory(snapshot, ui, config) {
     const rawHistory = Array.isArray(snapshot.action_history) ? snapshot.action_history : [];
     const human = String(config.player_id);
     const ai = String(config.ai_player_id);
+    const players = Array.isArray(snapshot.players) && snapshot.players.length
+        ? snapshot.players
+        : Object.keys(snapshot.victory_points || { [human]: 0, [ai]: 0 });
+    const isFfa = players.length > 2;
 
-    const relabelPlayers = (text) => String(text)
-        .replaceAll(`P${human}`, 'You')
-        .replaceAll(`P${ai}`, 'Opponent');
+    const nameByPid = new Map(players.map((pid, i) => [
+        pid,
+        pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent'),
+    ]));
+    const relabelPlayers = (text) => {
+        let out = String(text);
+        for (const [pid, name] of nameByPid) {
+            out = out.replaceAll(`P${pid}`, name);
+        }
+        return out;
+    };
 
     if (!history.length) {
         ui.actionHistory.innerHTML = '<div class="history-empty">No actions yet.</div>';
@@ -229,7 +262,7 @@ function renderActionHistory(snapshot, ui, config) {
     let drawCount = 0;
     let currentGroup = null;
     let gameResult = '';
-    const crownCounts = { [human]: 0, [ai]: 0 };
+    const crownCounts = Object.fromEntries(players.map((pid) => [pid, 0]));
 
     const pushCurrentGroup = () => {
         // Keep the group even with zero items: a turn where the player did
@@ -258,9 +291,11 @@ function renderActionHistory(snapshot, ui, config) {
         if (kind === 'draw_card') {
             pushCurrentGroup();
             drawCount += 1;
-            const roundNumber = Math.ceil(drawCount / 2);
+            const roundNumber = Math.ceil(drawCount / players.length);
             const playerId = parts[1] || '';
-            const turnLabel = playerId === human ? 'Your turn' : 'Opponent turn';
+            const turnLabel = playerId === human
+                ? 'Your turn'
+                : `${nameByPid.get(playerId) || 'Opponent'} turn`;
             currentGroup = {
                 title: `Round ${roundNumber} - ${turnLabel}`,
                 items: [],
@@ -280,7 +315,7 @@ function renderActionHistory(snapshot, ui, config) {
                 ? `Round ${roundNo}: Draw (no crown)`
                 : (() => {
                     crownCounts[winner] = (crownCounts[winner] || 0) + 1;
-                    const owner = winner === human ? 'You' : 'Opponent';
+                    const owner = nameByPid.get(winner) || 'Opponent';
                     const crownNo = ordinalLabel(crownCounts[winner]);
                     return `Round ${roundNo}: ${owner} gained ${owner === 'You' ? 'your' : 'their'} ${crownNo} crown`;
                 })();
@@ -296,7 +331,7 @@ function renderActionHistory(snapshot, ui, config) {
             const winner = parts[1] || '';
             gameResult = winner === 'DRAW'
                 ? 'Game ended in a draw'
-                : `${winner === human ? 'You' : 'Opponent'} won the game`;
+                : `${nameByPid.get(winner) || 'Opponent'} won the game`;
             continue;
         }
 
@@ -359,7 +394,7 @@ export function layoutHand(ui) {
     handEl.style.minHeight = `${Math.ceil(cardHeight + 12)}px`;
 }
 
-// The End Turn button doubles as "New Game" (game over), "Confirm mulligan"
+// The End Turn button doubles as "Rematch" (game over), "Confirm mulligan"
 // (opening mulligan), and a disabled "Opponent's Turn" indicator while the AI
 // is acting. Kept in one place so the controller can re-apply it mid-flip.
 export function updateEndTurnButton(ui, app, config) {
@@ -378,7 +413,7 @@ export function updateEndTurnButton(ui, app, config) {
         ui.btnEndTurn.textContent = "Opponent's Turn";
     } else {
         ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
-        ui.btnEndTurn.textContent = isGameOver ? 'Main Menu' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+        ui.btnEndTurn.textContent = isGameOver ? 'Rematch' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
     }
     ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
     ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
@@ -397,7 +432,18 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     // stacks/vp dicts are keyed by player id in side order, so the key
     // position is the side index.
     const playerIds = Object.keys(vp || { '1': 0, '2': 0 });
-    const humanSideIdx = Math.max(0, playerIds.indexOf(human));
+    // Seat order: snapshot.players when present (FFA-aware servers), else the
+    // vp dict's key order (matches the engine's side order either way).
+    const players = Array.isArray(snapshot.players) && snapshot.players.length ? snapshot.players : playerIds;
+    const humanSideIdx = Math.max(0, players.indexOf(human));
+    const opponents = players.filter((p) => p !== human);
+    const isFfa = opponents.length > 1;
+    // Per-rival display info: short name, seat color class, engine side index.
+    const rivalInfo = new Map(opponents.map((pid, i) => [pid, {
+        name: isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp',
+        cls: seatClass(i),
+        sideIdx: players.indexOf(pid),
+    }]));
     const mana = snapshot.mana_pool;
     const manaCap = snapshot.mana_cap || {};
     const deckSizes = snapshot.deck_sizes || {};
@@ -450,11 +496,53 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
 
     ui.hud.innerHTML = '';
 
-    ui.scorePanel.innerHTML = [
-        `<div class="score-side"><span class="score-name">You</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
-        '<div class="score-divider"></div>',
-        `<div class="score-side"><span class="score-name">Opp</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
-    ].join('');
+    // FFA swaps the single-opponent strip for one compact chip per rival.
+    ui.gameScreen.classList.toggle('ffa-mode', isFfa);
+    if (ui.oppChips) ui.oppChips.classList.toggle('hidden', !isFfa);
+    if (ui.laneDots) ui.laneDots.classList.toggle('hidden', !isFfa);
+
+    if (isFfa) {
+        ui.scorePanel.innerHTML = players.map((pid) => {
+            const isYou = pid === human;
+            const info = rivalInfo.get(pid);
+            const name = isYou ? 'You' : info.name;
+            const cls = isYou ? 'seat-you' : info.cls;
+            return `<div class="score-side score-side-ffa ${cls}" data-player-id="${pid}">
+                <span class="score-name">${escapeHtml(name)}</span>${renderVpTrack(vp[pid] ?? 0)}
+            </div>`;
+        }).join('');
+    } else {
+        ui.scorePanel.innerHTML = [
+            `<div class="score-side" data-player-id="${human}"><span class="score-name">You</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
+            '<div class="score-divider"></div>',
+            `<div class="score-side" data-player-id="${ai}"><span class="score-name">Opp</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
+        ].join('');
+    }
+
+    const handSizes = snapshot.hand_sizes || {};
+    if (ui.oppChips) {
+        ui.oppChips.innerHTML = isFfa ? opponents.map((pid) => {
+            const info = rivalInfo.get(pid);
+            const isActive = pid === current;
+            const uwCount = ((snapshot.underworld || {})[pid] || []).length;
+            const handCount = Number(handSizes[pid] ?? 0);
+            return `
+                <div class="opp-chip ${info.cls} ${isActive ? 'active-turn' : ''}" data-player-id="${pid}"
+                    data-player-name="${escapeHtml(info.name)}" role="button" tabindex="0">
+                    <div class="chip-head">
+                        <span class="chip-name">${escapeHtml(info.name)}</span>
+                        <span class="chip-vp">👑${vp[pid] ?? 0}</span>
+                    </div>
+                    <div class="chip-stats">
+                        <span title="Hand">✋${handCount}</span>
+                        <span title="Deck">🂠${deckSizes[pid] ?? 0}</span>
+                        <span title="Underworld">🕯${uwCount}</span>
+                    </div>
+                    <div class="chip-mana">${renderManaTrack(manaCap[pid] ?? 0, mana[pid] ?? 0)}</div>
+                </div>
+            `;
+        }).join('') : '';
+    }
 
     ui.oppMana.innerHTML = renderManaTrack(manaCap[ai] ?? 0, mana[ai] ?? 0);
     ui.yourMana.innerHTML = renderManaTrack(manaCap[human] ?? 0, mana[human] ?? 0);
@@ -562,33 +650,113 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         ui.choiceOptions.innerHTML = '';
     }
 
-    const opp = playerIds.find((p) => p !== human) || (human === '1' ? '2' : '1');
+    const opp = opponents[0] || (human === '1' ? '2' : '1');
 
-    ui.lanes.innerHTML = snapshot.locations.map((loc) => {
-        const oppCards = loc.stacks[opp] || [];
-        const yourCards = loc.stacks[human] || [];
-        const laneCardCount = oppCards.length + yourCards.length;
-        const oppPower = stackPower(oppCards);
-        const yourPower = stackPower(yourCards);
-        const laneLeadClass = yourPower > oppPower ? 'lead-you' : (oppPower > yourPower ? 'lead-opp' : '');
+    // FFA lanes render in an egocentric ring order: your left outpost, the
+    // shared center, your right outpost, then the far lanes clockwise.
+    const orderedLocations = (() => {
+        if (!isFfa) return snapshot.locations;
+        const n = players.length;
+        const byId = new Map(snapshot.locations.map((l) => [Number(l.location_id), l]));
+        const centers = snapshot.locations
+            .filter((l) => (l.accessible || []).length > 2)
+            .map((l) => Number(l.location_id));
+        const left = (humanSideIdx - 1 + n) % n;
+        const right = humanSideIdx;
+        const order = [left, ...centers, right];
+        for (let step = 1; step < n; step += 1) {
+            const id = (right + step) % n;
+            if (!order.includes(id)) order.push(id);
+        }
+        return order.map((id) => byId.get(id)).filter(Boolean);
+    })();
+
+    const laneRowHtml = (loc, pid, isYou) => {
+        const cards = loc.stacks[pid] || [];
+        const sideIdx = players.indexOf(pid);
+        if (isYou) {
+            return `
+                <div class="lane-row lane-drop" data-location-id="${loc.location_id}" data-side-idx="${sideIdx}">
+                    <div class="stack-cards" data-count="${cards.length}">${renderCards(cards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet, abilityCards: app.abilityReadyCardSet })}</div>
+                </div>
+            `;
+        }
+        const info = rivalInfo.get(pid);
+        const cls = info ? info.cls : '';
+        return `
+            <div class="lane-row lane-row-opp ${cls}" data-location-id="${loc.location_id}" data-side-idx="${sideIdx}">
+                ${isFfa && info ? `<span class="lane-row-tag ${cls}">${escapeHtml(info.name)}</span>` : ''}
+                <div class="stack-cards" data-count="${cards.length}">${renderCards(cards, { synergyCards: synergyRefSet })}</div>
+            </div>
+        `;
+    };
+
+    // Preserve the carousel position across re-renders; a new match (or a
+    // switch into FFA) recenters on the shared center lane afterwards.
+    const prevLaneScroll = ui.lanes.scrollLeft;
+    const isNewMatchRender = app.lanesScrollMatchId !== snapshot.match_id;
+    app.lanesScrollMatchId = snapshot.match_id;
+
+    ui.lanes.classList.toggle('lanes-carousel', isFfa);
+    ui.lanes.dataset.laneCount = String(orderedLocations.length);
+
+    ui.lanes.innerHTML = orderedLocations.map((loc) => {
+        const accessibleIds = Array.isArray(loc.accessible) && loc.accessible.length ? loc.accessible : players;
+        const youCanReach = accessibleIds.includes(human);
+        const laneOpponents = players.filter((pid) => pid !== human && accessibleIds.includes(pid));
+        const laneCardCount = players.reduce((sum, pid) => sum + ((loc.stacks[pid] || []).length), 0);
+        const isCenter = Number(loc.weight) > 1;
+
+        const yourPower = stackPower(loc.stacks[human] || []);
+        const oppPowers = laneOpponents.map((pid) => ({ pid, power: stackPower(loc.stacks[pid] || []) }));
+        const bestOppPower = oppPowers.length ? Math.max(...oppPowers.map((o) => o.power)) : 0;
+        const laneLeadClass = youCanReach && yourPower > bestOppPower
+            ? 'lead-you'
+            : (bestOppPower > yourPower ? 'lead-opp' : '');
+
+        const scoreHtml = isFfa
+            ? `<span class="lane-score ${laneLeadClass}">${oppPowers.map(({ pid, power }) => {
+                const info = rivalInfo.get(pid);
+                return `<span class="opp ${info ? info.cls : ''}">${power}</span>`;
+            }).join('<span class="lane-score-sep">·</span>')}${youCanReach ? ` / <span class="you">${yourPower}</span>` : ''}</span>`
+            : `<span class="lane-score ${laneLeadClass}"><span class="opp">${oppPowers.length ? oppPowers[0].power : 0}</span> / <span class="you">${yourPower}</span></span>`;
 
         return `
-            <article class="lane">
+            <article class="lane ${isFfa && !youCanReach ? 'lane-locked' : ''} ${isFfa && isCenter ? 'lane-center' : ''}" data-location-id="${loc.location_id}">
                 <div class="lane-head">
-                    <div class="lane-head-left">${renderLaneSlots(laneCardCount, 7)}</div>
+                    <div class="lane-head-left">${renderLaneSlots(laneCardCount, Number(loc.capacity) || 7)}</div>
+                    ${isFfa && isCenter ? '<span class="lane-value-badge" title="Worth more when scoring">★</span>' : ''}
+                    ${isFfa && !youCanReach ? '<span class="lane-lock" title="Out of your reach">🔒</span>' : ''}
                 </div>
-                <div class="lane-row lane-row-opp" data-location-id="${loc.location_id}">
-                    <div class="stack-cards" data-count="${oppCards.length}">${renderCards(oppCards, { synergyCards: synergyRefSet })}</div>
-                </div>
-                <div class="lane-mid">
-                    <span class="lane-score ${laneLeadClass}"><span class="opp">${oppPower}</span> / <span class="you">${yourPower}</span></span>
-                </div>
-                <div class="lane-row lane-drop" data-location-id="${loc.location_id}">
-                    <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet, abilityCards: app.abilityReadyCardSet })}</div>
-                </div>
+                ${laneOpponents.map((pid) => laneRowHtml(loc, pid, false)).join('')}
+                <div class="lane-mid">${scoreHtml}</div>
+                ${youCanReach
+                    ? laneRowHtml(loc, human, true)
+                    : '<div class="lane-row lane-unreachable"><span class="lane-unreachable-text">Out of reach — effects can still strike here</span></div>'}
             </article>
         `;
     }).join('');
+
+    if (ui.laneDots) {
+        ui.laneDots.innerHTML = isFfa ? orderedLocations.map((loc) => {
+            const accessibleIds = Array.isArray(loc.accessible) && loc.accessible.length ? loc.accessible : players;
+            const youCanReach = accessibleIds.includes(human);
+            const isCenter = Number(loc.weight) > 1;
+            return `<button class="lane-dot ${youCanReach ? 'reachable' : ''} ${isCenter ? 'center' : ''}"
+                data-location-id="${loc.location_id}" aria-label="Scroll to lane"></button>`;
+        }).join('') : '';
+    }
+
+    if (isFfa) {
+        if (isNewMatchRender) {
+            const centerLane = ui.lanes.querySelector('.lane.lane-center');
+            if (centerLane) {
+                ui.lanes.scrollLeft = Math.max(0, centerLane.offsetLeft - (ui.lanes.clientWidth - centerLane.offsetWidth) / 2);
+            }
+        } else {
+            ui.lanes.scrollLeft = prevLaneScroll;
+        }
+    }
 
     ui.hand.innerHTML = snapshot.hand.length
         ? snapshot.hand.map((c) => {
@@ -613,6 +781,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                         <div class="tiny">${effectLabel(c)}</div>
                     </div>
                     <div class="mulligan-x">X</div>
+                    ${canActMulligan ? `<button type="button" class="mull-toggle">${app.mulliganSelected.has(c.id) ? 'Redraw' : 'Keep'}</button>` : ''}
                 </div>
             `;
         }).join('')

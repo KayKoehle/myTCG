@@ -96,8 +96,7 @@ def named_any(*names: str) -> Predicate:
 
 
 def card_owner_idx(state: "GameState", card_id: str) -> int:
-    if card_id in DECK_LIBRARY.get(state.deck_names[0], tuple()):
-        return 0
-    if card_id in DECK_LIBRARY.get(state.deck_names[1], tuple()):
-        return 1
+    for idx, deck_name in enumerate(state.deck_names):
+        if card_id in DECK_LIBRARY.get(deck_name, tuple()):
+            return idx
     return 0

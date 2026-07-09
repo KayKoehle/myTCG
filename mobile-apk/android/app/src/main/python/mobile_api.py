@@ -52,8 +52,15 @@ def _get_neural_policy() -> PurePolicy | None:
 class Match:
     match_id: str
     state: GameState
-    deck_a: str
-    deck_b: str
+    deck_names: list[str]
+
+    @property
+    def deck_a(self) -> str:
+        return self.deck_names[0]
+
+    @property
+    def deck_b(self) -> str:
+        return self.deck_names[1] if len(self.deck_names) > 1 else self.deck_names[0]
 
 
 class MobileGameService:
@@ -62,8 +69,13 @@ class MobileGameService:
         self.matchup_stats = MatchupStats(_matchup_stats_path())
 
     def _record_if_finished(self, match: Match, previous_state: GameState) -> None:
-        """Record the matchup result once, on the transition into GAME_OVER."""
+        """Record the matchup result once, on the transition into GAME_OVER.
+
+        Matchup stats are head-to-head; FFA matches are not recorded.
+        """
         if previous_state.phase == "GAME_OVER" or match.state.phase != "GAME_OVER":
+            return
+        if len(match.deck_names) != 2:
             return
         outcome = returns(match.state)
         if outcome[0] > outcome[1]:
@@ -78,11 +90,11 @@ class MobileGameService:
         self,
         match_id: str,
         seed: int = 42,
-        player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> Match:
         match = self._matches.get(match_id)
         if match is not None:
@@ -93,11 +105,11 @@ class MobileGameService:
             register_custom_deck(deck_a, deck_a_cards)
         if deck_b_cards:
             register_custom_deck(deck_b, deck_b_cards)
+        deck_names = list(decks) if decks else [deck_a, deck_b]
         created = Match(
             match_id=match_id,
-            state=create_initial_state(seed=seed, player_ids=player_ids, deck_a=deck_a, deck_b=deck_b),
-            deck_a=deck_a,
-            deck_b=deck_b,
+            state=create_initial_state(seed=seed, decks=deck_names),
+            deck_names=deck_names,
         )
         self._matches[match_id] = created
         return created
@@ -115,10 +127,11 @@ class MobileGameService:
         deck_b: str = "siege_of_troy",
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
     ) -> GameState:
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
-            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
         )
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
@@ -137,11 +150,12 @@ class MobileGameService:
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
         ai_mode: str = "auto",
+        decks: list[str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Play one AI action. Modes: auto (best available), neural, heuristic, random."""
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
-            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
         )
         state = match.state
 
@@ -186,6 +200,7 @@ class MobileGameService:
             viewer_player_id=viewer_player_id,
             deck_a=match.deck_a,
             deck_b=match.deck_b,
+            deck_display_names=match.deck_names,
         )
 
 
@@ -209,12 +224,13 @@ def handle_post_json(url: str, body_json: str) -> str:
         deck_b = str(body.get("deck_b", "siege_of_troy"))
         deck_a_cards = body.get("deck_a_cards") or None
         deck_b_cards = body.get("deck_b_cards") or None
+        decks = body.get("decks") or None
 
         if url == "/api/state":
             player_id = int(body.get("player_id", 1))
             SERVICE.get_or_create_match(
                 match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
-                deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+                deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
             )
             snapshot = SERVICE.state_snapshot(match_id=match_id, viewer_player_id=player_id)
             return _response_ok({"snapshot": snapshot})
@@ -233,6 +249,7 @@ def handle_post_json(url: str, body_json: str) -> str:
                 deck_b=deck_b,
                 deck_a_cards=deck_a_cards,
                 deck_b_cards=deck_b_cards,
+                decks=decks,
             )
             snapshot = SERVICE.state_snapshot(match_id=match_id, viewer_player_id=player_id)
             return _response_ok({"snapshot": snapshot})
@@ -248,6 +265,7 @@ def handle_post_json(url: str, body_json: str) -> str:
                 deck_a_cards=deck_a_cards,
                 deck_b_cards=deck_b_cards,
                 ai_mode=str(body.get("ai_mode", "auto")),
+                decks=decks,
             )
             return _response_ok({"action": action, "snapshot": snapshot})
 

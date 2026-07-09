@@ -42,6 +42,12 @@ export function effectLabel(card) {
     return effect || 'No effect text';
 }
 
+// The card's flavour/lore text. Unlike the effect it is optional — many cards
+// have none — so this returns '' when absent and callers hide their block.
+export function anecdoteText(card) {
+    return (card && typeof card.anecdote === 'string') ? card.anecdote.trim() : '';
+}
+
 export function typeLabel(card) {
     const type = (card && typeof card.type === 'string') ? card.type.trim() : '';
     if (!type) return '';
@@ -142,6 +148,11 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
             return `Bury: ${cardDisplayName(parts[1], cardNameById)}`;
         }
 
+        // Dolon in multiplayer: first pick whose deck to scout ("OPP|<side>").
+        if (parts.length === 2 && zone === 'OPP') {
+            return `Scout rival P${Number(parts[1]) + 1}'s deck`;
+        }
+
         if (parts.length === 2) {
             const maybeCardId = parts[0];
             const maybeLane = Number(parts[1]);
@@ -235,4 +246,29 @@ export function stackPower(cards) {
 
 export function humanLegalActions(snapshot, playerId) {
     return (snapshot.legal_actions || []).filter((a) => Number(a.player_id) === Number(playerId));
+}
+
+// A transient toast at the top of the screen, above every screen and modal.
+// tone 'gold' is for rewards (quests, weekend bonuses), 'info' for the rest.
+export function showToast(message, tone = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `app-toast ${tone === 'gold' ? 'app-toast-gold' : ''}`;
+    toast.textContent = String(message);
+    document.body.appendChild(toast);
+    const remove = () => toast.remove();
+    if (!window.Element.prototype.animate) {
+        setTimeout(remove, 2800);
+        return;
+    }
+    const anim = toast.animate(
+        [
+            { transform: 'translate(-50%, -16px)', opacity: 0 },
+            { transform: 'translate(-50%, 0)', opacity: 1, offset: 0.12 },
+            { transform: 'translate(-50%, 0)', opacity: 1, offset: 0.85 },
+            { transform: 'translate(-50%, -10px)', opacity: 0 },
+        ],
+        { duration: 3200, easing: 'ease-out' }
+    );
+    anim.addEventListener('finish', remove);
+    anim.addEventListener('cancel', remove);
 }

@@ -1,14 +1,15 @@
 import { postJson } from './api.js';
-import { createCardStackPopup } from './cardstack.js';
-import { cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
-import { addCrowns, ownedEmotes } from './profile.js';
+import { anecdoteText, cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
+import { activeEmotes, addCrowns, recordGameResult } from './profile.js';
+import { questOnCardPlayed, questOnGameFinished, questOnRoundWon } from './quests.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
 import { buildConfig, createAppState } from './state.js';
 
-export function createGameController(ui) {
+export function createGameController(ui, cardStack) {
     const app = createAppState();
-    const cardStack = createCardStackPopup(ui);
     let onExitToMenu = null;
+    // Card ids the human actually played this match (for "win rate when played").
+    let playedCardIds = new Set();
 
     const cfg = () => buildConfig(ui, app);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,17 +30,40 @@ export function createGameController(ui) {
         bindBoardMoveChoices(snapshot);
         bindMulliganSelection(snapshot);
         bindTapControls(snapshot);
+        bindOpponentChips(snapshot);
+        bindLaneDots();
         layoutHand(ui);
         runHistoryAnimations(snapshot);
         maybeAutoAdvance();
+        // Top-left slot: surrender flag while the match runs, home once it ends.
+        const gameOver = snapshot.phase === 'GAME_OVER';
+        if (ui.btnSurrender) {
+            ui.btnSurrender.classList.toggle('hidden', gameOver);
+        }
+        if (ui.btnHome) {
+            ui.btnHome.classList.toggle('hidden', !gameOver);
+        }
     }
 
-    // Engine-internal side index of the human player (options such as
-    // "card|location|side" and the stacks dict are in side order).
-    function humanSideIndex() {
+    async function onSurrender() {
+        closeSheet(ui.surrenderModal);
+        await doAction({ kind: 'surrender', player_id: cfg().player_id });
+    }
+
+    // Seat order (player ids as strings, engine side order). Options such as
+    // "card|location|side" and the stacks dict are keyed in this order.
+    function seatOrder() {
         const snap = app.snapshot;
-        const playerIds = Object.keys((snap && snap.victory_points) || { 1: 0, 2: 0 });
-        return Math.max(0, playerIds.indexOf(String(cfg().player_id)));
+        if (snap && Array.isArray(snap.players) && snap.players.length) return snap.players;
+        return Object.keys((snap && snap.victory_points) || { 1: 0, 2: 0 });
+    }
+
+    function humanSideIndex() {
+        return Math.max(0, seatOrder().indexOf(String(cfg().player_id)));
+    }
+
+    function aiIds() {
+        return (cfg().ai_player_ids || [cfg().ai_player_id]).map(Number);
     }
 
     function laneIsFull(loc) {
@@ -101,17 +125,18 @@ export function createGameController(ui) {
         const zone = lane.querySelector('.lane-row.lane-drop[data-location-id]');
         if (!zone) return null;
         const loc = Number(zone.dataset.locationId);
-        const row = hit.closest('.lane-row');
-        const onOppRow = Boolean(row && row.classList.contains('lane-row-opp'));
-        const sideIdx = onOppRow ? 1 - humanSideIndex() : humanSideIndex();
+        // Every row carries its engine side index (FFA lanes hold several
+        // opponent rows); dropping outside a specific row targets your own.
+        const row = hit.closest('.lane-row[data-side-idx]');
+        const sideIdx = row ? Number(row.dataset.sideIdx) : humanSideIndex();
         return { loc, sideIdx };
     }
 
     function highlightRow(loc, sideIdx = null) {
         ui.lanes.querySelectorAll('.lane-row.drop-target').forEach((el) => el.classList.remove('drop-target'));
         if (loc === null) return;
-        const rowClass = sideIdx !== null && sideIdx !== humanSideIndex() ? 'lane-row-opp' : 'lane-drop';
-        const zone = ui.lanes.querySelector(`.lane-row.${rowClass}[data-location-id="${loc}"]`);
+        const side = sideIdx === null ? humanSideIndex() : sideIdx;
+        const zone = ui.lanes.querySelector(`.lane-row[data-location-id="${loc}"][data-side-idx="${side}"]`);
         if (zone) zone.classList.add('drop-target');
     }
 
@@ -254,20 +279,35 @@ export function createGameController(ui) {
 
     function bindMulliganSelection(snapshot) {
         const openingMulligan = isOpeningMulligan(snapshot);
-        const canActMulligan = openingMulligan && Number(snapshot.pending_choice.player_id) === cfg().player_id;
-        if (!openingMulligan || !canActMulligan) return;
+        if (!openingMulligan) return;
 
+        // Tapping a card opens the inspector so it can be read before deciding
+        // what to mulligan away — for both players' turns. The keep/redraw
+        // choice lives on the card's own bottom button.
         ui.hand.querySelectorAll('.hand-card[data-card-id]').forEach((cardEl) => {
             cardEl.addEventListener('click', () => {
+                openInspector(findCardById(snapshot, cardEl.dataset.cardId));
+            });
+        });
+
+        const canActMulligan = Number(snapshot.pending_choice.player_id) === cfg().player_id;
+        if (!canActMulligan) return;
+
+        ui.hand.querySelectorAll('.hand-card[data-card-id]').forEach((cardEl) => {
+            const toggleBtn = cardEl.querySelector('.mull-toggle');
+            if (!toggleBtn) return;
+            toggleBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
                 const cardId = cardEl.dataset.cardId;
                 if (!cardId) return;
-                if (app.mulliganSelected.has(cardId)) {
-                    app.mulliganSelected.delete(cardId);
-                    cardEl.classList.remove('marked');
-                } else {
+                const redraw = !app.mulliganSelected.has(cardId);
+                if (redraw) {
                     app.mulliganSelected.add(cardId);
-                    cardEl.classList.add('marked');
+                } else {
+                    app.mulliganSelected.delete(cardId);
                 }
+                cardEl.classList.toggle('marked', redraw);
+                toggleBtn.textContent = redraw ? 'Redraw' : 'Keep';
             });
         });
     }
@@ -317,6 +357,9 @@ export function createGameController(ui) {
         ui.inspectorPower.textContent = card.power !== null && card.power !== undefined ? card.power : '?';
         ui.inspectorMedia.innerHTML = cardArtTag(card.name, 'inspector-art');
         ui.inspectorEffect.textContent = effectLabel(card);
+        const anecdote = anecdoteText(card);
+        ui.inspectorAnecdote.textContent = anecdote;
+        ui.inspectorAnecdote.classList.toggle('hidden', !anecdote);
         const abilityAction = (card.id && app.snapshot)
             ? humanLegalActions(app.snapshot, cfg().player_id).find((a) => a.kind === 'use_ability' && a.card_id === card.id)
             : null;
@@ -406,6 +449,43 @@ export function createGameController(ui) {
         });
     }
 
+    // FFA rival chips: tapping a chip opens that rival's underworld in the
+    // shared card-stack popup (their hand stays hidden — the chip shows counts).
+    function bindOpponentChips(snapshot) {
+        if (!ui.oppChips) return;
+        ui.oppChips.querySelectorAll('.opp-chip[data-player-id]').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                const playerId = chip.dataset.playerId;
+                const cards = (snapshot.underworld && snapshot.underworld[playerId]) || [];
+                if (!cards.length) {
+                    flashStatus(`${chip.dataset.playerName || 'Rival'}'s underworld is empty.`);
+                    return;
+                }
+                cardStack.open({
+                    mode: 'view',
+                    title: `${chip.dataset.playerName || 'Rival'} — Underworld (${cards.length})`,
+                    cards: cards.map((card) => ({ card, option: card.id })),
+                    onClose: () => {
+                        const pending = app.snapshot && app.snapshot.pending_choice;
+                        if (pending && Number(pending.player_id) === cfg().player_id) {
+                            rerender(app.snapshot);
+                        }
+                    },
+                });
+            });
+        });
+    }
+
+    // FFA lane dots: tapping a dot scrolls the carousel to its lane.
+    function bindLaneDots() {
+        if (!ui.laneDots) return;
+        ui.laneDots.querySelectorAll('.lane-dot[data-location-id]').forEach((dot) => {
+            dot.addEventListener('click', () => {
+                scrollLaneIntoView(Number(dot.dataset.locationId));
+            });
+        });
+    }
+
     // Fly a copy of the played card from the source rect onto its new spot on
     // the board. Opponent plays start face down and flip up mid-flight.
     function animateCardPlay(cardId, fromRect, { flip = false } = {}) {
@@ -486,19 +566,48 @@ export function createGameController(ui) {
             const raw = String(entry || '');
             if (raw.startsWith('round_result:')) {
                 // Every crown won in a round is banked as shop currency.
-                if (Number(raw.split(':')[2]) === cfg().player_id) addCrowns(1);
+                if (Number(raw.split(':')[2]) === cfg().player_id) {
+                    addCrowns(1);
+                    if (app.statsMeta) questOnRoundWon();
+                }
                 if (!gameEnded) animateRoundResult(raw);
+            } else if (raw.startsWith('play_card:')) {
+                const parts = raw.split(':');
+                if (Number(parts[1]) === cfg().player_id && app.statsMeta) {
+                    if (parts[2]) playedCardIds.add(parts[2]);
+                    questOnCardPlayed();
+                }
             } else if (raw.startsWith('game_result:')) {
+                recordFinishedGame(raw, snapshot);
                 animateGameResult(raw);
             } else if (raw.startsWith('draw_card:')) {
                 animateCardDraw(Number(raw.split(':')[1]));
             } else if (raw.startsWith('mulligan_keep:')) {
                 const parts = raw.split(':');
-                if (Number(parts[1]) === cfg().ai_player_id && Number(parts[2]) > 0) {
+                if (aiIds().includes(Number(parts[1])) && Number(parts[2]) > 0) {
                     animateOpponentMulligan(Number(parts[2]));
                 }
             }
         }
+    }
+
+    // A finished game (win, loss, draw, surrender — they all append a
+    // game_result entry exactly once) feeds the win-rate statistics and the
+    // quest system. Only menu-started matches carry statsMeta; the settings
+    // sheet's debug games don't count.
+    function recordFinishedGame(entry, snapshot) {
+        if (!app.statsMeta) return;
+        const winner = entry.split(':')[1] || '';
+        const won = winner !== 'DRAW' && Number(winner) === cfg().player_id;
+        const vp = snapshot.victory_points || {};
+        const flawless = won && aiIds().every((id) => Number(vp[String(id)] || 0) === 0);
+        recordGameResult({
+            deckId: app.statsMeta.deckId,
+            cardIds: app.statsMeta.cardIds,
+            playedCardIds: Array.from(playedCardIds),
+            won,
+        });
+        questOnGameFinished({ won, flawless, deckId: app.statsMeta.deckId });
     }
 
     // A card back flies from the drawing player's deck pile into their hand.
@@ -678,8 +787,9 @@ export function createGameController(ui) {
                 });
                 return;
             }
+            const byPlayer = winner && ui.scorePanel.querySelector(`.score-side[data-player-id="${winner}"]`);
             const sides = ui.scorePanel.querySelectorAll('.score-side');
-            const target = sides[youWon ? 0 : 1] || ui.scorePanel;
+            const target = byPlayer || sides[youWon ? 0 : 1] || ui.scorePanel;
             const targetRect = target.getBoundingClientRect();
             const crownRect = crown.getBoundingClientRect();
             const dx = targetRect.left + targetRect.width / 2 - (crownRect.left + crownRect.width / 2);
@@ -810,9 +920,9 @@ export function createGameController(ui) {
     function initEmotes() {
         if (!ui.btnEmote || !ui.emoteMenu) return;
         // Rebuilt on every open so emotes bought in the shop show up
-        // immediately in the next game.
+        // immediately in the next game, honoring the playing deck's loadout.
         const renderEmoteMenu = () => {
-            const emotes = ownedEmotes();
+            const emotes = activeEmotes();
             ui.emoteMenu.innerHTML = emotes.map((emote) => (
                 `<button type="button" class="emote-option" data-emote-id="${emote.id}">${escapeHtml(emote.text)}</button>`
             )).join('');
@@ -912,6 +1022,7 @@ export function createGameController(ui) {
             deck_a: c.deck_a,
             deck_b: c.deck_b,
             deck_a_cards: c.deck_a_cards,
+            decks: c.decks,
         });
         rerender(data.snapshot);
     }
@@ -941,6 +1052,7 @@ export function createGameController(ui) {
                 deck_a: c.deck_a,
                 deck_b: c.deck_b,
                 deck_a_cards: c.deck_a_cards,
+                decks: c.decks,
             });
             rerender(data.snapshot);
             if (playedFromRect) animateCardPlay(action.card_id, playedFromRect);
@@ -951,27 +1063,45 @@ export function createGameController(ui) {
         }
     }
 
-    async function aiMove() {
+    async function aiMove(aiPlayerId = null) {
         try {
             const c = cfg();
-            const oppHandRect = ui.oppHand.getBoundingClientRect();
+            const actorId = aiPlayerId ?? c.ai_player_id;
+            // Where the AI's play animation starts: the 2P opponent hand, or
+            // that rival's chip in FFA.
+            const chipEl = ui.oppChips && ui.oppChips.querySelector(`.opp-chip[data-player-id="${actorId}"]`);
+            const originEl = (chipEl && chipEl.offsetParent) ? chipEl : ui.oppHand;
+            const oppHandRect = originEl.getBoundingClientRect();
             const data = await postJson('/api/ai-move', {
                 match_id: c.match_id,
-                ai_player_id: c.ai_player_id,
+                ai_player_id: actorId,
                 viewer_player_id: c.viewer_player_id,
                 seed: c.seed,
                 deck_a: c.deck_a,
                 deck_b: c.deck_b,
                 deck_a_cards: c.deck_a_cards,
+                decks: c.decks,
                 checkpoint_path: c.checkpoint_path,
                 device: c.device,
             });
             rerender(data.snapshot);
             if (data.action && data.action.kind === 'play_card' && data.action.card_id) {
+                scrollLaneIntoView(data.action.location_id);
                 animateCardPlay(data.action.card_id, oppHandRect, { flip: true });
             }
         } catch (error) {
             flashStatus(error);
+        }
+    }
+
+    // FFA lane carousel: bring the lane being acted on into view.
+    function scrollLaneIntoView(locationId) {
+        if (locationId === null || locationId === undefined) return;
+        if (!ui.lanes.classList.contains('lanes-carousel')) return;
+        const zone = ui.lanes.querySelector(`.lane-row.lane-drop[data-location-id="${locationId}"], .lane[data-location-id="${locationId}"]`);
+        const lane = zone && (zone.closest('.lane') || zone);
+        if (lane && lane.scrollIntoView) {
+            lane.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
         }
     }
 
@@ -994,28 +1124,30 @@ export function createGameController(ui) {
         if (app.autoRunning) return;
         app.autoRunning = true;
         try {
-            for (let i = 0; i < 40; i += 1) {
+            // Enough iterations for several full FFA rounds (up to 4 AI seats
+            // each playing multiple actions per turn).
+            for (let i = 0; i < 160; i += 1) {
                 const snap = app.snapshot;
                 if (!snap || snap.phase === 'GAME_OVER') return;
                 const c = cfg();
+                const rivals = aiIds();
                 const current = Number(snap.current_player_id);
                 // A pending choice for the human blocks everything — even when
-                // the turn has already passed to the AI (e.g. a top ability
+                // the turn has already passed to an AI (e.g. a top ability
                 // offered at end of turn). Calling the AI here would only 500.
                 if (snap.pending_choice && Number(snap.pending_choice.player_id) === c.player_id) return;
-                const pendingForAi = Boolean(
-                    snap.pending_choice
-                    && Number(snap.pending_choice.player_id) === c.ai_player_id
-                );
-                if (current === c.ai_player_id || pendingForAi) {
+                const pendingAiId = snap.pending_choice && rivals.includes(Number(snap.pending_choice.player_id))
+                    ? Number(snap.pending_choice.player_id)
+                    : null;
+                if (rivals.includes(current) || pendingAiId !== null) {
                     // Pace the AI so its turn is watchable, not instant. Only
-                    // its own turn is announced on the End Turn button;
+                    // a rival's own turn is announced on the End Turn button;
                     // mid-turn AI choices (forced banishes etc.) get a short
                     // beat without hijacking the button.
-                    const aiOwnsTurn = current === c.ai_player_id;
+                    const aiOwnsTurn = rivals.includes(current);
                     if (aiOwnsTurn) setOpponentTurn(true);
                     await sleep(aiOwnsTurn ? 700 : 350);
-                    await aiMove();
+                    await aiMove(pendingAiId !== null ? pendingAiId : current);
                     continue;
                 }
                 await finishOpponentTurn();
@@ -1037,12 +1169,9 @@ export function createGameController(ui) {
         if (!snap) return;
 
         if (snap.phase === 'GAME_OVER') {
-            // Back to the main menu; the next game starts from its Play button.
-            if (onExitToMenu) {
-                onExitToMenu();
-            } else {
-                await newGame();
-            }
+            // Rematch: same decks, fresh match. The header home button is the
+            // way back to the main menu.
+            await newGame();
             return;
         }
 
@@ -1066,11 +1195,19 @@ export function createGameController(ui) {
     }
 
     // Entry point for the main menu's Play button: the player's (possibly
-    // edited) deck against the given AI deck, in a fresh match.
-    async function startGame({ deckAName, deckACards, deckBName }) {
+    // edited) deck against the given AI deck(s), in a fresh match. statsMeta
+    // identifies the profile deck so the result can be recorded. `decks`
+    // (one deck name per seat, human first) switches the match to FFA.
+    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null }) {
         app.deckAName = deckAName || null;
         app.deckACards = deckACards || null;
         app.deckBName = deckBName || null;
+        app.deckNames = Array.isArray(decks) && decks.length > 2 ? decks : null;
+        app.aiPlayerIds = app.deckNames
+            ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
+            : [app.aiPlayerId];
+        app.statsMeta = statsMeta;
+        playedCardIds = new Set();
         try {
             await newGame();
         } catch (error) {
@@ -1104,17 +1241,32 @@ export function createGameController(ui) {
         ui.btnCloseHistory.onclick = () => {
             closeSheet(ui.historyModal);
         };
-        [ui.settingsModal, ui.historyModal].forEach((modal) => {
+        ui.btnSurrender.onclick = () => {
+            openSheet(ui.surrenderModal);
+        };
+        ui.btnCloseSurrender.onclick = () => {
+            closeSheet(ui.surrenderModal);
+        };
+        ui.btnSurrenderCancel.onclick = () => {
+            closeSheet(ui.surrenderModal);
+        };
+        ui.btnSurrenderConfirm.onclick = () => {
+            onSurrender();
+        };
+        [ui.settingsModal, ui.historyModal, ui.surrenderModal].forEach((modal) => {
             modal.addEventListener('click', (event) => {
                 if (event.target === modal) closeSheet(modal);
             });
         });
         ui.btnNewGame.onclick = () => {
             // Debug path: the settings-sheet deck dropdowns take over from
-            // whatever the main menu picked.
+            // whatever the main menu picked (always a 1v1).
             app.deckAName = null;
             app.deckBName = null;
             app.deckACards = null;
+            app.deckNames = null;
+            app.aiPlayerIds = [app.aiPlayerId];
+            app.statsMeta = null;
             closeSheet(ui.settingsModal);
             newGame();
         };

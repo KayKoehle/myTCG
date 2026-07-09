@@ -163,14 +163,14 @@ body {
     display: none !important;
 }
 
-/* Sticky top bar: home + settings on the left, crown score in the center,
-   history on the right. */
+/* Sticky top bar: surrender flag (mid-game) or home (game over) on the left,
+   crown score in the center, history on the right. */
 .status-panel {
     position: sticky;
     top: 8px;
     z-index: 120;
     display: grid;
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
@@ -299,6 +299,23 @@ select {
 .btn.ghost {
     background: rgba(14, 29, 44, 0.8);
     border: 1px solid var(--line);
+}
+
+.btn.danger {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+
+.surrender-copy {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
+.surrender-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
 }
 
 /* Transient warning/error toast: floats over the board instead of taking
@@ -545,8 +562,9 @@ select {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-/* Opponent's underworld stack always shows the default back — cosmetics the
-   player buys/equips are theirs alone, never mirrored onto the AI. */
+/* Opponent's deck and underworld stacks always show the default back so they
+   match the opponent's hand card backs — cosmetics the player buys/equips are
+   theirs alone, never mirrored onto the AI. */
 .deck-stack-opp .deck-card {
     background: var(--card-back-opponent);
 }
@@ -1585,6 +1603,23 @@ select {
     color: #d9edf9;
 }
 
+/* The flavour/lore text, set apart from the rules text above it: a divider,
+   dimmer italic serif so it never reads as part of the card's effect. */
+.inspector-anecdote {
+    margin: 12px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid rgba(159, 195, 218, 0.25);
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #a9c2d3;
+}
+
+.inspector-anecdote.hidden {
+    display: none;
+}
+
 .inspector-action {
     width: 100%;
     padding: 12px;
@@ -2605,11 +2640,6 @@ select {
     padding: 9px 14px;
 }
 
-.deck-editor-hint {
-    font-size: 12px;
-    color: var(--muted);
-}
-
 .deck-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -2631,7 +2661,7 @@ select {
 
 .collection-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     padding-bottom: 24px;
 }
@@ -2694,20 +2724,41 @@ select {
     min-height: 24px;
 }
 
-.mini-flag {
+/* Quick add/remove corner button on collection / deck / recommendation cards. */
+.mini-act {
     position: absolute;
-    top: 34%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-10deg);
-    font-size: 9px;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: rgba(8, 20, 32, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    pointer-events: none;
+    right: 3px;
+    bottom: 3px;
+    z-index: 3;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.mini-act.add {
+    background: rgba(13, 84, 55, 0.95);
+    border-color: rgba(45, 212, 169, 0.9);
+    color: #7dfccb;
+}
+
+.mini-act.remove {
+    background: rgba(92, 16, 16, 0.95);
+    border-color: rgba(255, 110, 110, 0.9);
+    color: #ffb3b3;
+}
+
+.mini-act:active {
+    transform: scale(0.9);
 }
 
 /* --- Shop screen ------------------------------------------------------------- */
@@ -2814,4 +2865,959 @@ select {
     background: rgba(14, 29, 44, 0.8);
     border: 1px solid rgba(45, 212, 169, 0.6);
     color: var(--good);
+}
+
+/* --- App toast (quests, unlock hints, deck warnings) ------------------------- */
+
+.app-toast {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translate(-50%, 0);
+    z-index: 1200;
+    max-width: min(92vw, 420px);
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.97), rgba(9, 24, 38, 0.98));
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    pointer-events: none;
+}
+
+.app-toast-gold {
+    border-color: rgba(255, 200, 79, 0.7);
+    background: linear-gradient(165deg, rgba(66, 48, 6, 0.97), rgba(38, 27, 4, 0.98));
+    color: #ffe9ad;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 200, 79, 0.25);
+}
+
+/* --- Locked menu tiles -------------------------------------------------------- */
+
+.menu-tile {
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-tile.locked {
+    cursor: not-allowed;
+}
+
+.menu-tile.locked .menu-deck-art,
+.menu-tile.locked .menu-shop-icon,
+.menu-tile.locked .menu-tile-text {
+    opacity: 0.3;
+    filter: grayscale(0.8);
+}
+
+.menu-tile-lock {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: rgba(6, 16, 26, 0.55);
+}
+
+/* --- Quest panel (main menu) ---------------------------------------------------- */
+
+.menu-quests {
+    display: grid;
+    gap: 10px;
+}
+
+.weekend-banner {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.9), rgba(9, 24, 38, 0.95));
+}
+
+.weekend-banner.live {
+    border-color: rgba(255, 200, 79, 0.65);
+    background: linear-gradient(165deg, rgba(66, 48, 6, 0.6), rgba(24, 18, 4, 0.9));
+    box-shadow: 0 0 22px rgba(255, 200, 79, 0.15);
+}
+
+.weekend-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.weekend-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+}
+
+.weekend-banner.live .weekend-label {
+    color: #ffe9ad;
+}
+
+.weekend-name {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.weekend-desc {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.quest-section {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: rgba(10, 25, 39, 0.6);
+    display: grid;
+    gap: 8px;
+}
+
+.quest-section-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+}
+
+.quest-countdown {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
+/* Quest panel before it is unlocked: styled like the locked menu tiles. */
+.quest-locked {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    padding: 16px 12px;
+}
+
+.quest-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.quest-row.done {
+    opacity: 0.55;
+}
+
+.quest-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.quest-bar {
+    margin-top: 4px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.quest-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #0ea7e8, #17b6ff);
+    transition: width 300ms ease;
+}
+
+.quest-row.done .quest-bar-fill {
+    background: linear-gradient(90deg, #c99b2e, #ffc84f);
+}
+
+.quest-side {
+    display: grid;
+    justify-items: end;
+    gap: 3px;
+}
+
+.quest-progress {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--muted);
+}
+
+.quest-row.done .quest-progress {
+    color: var(--good);
+}
+
+.quest-reward {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #ffe9ad;
+}
+
+/* --- Deck tiles: stats, actions, new-deck ---------------------------------------- */
+
+.deck-tile-stats {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--good);
+}
+
+.deck-tile-stats.muted {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.deck-tag-warn {
+    border-color: rgba(255, 122, 122, 0.6);
+    background: rgba(66, 12, 12, 0.5);
+    color: #ffb3b3;
+}
+
+.deck-tile-actions {
+    width: 100%;
+    display: grid;
+    gap: 6px;
+}
+
+.deck-action-btn {
+    width: 100%;
+    padding: 7px 8px;
+    font-size: 12px;
+}
+
+.deck-action-btn.ghost {
+    background: rgba(14, 29, 44, 0.8);
+    border: 1px solid var(--line);
+}
+
+.deck-selected-btn:disabled {
+    cursor: default;
+    background: rgba(66, 48, 6, 0.55);
+    border: 1px solid rgba(255, 200, 79, 0.6);
+    color: #ffe9ad;
+    filter: none;
+    transform: none;
+}
+
+.deck-tile-new {
+    justify-content: center;
+    align-content: center;
+    border-style: dashed;
+    background: rgba(10, 25, 39, 0.45);
+    color: var(--muted);
+}
+
+.deck-new-plus {
+    font-size: 34px;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--hero);
+}
+
+.deck-art-empty {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 300;
+    color: var(--muted);
+}
+
+/* --- Deck editor: count, delete, cosmetics, recommendations ---------------------- */
+
+.deck-count {
+    font-size: 13px;
+    font-weight: 800;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    white-space: nowrap;
+}
+
+.deck-count.ok {
+    border-color: rgba(45, 212, 169, 0.6);
+    color: var(--good);
+}
+
+.deck-count.warn {
+    border-color: rgba(255, 122, 122, 0.6);
+    color: #ffb3b3;
+}
+
+.deck-editor-head {
+    grid-template-columns: 1fr auto auto;
+}
+
+.deck-reset-btn.danger-ghost {
+    border-color: rgba(255, 122, 122, 0.55);
+    color: #ffb3b3;
+}
+
+.deck-grid-empty {
+    grid-column: 1 / -1;
+    padding: 14px 4px;
+    text-align: center;
+}
+
+.deck-slot-empty {
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    aspect-ratio: 3 / 4;
+}
+
+.cos-section {
+    display: block;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+}
+
+.cos-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.cos-summary::-webkit-details-marker {
+    display: none;
+}
+
+.cos-summary::before {
+    content: '▸';
+    font-size: 10px;
+    transition: transform 140ms ease;
+}
+
+details[open]>.cos-summary::before {
+    transform: rotate(90deg);
+}
+
+.cos-body {
+    display: grid;
+    gap: 8px;
+    padding-top: 10px;
+}
+
+.cos-row {
+    display: grid;
+    grid-template-columns: 74px 1fr;
+    gap: 8px;
+    align-items: center;
+}
+
+.cos-row-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.cos-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.cos-chip {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(14, 29, 44, 0.8);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.cos-chip.active {
+    border-color: rgba(255, 200, 79, 0.75);
+    box-shadow: 0 0 0 1px rgba(255, 200, 79, 0.35);
+}
+
+.cos-chip-preview {
+    padding: 3px;
+    line-height: 0;
+}
+
+.cos-mini {
+    display: inline-block;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.cos-mini-back {
+    width: 30px;
+    height: 42px;
+    background: var(--card-back);
+}
+
+.cos-mini-board {
+    width: 46px;
+    height: 32px;
+    background:
+        radial-gradient(30px 18px at 25% 10%, var(--board-glow-1), transparent 65%),
+        radial-gradient(26px 18px at 90% 5%, var(--board-glow-2), transparent 65%),
+        var(--board-base);
+}
+
+.cos-emote-chip {
+    font-size: 12px;
+}
+
+.rec-wrap {
+    display: grid;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+}
+
+.rec-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 2px 8px;
+    -webkit-overflow-scrolling: touch;
+    min-height: 44px;
+}
+
+.rec-row .mini-entry,
+.rec-row .mini-stack {
+    flex: 0 0 calc((100% - 32px) / 5);
+}
+
+.rec-empty {
+    align-self: center;
+    padding: 6px 2px;
+}
+
+/* --- Collection controls (search / sort / filter) --------------------------------- */
+
+.collection-controls {
+    display: grid;
+    gap: 8px;
+}
+
+.collection-search {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(10, 25, 39, 0.7);
+    color: var(--ink);
+    font-size: 14px;
+}
+
+.collection-search:focus {
+    outline: none;
+    border-color: rgba(23, 182, 255, 0.7);
+}
+
+.collection-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.collection-filters select {
+    flex: 1;
+    min-width: 110px;
+    padding: 8px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(10, 25, 39, 0.85);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* --- Companion stacks + win-rate badges -------------------------------------------- */
+
+.mini-entry {
+    position: relative;
+    display: grid;
+}
+
+.mini-stack {
+    position: relative;
+    display: grid;
+    cursor: pointer;
+    padding: 4px 4px 14px;
+}
+
+.mini-stack .mini-card {
+    grid-area: 1 / 1;
+}
+
+.mini-stack .mini-card:nth-child(1) {
+    transform: rotate(-3deg) translate(-4%, -1%);
+}
+
+.mini-stack .mini-card:nth-child(2) {
+    transform: rotate(3deg) translate(5%, 3%);
+}
+
+.mini-stack:active .mini-card {
+    transform: scale(0.96);
+}
+
+.mini-stack.in-deck .mini-card {
+    opacity: 0.45;
+}
+
+.mini-stack-tag {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    font-size: 8px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(66, 48, 6, 0.9);
+    border: 1px solid rgba(255, 200, 79, 0.6);
+    color: #ffe9ad;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.mini-wr {
+    font-size: 9px;
+    font-weight: 800;
+    text-align: center;
+    color: var(--good);
+}
+
+/* Recommendation matching score, rendered in the win-rate badge slot. */
+.mini-match {
+    font-size: 9px;
+    font-weight: 800;
+    text-align: center;
+    color: var(--hero);
+}
+
+/* --- Card-stack popup note (collection card reader) -------------------------------- */
+
+.stackpop-note {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 4px 2px 8px;
+    text-align: center;
+}
+
+/* Add-to-deck reads green, remove-from-deck reads red. */
+.stackpop-extra-add {
+    border-color: rgba(45, 212, 169, 0.75);
+    background: rgba(13, 84, 55, 0.5);
+    color: #7dfccb;
+}
+
+.stackpop-extra-remove {
+    border-color: rgba(255, 110, 110, 0.75);
+    background: rgba(92, 16, 16, 0.45);
+    color: #ffb3b3;
+}
+
+/* --- Mulligan keep/redraw button ----------------------------------------------------
+   Sits on the bottom quarter of each hand card; tapping the card itself opens
+   the inspector instead. */
+
+.mull-toggle {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    bottom: 5px;
+    height: 25%;
+    z-index: 5;
+    border-radius: 10px;
+    border: 1px solid rgba(45, 212, 169, 0.75);
+    background: rgba(9, 24, 38, 0.92);
+    color: var(--good);
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hand-card.marked .mull-toggle {
+    border-color: rgba(255, 70, 70, 0.9);
+    color: #ff7a7a;
+}
+
+/* --- Collection / decks on narrow phones ------------------------------------------ */
+
+@media (max-width: 600px) {
+
+    .collection-grid,
+    .deck-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .rec-row .mini-entry,
+    .rec-row .mini-stack {
+        flex: 0 0 calc((100% - 20px) / 3);
+    }
+
+    .mini-media {
+        height: 92px;
+    }
+
+    .mini-name {
+        font-size: 11px;
+    }
+
+    .collection-filters select {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 0;
+    }
+
+    /* Name input gets the full first row; count + reset/delete sit below. */
+    .deck-editor-head {
+        grid-template-columns: auto 1fr;
+    }
+
+    .deck-name-input {
+        grid-column: 1 / -1;
+        min-width: 0;
+    }
+
+    .deck-reset-btn {
+        justify-self: end;
+    }
+}
+
+/* ==========================================================================
+   Free-for-All (3-5 players)
+   ========================================================================== */
+
+/* --- Main menu: favorite game mode chips --------------------------------- */
+
+.menu-mode-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 2px 0 4px;
+}
+
+.mode-chip {
+    flex: 1;
+    max-width: 86px;
+    padding: 8px 0;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(16, 37, 59, 0.72);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.mode-chip.active {
+    border-color: rgba(23, 182, 255, 0.85);
+    background: rgba(14, 90, 140, 0.45);
+    color: #d9f2ff;
+    box-shadow: 0 0 12px rgba(23, 182, 255, 0.25);
+}
+
+/* --- Seat colors ----------------------------------------------------------- */
+
+.seat-c1 { --seat-color: #ff7a5c; }
+.seat-c2 { --seat-color: #b78cff; }
+.seat-c3 { --seat-color: #6fe08e; }
+.seat-c4 { --seat-color: #ffc84f; }
+.seat-you { --seat-color: #17b6ff; }
+
+/* --- Rival chips (replace the 2P opponent strip in FFA) ------------------- */
+
+.ffa-mode .opp-strip,
+.ffa-mode #oppMana {
+    display: none;
+}
+
+.opp-chips {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+}
+
+.opp-chip {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--seat-color, var(--line));
+    border-radius: 10px;
+    background: rgba(10, 24, 38, 0.82);
+    padding: 6px 8px;
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    cursor: pointer;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.opp-chip.active-turn {
+    border-color: var(--seat-color, #17b6ff);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--seat-color, #17b6ff) 45%, transparent);
+    animation: chipPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chipPulse {
+    0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--seat-color, #17b6ff) 30%, transparent); }
+    50% { box-shadow: 0 0 16px color-mix(in srgb, var(--seat-color, #17b6ff) 60%, transparent); }
+}
+
+.chip-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+}
+
+.chip-name {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--seat-color, #d7e9f7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chip-vp {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffc84f;
+    flex: none;
+}
+
+.chip-stats {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.chip-mana .mana-track {
+    transform: scale(0.72);
+    transform-origin: left center;
+}
+
+/* --- Lane carousel ---------------------------------------------------------- */
+
+.lanes.lanes-carousel {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 10px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.lanes.lanes-carousel .lane {
+    flex: 0 0 72%;
+    max-width: 340px;
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: auto;
+    min-height: 380px;
+}
+
+.lanes.lanes-carousel .lane-row {
+    flex: 1;
+    min-height: 64px;
+}
+
+.lanes.lanes-carousel .lane-row.lane-drop {
+    flex: 1.6;
+    min-height: 120px;
+}
+
+/* Compact rival rows: shrink stacked cards so 2-4 rival rows still fit. */
+.lanes.lanes-carousel .lane-row-opp {
+    position: relative;
+    border: 1px dashed color-mix(in srgb, var(--seat-color, #46627a) 45%, transparent);
+    border-radius: 10px;
+    padding: 4px;
+}
+
+.lanes.lanes-carousel .lane-row-opp .stack-cards .card {
+    transform: scale(0.92);
+    transform-origin: top center;
+}
+
+.lanes.lanes-carousel .lane-row-opp .stack-cards[data-count="0"]::after {
+    content: '';
+    display: block;
+    min-height: 40px;
+}
+
+.lane-row-tag {
+    position: absolute;
+    top: -1px;
+    left: 8px;
+    transform: translateY(-55%);
+    z-index: 5;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--seat-color, var(--muted));
+    background: rgba(8, 20, 32, 0.95);
+    border: 1px solid color-mix(in srgb, var(--seat-color, #46627a) 55%, transparent);
+    border-radius: 6px;
+    padding: 1px 6px;
+    pointer-events: none;
+}
+
+.lane-center {
+    border-color: rgba(255, 200, 79, 0.5);
+}
+
+.lane-value-badge {
+    color: #ffc84f;
+    font-size: 14px;
+    flex: none;
+    filter: drop-shadow(0 0 4px rgba(255, 200, 79, 0.5));
+}
+
+.lane-lock {
+    font-size: 12px;
+    flex: none;
+    opacity: 0.8;
+}
+
+.lane-locked {
+    opacity: 0.82;
+    background: rgba(10, 20, 30, 0.6);
+}
+
+.lane-unreachable {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    border: 1px dashed rgba(120, 145, 168, 0.35);
+    border-radius: 10px;
+}
+
+.lane-unreachable-text {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding: 4px 10px;
+}
+
+.lane-score .opp[class*="seat-c"] {
+    color: var(--seat-color);
+}
+
+.lane-score-sep {
+    margin: 0 3px;
+    color: var(--muted);
+}
+
+/* --- Lane dots ---------------------------------------------------------------- */
+
+.lane-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 0 2px;
+}
+
+.lane-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1px solid rgba(150, 175, 195, 0.5);
+    background: rgba(150, 175, 195, 0.25);
+    padding: 0;
+    cursor: pointer;
+}
+
+.lane-dot.reachable {
+    border-color: rgba(255, 200, 79, 0.9);
+    background: rgba(255, 200, 79, 0.55);
+    box-shadow: 0 0 6px rgba(255, 200, 79, 0.35);
+}
+
+.lane-dot.center {
+    width: 11px;
+    height: 11px;
+}
+
+/* --- FFA score panel (3-5 crown tracks) -------------------------------------- */
+
+.ffa-mode .score-panel {
+    gap: 6px;
+}
+
+.score-side-ffa {
+    border-left: 2px solid var(--seat-color, transparent);
+    padding-left: 5px;
+}
+
+.score-side-ffa .score-name {
+    color: var(--seat-color, var(--muted));
+    max-width: 64px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ffa-mode .score-panel .vp-crown {
+    width: 11px;
+    height: 9px;
+}
+
+/* Phones: slightly narrower carousel lanes so the next lane clearly peeks. */
+@media (max-width: 700px) {
+    .lanes.lanes-carousel .lane {
+        flex-basis: 78%;
+        min-height: 340px;
+        height: auto;
+    }
 }

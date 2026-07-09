@@ -13,7 +13,15 @@ from dataclasses import replace
 from typing import Iterable
 
 from . import catalog, effects, primitives as prim
-from .actions import Action, ChooseOptionAction, DrawCardAction, EndTurnAction, PlayCardAction, UseAbilityAction
+from .actions import (
+    Action,
+    ChooseOptionAction,
+    DrawCardAction,
+    EndTurnAction,
+    PlayCardAction,
+    SurrenderAction,
+    UseAbilityAction,
+)
 from .catalog import CARD_LIBRARY, DECK_LIBRARY, DEFAULT_DECK_A, DEFAULT_DECK_B, card as _card, card_owner_idx as _card_owner_idx
 from . import cards as _cards  # noqa: F401  (imported for effect registration)
 from .effects import Halt
@@ -66,34 +74,41 @@ def register_custom_deck(name: str, card_ids: Iterable[str]) -> None:
     DECK_LIBRARY[name] = ids
 
 
-# Card ownership is decklist-based (catalog.card_owner_idx), so the two sides
-# of a match must never share a card id. When they do (mirror matches, edited
-# decks borrowing another deck's cards), side B plays aliased copies of the
-# shared cards, registered under a shadow deck name. Behaviors are keyed by
-# card *name*, so an alias keeps the exact same rules and art.
-_MIRROR_SUFFIX = "-P2"
+# Card ownership is decklist-based (catalog.card_owner_idx), so the seats of
+# a match must never share a card id. When they do (mirror matches, edited
+# decks borrowing another deck's cards), later seats play aliased copies of
+# the shared cards, registered under a shadow deck name. Behaviors are keyed
+# by card *name*, so an alias keeps the exact same rules and art.
+
+def _mirror_suffix(seat_idx: int) -> str:
+    return f"-P{seat_idx + 1}"
 
 
-def _mirror_safe_deck_b(deck_a: str, deck_b: str) -> tuple[str, list[str]]:
-    deck_a_ids = set(_resolve_default_deck(deck_a))
-    deck_b_ids = list(_resolve_default_deck(deck_b))
-    shared = deck_a_ids.intersection(deck_b_ids)
-    if not shared:
-        return deck_b, deck_b_ids
-
-    aliased: list[str] = []
-    for card_id in deck_b_ids:
-        if card_id not in shared:
-            aliased.append(card_id)
-            continue
-        alias = f"{card_id}{_MIRROR_SUFFIX}"
-        if alias not in CARD_LIBRARY:
-            CARD_LIBRARY[alias] = replace(CARD_LIBRARY[card_id], card_id=alias)
-        aliased.append(alias)
-
-    shadow_name = f"{deck_b}{_MIRROR_SUFFIX}"
-    DECK_LIBRARY[shadow_name] = tuple(aliased)
-    return shadow_name, aliased
+def _mirror_safe_decks(deck_names: list[str]) -> list[tuple[str, list[str]]]:
+    """Resolve each seat's deck, aliasing card ids already used by an earlier
+    seat so every card id in the match is unique."""
+    resolved: list[tuple[str, list[str]]] = []
+    seen_ids: set[str] = set()
+    for seat_idx, deck_name in enumerate(deck_names):
+        deck_ids = list(_resolve_default_deck(deck_name))
+        shared = seen_ids.intersection(deck_ids)
+        if shared:
+            suffix = _mirror_suffix(seat_idx)
+            aliased: list[str] = []
+            for card_id in deck_ids:
+                if card_id not in shared:
+                    aliased.append(card_id)
+                    continue
+                alias = f"{card_id}{suffix}"
+                if alias not in CARD_LIBRARY:
+                    CARD_LIBRARY[alias] = replace(CARD_LIBRARY[card_id], card_id=alias)
+                aliased.append(alias)
+            shadow_name = f"{deck_name}{suffix}"
+            DECK_LIBRARY[shadow_name] = tuple(aliased)
+            deck_name, deck_ids = shadow_name, aliased
+        seen_ids.update(deck_ids)
+        resolved.append((deck_name, deck_ids))
+    return resolved
 
 
 def _opening_mulligan_options(hand: tuple[str, ...]) -> list[str]:
@@ -104,71 +119,117 @@ def _opening_mulligan_options(hand: tuple[str, ...]) -> list[str]:
 # Game setup
 # --------------------------------------------------------------------------
 
+def _build_locations(n_players: int) -> tuple[LocationState, ...]:
+    """The board for a match of `n_players`.
+
+    2 players: the classic three lanes, everything shared.
+    3-6 players (FFA): one outside location between every adjacent pair of
+    seats (accessible only to those two seats, 7 slots) plus a shared center
+    location (accessible to everyone, X*3+1 slots, worth more).
+    """
+    empty = tuple(tuple() for _ in range(n_players))
+    if n_players == 2:
+        return (
+            LocationState(location_id=0, capacity=7, weight=1.0, stacks=empty, accessible=(0, 1)),
+            LocationState(location_id=1, capacity=7, weight=1.5, stacks=empty, accessible=(0, 1)),
+            LocationState(location_id=2, capacity=7, weight=1.0, stacks=empty, accessible=(0, 1)),
+        )
+    locations = [
+        LocationState(
+            location_id=i,
+            capacity=7,
+            weight=1.0,
+            stacks=empty,
+            accessible=(i, (i + 1) % n_players),
+        )
+        for i in range(n_players)
+    ]
+    locations.append(
+        LocationState(
+            location_id=n_players,
+            capacity=n_players * 3 + 1,
+            weight=1.5,
+            stacks=empty,
+            accessible=tuple(range(n_players)),
+        )
+    )
+    return tuple(locations)
+
+
 def create_initial_state(
     seed: int,
-    player_ids: tuple[int, int] = (1, 2),
+    player_ids: tuple[int, ...] = (1, 2),
     deck_a: str = DEFAULT_DECK_A,
     deck_b: str = DEFAULT_DECK_B,
+    decks: "Iterable[str] | None" = None,
 ) -> GameState:
+    """Deal a new match. `decks` (one deck name per seat) overrides
+    deck_a/deck_b and determines the player count together with `player_ids`."""
     _load_data_if_needed()
     rng = random.Random(seed)
-    deck_a_ids = list(_resolve_default_deck(deck_a))
-    deck_b, deck_b_ids = _mirror_safe_deck_b(deck_a, deck_b)
-    set_aside_a = tuple(card_id for card_id in deck_a_ids if effects.behavior_of(card_id).set_aside_at_start)
-    set_aside_b = tuple(card_id for card_id in deck_b_ids if effects.behavior_of(card_id).set_aside_at_start)
-    deck_a_ids = [card_id for card_id in deck_a_ids if not effects.behavior_of(card_id).set_aside_at_start]
-    deck_b_ids = [card_id for card_id in deck_b_ids if not effects.behavior_of(card_id).set_aside_at_start]
-    rng.shuffle(deck_a_ids)
-    rng.shuffle(deck_b_ids)
-    opening_hand_a = tuple(deck_a_ids[:4])
-    opening_hand_b = tuple(deck_b_ids[:4])
-    deck_a_ids = deck_a_ids[4:]
-    deck_b_ids = deck_b_ids[4:]
-    starting_idx = rng.randrange(0, 2)
+    requested_decks = list(decks) if decks is not None else [deck_a, deck_b]
+    if len(player_ids) != len(requested_decks):
+        player_ids = tuple(range(1, len(requested_decks) + 1))
+    n = len(requested_decks)
+    if not 2 <= n <= 6:
+        raise ValueError(f"Supported player counts are 2-6, got {n}")
+
+    resolved = _mirror_safe_decks(requested_decks)
+    deck_names: list[str] = []
+    deck_piles: list[tuple[str, ...]] = []
+    hands: list[tuple[str, ...]] = []
+    set_asides: list[tuple[str, ...]] = []
+    for deck_name, deck_ids in resolved:
+        set_asides.append(tuple(cid for cid in deck_ids if effects.behavior_of(cid).set_aside_at_start))
+        pile = [cid for cid in deck_ids if not effects.behavior_of(cid).set_aside_at_start]
+        rng.shuffle(pile)
+        hands.append(tuple(pile[:4]))
+        deck_piles.append(tuple(pile[4:]))
+        deck_names.append(deck_name)
+    starting_idx = rng.randrange(0, n)
+
+    def per_seat(value):
+        return tuple(value for _ in range(n))
 
     return GameState(
         seed=seed,
-        deck_names=(deck_a, deck_b),
+        deck_names=tuple(deck_names),
         player_ids=player_ids,
         current_player_idx=starting_idx,
         round_starter_idx=starting_idx,
         turn_number=1,
         round_number=1,
         phase="MULLIGAN",
-        decks=(tuple(deck_a_ids), tuple(deck_b_ids)),
-        hands=(opening_hand_a, opening_hand_b),
-        mulligan_selected=(tuple(), tuple()),
-        mulligan_done=(False, False),
-        underworlds=(tuple(), tuple()),
-        set_aside=(set_aside_a, set_aside_b),
-        player_turn_counts=(0, 0),
-        mana_pool=(0, 0),
-        victory_points=(0, 0),
-        next_cost_discount=(0, 0),
-        next_human_discount=(0, 0),
-        next_artifact_discount=(0, 0),
-        next_free_play_max_cost=(0, 0),
+        decks=tuple(deck_piles),
+        hands=tuple(hands),
+        mulligan_selected=per_seat(tuple()),
+        mulligan_done=per_seat(False),
+        underworlds=per_seat(tuple()),
+        set_aside=tuple(set_asides),
+        player_turn_counts=per_seat(0),
+        mana_pool=per_seat(0),
+        victory_points=per_seat(0),
+        next_cost_discount=per_seat(0),
+        next_human_discount=per_seat(0),
+        next_artifact_discount=per_seat(0),
+        next_free_play_max_cost=per_seat(0),
         beings_left_world_this_turn=False,
         flood_pending_turn=0,
         flood_used=False,
-        protected_locations=(None, None),
-        power_modifiers=(tuple(), tuple()),
+        protected_locations=per_seat(None),
+        power_modifiers=per_seat(tuple()),
         facedown_cards=tuple(),
-        used_top_abilities=(tuple(), tuple()),
+        used_top_abilities=per_seat(tuple()),
         pending_choice=PendingChoice(
             chooser_idx=starting_idx,
             choice_kind="opening_mulligan",
             source_card_id="MULLIGAN",
             location_id=None,
-            options=tuple(_opening_mulligan_options((opening_hand_a, opening_hand_b)[starting_idx])),
+            options=tuple(_opening_mulligan_options(hands[starting_idx])),
             prompt="Select any cards to mulligan, then choose KEEP",
             follow_up=tuple(),
         ),
-        locations=(
-            LocationState(location_id=0, capacity=7, weight=1.0, stacks=(tuple(), tuple())),
-            LocationState(location_id=1, capacity=7, weight=1.5, stacks=(tuple(), tuple())),
-            LocationState(location_id=2, capacity=7, weight=1.0, stacks=(tuple(), tuple())),
-        ),
+        locations=_build_locations(n),
         action_history=tuple(),
     )
 
@@ -189,7 +250,7 @@ def _player_index(state: GameState, player_id: int) -> int:
 
 
 def _reset_turn_state(state: GameState) -> GameState:
-    return replace(state, beings_left_world_this_turn=False, used_top_abilities=(tuple(), tuple()))
+    return replace(state, beings_left_world_this_turn=False, used_top_abilities=tuple(tuple() for _ in state.player_ids))
 
 
 # --------------------------------------------------------------------------
@@ -219,8 +280,10 @@ def dynamic_card_power(state: GameState, card_id: str, location_idx: int, side_i
     base = power_before_overrides(state, card_id, location_idx, side_idx)
     location = state.locations[location_idx]
     if card_id in location.stacks[side_idx]:
-        enemy_top = prim.top_card(location, 1 - side_idx)
-        if enemy_top is not None:
+        for enemy_side in prim.other_side_indices(state, side_idx):
+            enemy_top = prim.top_card(location, enemy_side)
+            if enemy_top is None:
+                continue
             override_hook = effects.behavior_of(enemy_top).enemy_card_power_override_while_top
             if override_hook is not None:
                 base = override_hook(RT, state, location, side_idx, card_id, base)
@@ -309,6 +372,9 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
     target_side_idx = source_side_idx if target_side_idx is None else target_side_idx
     if source_location_idx == target_location_idx and source_side_idx == target_side_idx:
         return state
+    # FFA: cards may never be moved to a location their owner cannot reach.
+    if owner_idx not in state.locations[target_location_idx].accessible:
+        return state
 
     # Protection auras (e.g. Ajax) veto moves forced by enemy effects.
     if source_effect_owner_idx is not None and source_effect_owner_idx != owner_idx and catalog.is_being(card_id):
@@ -353,6 +419,8 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
 
 
 def revive_from_underworld(state: GameState, player_idx: int, location_idx: int, predicate) -> GameState:
+    if player_idx not in state.locations[location_idx].accessible:
+        return state
     underworld = list(state.underworlds[player_idx])
     candidates = [card_id for card_id in underworld if predicate(card_id)]
     if not candidates:
@@ -367,6 +435,8 @@ def revive_from_underworld(state: GameState, player_idx: int, location_idx: int,
 
 
 def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: int, name: str) -> GameState:
+    if player_idx not in state.locations[location_idx].accessible:
+        return state
     chosen_zone = None
     chosen_card = None
     for zone_name, cards in (("hand", state.hands[player_idx]), ("deck", state.decks[player_idx]), ("underworld", state.underworlds[player_idx])):
@@ -380,9 +450,9 @@ def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: in
     if chosen_card is None:
         return state
 
-    hands = [list(state.hands[0]), list(state.hands[1])]
-    decks = [list(state.decks[0]), list(state.decks[1])]
-    underworlds = [list(state.underworlds[0]), list(state.underworlds[1])]
+    hands = [list(h) for h in state.hands]
+    decks = [list(d) for d in state.decks]
+    underworlds = [list(u) for u in state.underworlds]
     if chosen_zone == "hand":
         hands[player_idx].remove(chosen_card)
     elif chosen_zone == "deck":
@@ -395,9 +465,9 @@ def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: in
         return state
     state = replace(
         with_card,
-        hands=(tuple(hands[0]), tuple(hands[1])),
-        decks=(tuple(decks[0]), tuple(decks[1])),
-        underworlds=(tuple(underworlds[0]), tuple(underworlds[1])),
+        hands=tuple(tuple(h) for h in hands),
+        decks=tuple(tuple(d) for d in decks),
+        underworlds=tuple(tuple(u) for u in underworlds),
     )
     return _apply_on_enter(state, player_idx, chosen_card, location_idx)
 
@@ -440,7 +510,7 @@ def _resolve_all_monster_rewards(state: GameState) -> GameState:
     so a second monster still dies when the first one's reward paused the
     pipeline with a PendingChoice)."""
     for location_idx in range(len(state.locations)):
-        for side_idx in (0, 1):
+        for side_idx in range(state.n_players):
             state = _resolve_monster_rewards(state, location_idx, side_idx)
             if state.pending_choice is not None:
                 return state
@@ -479,14 +549,14 @@ def _count_humans_in_play(state: GameState) -> int:
 def _maybe_schedule_flood(state: GameState) -> GameState:
     if state.flood_used or state.flood_pending_turn:
         return state
-    if (state.set_aside[0] or state.set_aside[1]) and _count_humans_in_play(state) >= 8:
+    if any(state.set_aside) and _count_humans_in_play(state) >= 8:
         return replace(state, flood_pending_turn=state.turn_number)
     return state
 
 
 def _resolve_flood(state: GameState) -> GameState:
     for location_idx, location in enumerate(state.locations):
-        for side_idx in (0, 1):
+        for side_idx in range(state.n_players):
             for card_id in list(location.stacks[side_idx]):
                 if not catalog.is_human(card_id):
                     continue
@@ -629,21 +699,29 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
                 if not can_use_sacrifice:
                     continue
             for location_idx, location in enumerate(state.locations):
+                if idx not in location.accessible:
+                    continue
                 own_stack = location.stacks[idx]
                 if prim.location_total_cards(location) >= location.capacity:
                     continue
                 if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in own_stack):
                     continue
-                enemy_top = prim.top_card(location, 1 - idx)
-                if enemy_top is not None:
+                blocked = False
+                for enemy_side in prim.other_side_indices(state, idx):
+                    enemy_top = prim.top_card(location, enemy_side)
+                    if enemy_top is None:
+                        continue
                     stack_limit = effects.behavior_of(enemy_top).max_enemy_stack_while_top
                     if stack_limit is not None and len(own_stack) >= stack_limit:
-                        continue
+                        blocked = True
+                        break
+                if blocked:
+                    continue
                 actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
         # "While on top" abilities can also be used proactively during MAIN
         # (e.g. moving Enkidu to Gilgamesh), not only at end of turn.
         for location_idx, location in enumerate(state.locations):
-            for side_idx in (0, 1):
+            for side_idx in range(state.n_players):
                 top = prim.top_card(location, side_idx)
                 if top is None:
                     continue
@@ -740,7 +818,7 @@ def _apply_use_ability(state: GameState, action: UseAbilityAction) -> GameState:
     used[idx].append(_card(action.card_id).name)
     return replace(
         result,
-        used_top_abilities=(tuple(used[0]), tuple(used[1])),
+        used_top_abilities=tuple(tuple(v) for v in used),
         action_history=state.action_history + (f"use_ability:{action.player_id}:{action.card_id}",),
     )
 
@@ -769,6 +847,10 @@ def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameSt
     if handler is None:
         raise ValueError(f"Unhandled choice kind: {kind}")
     state = handler(RT, state, chooser_idx, option, pending)
+    # "Each opponent ..." effects resolve one opponent at a time; open the
+    # next opponent's step of the chain before anything else continues.
+    if state.pending_choice is None and pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
+        state = effects.continue_opponent_chain(RT, state, pending)
     # A reward/choice may have added heroes next to further monsters (or a
     # halted monster pipeline needs to continue) — settle them now.
     if state.pending_choice is None and state.phase != "GAME_OVER":
@@ -803,7 +885,10 @@ def _apply_mulligan_choice(state: GameState, chooser_idx: int, option: str) -> G
         )
         if all(mulligan_done):
             return replace(state, pending_choice=None, current_player_idx=state.round_starter_idx, phase="DRAW")
-        next_chooser = 1 - chooser_idx
+        # Mulligans run in turn order (clockwise from the starter).
+        next_chooser = (chooser_idx + 1) % state.n_players
+        while mulligan_done[next_chooser]:
+            next_chooser = (next_chooser + 1) % state.n_players
         return prim.with_pending_choice(
             replace(state, current_player_idx=next_chooser),
             chooser_idx=next_chooser,
@@ -841,31 +926,40 @@ def _apply_mulligan_choice(state: GameState, chooser_idx: int, option: str) -> G
 # Rounds, turns, and game end
 # --------------------------------------------------------------------------
 
-def _round_winner_idx(state: GameState) -> int | None:
-    score = [0.0, 0.0]
-    total_power = [0, 0]
+def _location_scores(state: GameState) -> tuple[list[float], list[int]]:
+    """Per-seat weighted location wins and total power across the board.
+
+    A seat wins a location by having strictly the highest power there.
+    """
+    n = state.n_players
+    score = [0.0] * n
+    total_power = [0] * n
     for location in state.locations:
-        p0 = _location_power_for_side(state, location, 0)
-        p1 = _location_power_for_side(state, location, 1)
-        total_power[0] += p0
-        total_power[1] += p1
-        if p0 > p1:
-            score[0] += location.weight
-        elif p1 > p0:
-            score[1] += location.weight
-    if score[0] > score[1]:
-        return 0
-    if score[1] > score[0]:
-        return 1
-    if total_power[0] > total_power[1]:
-        return 0
-    if total_power[1] > total_power[0]:
-        return 1
+        powers = [_location_power_for_side(state, location, side) for side in range(n)]
+        for side, power in enumerate(powers):
+            total_power[side] += power
+        best = max(powers)
+        leaders = [side for side, power in enumerate(powers) if power == best]
+        if len(leaders) == 1:
+            score[leaders[0]] += location.weight
+    return score, total_power
+
+
+def _round_winner_idx(state: GameState) -> int | None:
+    score, total_power = _location_scores(state)
+    best_score = max(score)
+    leaders = [i for i, s in enumerate(score) if s == best_score]
+    if len(leaders) == 1:
+        return leaders[0]
+    best_power = max(total_power[i] for i in leaders)
+    power_leaders = [i for i in leaders if total_power[i] == best_power]
+    if len(power_leaders) == 1:
+        return power_leaders[0]
     return None
 
 
-def _is_round_boundary(turn_number: int) -> bool:
-    return turn_number % 2 == 0
+def _is_round_boundary(state: GameState) -> bool:
+    return state.turn_number % state.n_players == 0
 
 
 def _advance_turn(state: GameState) -> GameState:
@@ -873,9 +967,9 @@ def _advance_turn(state: GameState) -> GameState:
     next_turn_number = state.turn_number + 1
     next_round = state.round_number
     next_starter = state.round_starter_idx
-    next_current = 1 - state.current_player_idx
+    next_current = (state.current_player_idx + 1) % state.n_players
     victory_points = list(state.victory_points)
-    if _is_round_boundary(state.turn_number):
+    if _is_round_boundary(state):
         winner = _round_winner_idx(state)
         if winner is not None:
             victory_points[winner] += 1
@@ -883,7 +977,9 @@ def _advance_turn(state: GameState) -> GameState:
             next_current = winner
         next_round += 1
     next_phase = "DRAW"
-    if max(victory_points) >= 4:
+    # First to 4 victory points wins; the game hard-caps at 7 rounds and the
+    # winner of the last round takes it (their round VP already counts).
+    if max(victory_points) >= 4 or next_round > 7:
         next_phase = "GAME_OVER"
     return replace(
         state,
@@ -900,7 +996,7 @@ def _apply_end_turn(state: GameState, action: EndTurnAction) -> GameState:
     _active_index(state, action.player_id)
     advanced = _advance_turn(state)
     history_entries = [f"end_turn:{action.player_id}"]
-    if _is_round_boundary(state.turn_number):
+    if _is_round_boundary(state):
         winner_idx = _round_winner_idx(state)
         if winner_idx is None:
             history_entries.append(f"round_result:{state.round_number}:DRAW")
@@ -908,15 +1004,48 @@ def _apply_end_turn(state: GameState, action: EndTurnAction) -> GameState:
             history_entries.append(f"round_result:{state.round_number}:{state.player_ids[winner_idx]}")
     if advanced.phase == "GAME_OVER":
         outcome = returns(advanced)
-        if outcome[0] == outcome[1]:
+        best = max(outcome)
+        winners = [i for i, value in enumerate(outcome) if value == best]
+        if len(winners) != 1 or best <= 0.0:
             history_entries.append("game_result:DRAW")
         else:
-            winner_idx = 0 if outcome[0] > outcome[1] else 1
-            history_entries.append(f"game_result:{advanced.player_ids[winner_idx]}")
+            history_entries.append(f"game_result:{advanced.player_ids[winners[0]]}")
     return replace(advanced, action_history=state.action_history + tuple(history_entries))
 
 
+def _apply_surrender(state: GameState, action: SurrenderAction) -> GameState:
+    """Concede the match immediately; the other player is awarded the win.
+
+    Unlike other actions, this is legal regardless of whose turn it is or
+    what the current phase is (short of the game already being over) -
+    a player must always be able to concede.
+    """
+    idx = _player_index(state, action.player_id)
+    if state.phase == "GAME_OVER":
+        raise ValueError("Game is already over")
+    # The best-standing remaining player takes the win: highest VP, then
+    # weighted location control, then total power, then seat order.
+    score, total_power = _location_scores(state)
+    others = [i for i in range(state.n_players) if i != idx]
+    winner_idx = max(others, key=lambda i: (state.victory_points[i], score[i], total_power[i], -i))
+    victory_points = [min(vp, 3) for vp in state.victory_points]
+    victory_points[winner_idx] = 4
+    victory_points[idx] = 0
+    history_entries = (
+        f"surrender:{action.player_id}",
+        f"game_result:{state.player_ids[winner_idx]}",
+    )
+    return replace(
+        state,
+        victory_points=tuple(victory_points),
+        phase="GAME_OVER",
+        action_history=state.action_history + history_entries,
+    )
+
+
 def apply_action(state: GameState, action: Action) -> GameState:
+    if isinstance(action, SurrenderAction):
+        return _apply_surrender(state, action)
     if action not in legal_actions(state):
         raise ValueError(f"Illegal action in phase {state.phase}: {action}")
     if isinstance(action, DrawCardAction):
@@ -936,18 +1065,23 @@ def is_terminal(state: GameState) -> bool:
     return state.phase == "GAME_OVER"
 
 
-def returns(state: GameState) -> tuple[float, float]:
+def returns(state: GameState) -> tuple[float, ...]:
+    n = state.n_players
     if not is_terminal(state):
-        return (0.0, 0.0)
-    p0_vp, p1_vp = state.victory_points
-    if p0_vp > p1_vp:
-        return (1.0, -1.0)
-    if p1_vp > p0_vp:
-        return (-1.0, 1.0)
-    winner = _round_winner_idx(state)
+        return tuple(0.0 for _ in range(n))
+    best_vp = max(state.victory_points)
+    vp_leaders = [i for i, vp in enumerate(state.victory_points) if vp == best_vp]
+    if best_vp >= 4 and len(vp_leaders) == 1:
+        winner = vp_leaders[0]
+    else:
+        # Round cap reached without 4 VP: the winner of the last round takes
+        # the game (the final board still shows that round's standings).
+        winner = _round_winner_idx(state)
+        if winner is None and len(vp_leaders) == 1:
+            winner = vp_leaders[0]
     if winner is None:
-        return (0.0, 0.0)
-    return (1.0, -1.0) if winner == 0 else (-1.0, 1.0)
+        return tuple(0.0 for _ in range(n))
+    return tuple(1.0 if i == winner else -1.0 for i in range(n))
 
 
 def chance_outcomes(state: GameState) -> tuple[tuple[Action, float], ...]:
@@ -965,6 +1099,8 @@ def action_to_string(action: Action) -> str:
         return f"play_card(p={action.player_id}, card={action.card_id}, location={action.location_id})"
     if isinstance(action, UseAbilityAction):
         return f"use_ability(p={action.player_id}, card={action.card_id})"
+    if isinstance(action, SurrenderAction):
+        return f"surrender(p={action.player_id})"
     return str(action)
 
 

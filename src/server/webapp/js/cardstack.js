@@ -104,9 +104,10 @@ export function createCardStackPopup(ui) {
         updateMultiConfirm();
     }
 
-    function renderExtras(extras) {
-        ui.stackExtras.innerHTML = (extras || [])
-            .map((opt) => `<button class="choice-option-btn stackpop-extra" data-value="${escapeHtml(String(opt.value))}">${escapeHtml(opt.label)}</button>`)
+    function renderExtras(extras, note) {
+        const noteHtml = note ? `<div class="stackpop-note">${escapeHtml(note)}</div>` : '';
+        ui.stackExtras.innerHTML = noteHtml + (extras || [])
+            .map((opt) => `<button class="choice-option-btn stackpop-extra${opt.kind ? ` stackpop-extra-${opt.kind}` : ''}" data-value="${escapeHtml(String(opt.value))}">${escapeHtml(opt.label)}</button>`)
             .join('');
     }
 
@@ -129,12 +130,16 @@ export function createCardStackPopup(ui) {
         }
         ui.stackList.innerHTML = cards.map((entry, i) => cardTile(entry, i)).join('')
             || '<div class="tiny stackpop-empty">No cards here.</div>';
-        renderExtras(opts.extras);
+        renderExtras(opts.extras, opts.note);
 
         ui.stackConfirm.classList.toggle('hidden', mode !== 'select' && mode !== 'multi-select');
-        ui.stackExtras.classList.toggle('hidden', !(opts.extras && opts.extras.length));
+        ui.stackExtras.classList.toggle('hidden', !(opts.extras && opts.extras.length) && !opts.note);
 
         const tiles = ui.stackList.querySelectorAll('.stackpop-card');
+        if (opts.expandAll) {
+            // The collection popup shows every card fully readable up front.
+            tiles.forEach((tile) => tile.classList.add('expanded'));
+        }
         if (mode === 'multi-select') {
             // Nothing to expand/collapse: picking requires seeing every
             // candidate's effect up front.

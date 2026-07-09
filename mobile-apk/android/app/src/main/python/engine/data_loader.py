@@ -64,6 +64,7 @@ def load_card_library(cards_csv_path: Path) -> dict[str, CardDefinition]:
                 effect=(row.get("Effect") or "").strip(),
                 cost=cost,
                 power=power,
+                anecdote=(row.get("Lore") or row.get("Anecdote") or "").strip(),
             )
     return cards
 
@@ -134,6 +135,7 @@ def load_finished_decks(
                         effect=effect,
                         cost=red + green + blue + colorless,
                         power=power,
+                        anecdote=(row.get("Lore") or row.get("Anecdote") or "").strip(),
                     )
 
                 deck_ids.append(card_id)

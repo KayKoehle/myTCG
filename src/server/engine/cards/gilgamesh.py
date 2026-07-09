@@ -6,7 +6,19 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_being, is_hero, is_human, is_monster, named
-from ..effects import CardBehavior, EffectResult, Halt, monster, partners_in_play, register, register_choice, tutor_effect, tutor_named
+from ..effects import (
+    CardBehavior,
+    EffectResult,
+    Halt,
+    monster,
+    partners_in_play,
+    register,
+    register_choice,
+    register_opponent_chain,
+    start_opponent_chain,
+    tutor_effect,
+    tutor_named,
+)
 from ..state import GameState
 
 
@@ -131,24 +143,25 @@ register("Utnapishtim, Survivor of the Flood", CardBehavior(immortal=lambda rt, 
 
 # --- Ishtar ------------------------------------------------------------------
 
-def _ishtar_hero_left(rt: Any, state: GameState, owner_idx: int, moved_card_id: str, source_location_idx: int, trigger_card_id: str) -> GameState | None:
-    # "Each opponent must banish a creature with a cost of [2] or lower":
-    # the opponent picks which of their own beings to give up.
-    opponent_idx = 1 - owner_idx
+def _ishtar_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, lambda cid: is_being(cid) and card(cid).cost <= 2)
-        if catalog.card_owner_idx(state, cid) == opponent_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx
     ]
-    if options:
-        return prim.with_pending_choice(
-            state, opponent_idx, "ishtar_banish_small_enemy", moved_card_id, source_location_idx,
-            prim.choose_options_for_cards(options), "Banish one of your cost 2 or less beings",
-        )
-    return None
+    if not options:
+        return None
+    return ("opponent", "ishtar_banish_small_enemy", prim.choose_options_for_cards(options), "Banish one of your cost 2 or less beings")
+
+
+def _ishtar_hero_left(rt: Any, state: GameState, owner_idx: int, moved_card_id: str, source_location_idx: int, trigger_card_id: str) -> GameState | None:
+    # "Each opponent must banish a creature with a cost of [2] or lower":
+    # each opponent in turn picks which of their own beings to give up.
+    return start_opponent_chain(rt, state, owner_idx, "ishtar_banish_small", moved_card_id, source_location_idx)
 
 
 register("Ishtar", CardBehavior(on_friendly_hero_left_while_top=_ishtar_hero_left))
+register_opponent_chain("ishtar_banish_small", _ishtar_chain_step)
 register_choice("ishtar_banish_small_enemy", lambda rt, state, chooser_idx, option, pending: rt.banish_card(state, option))
 
 
@@ -172,15 +185,17 @@ def _scorpion_men_reward(rt: Any, state: GameState, player_idx: int, location_id
     return prim.draw_from_deck(state, player_idx, 2)
 
 
+def _serpent_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+    enemy_hand = list(state.hands[opp_idx])
+    if not enemy_hand:
+        return None
+    return ("opponent", "discard_from_hand", prim.choose_options_for_cards(enemy_hand), "Choose a card to discard")
+
+
 def _serpent_reward(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> EffectResult:
-    enemy_hand = list(state.hands[1 - player_idx])
-    if enemy_hand:
-        return Halt(
-            prim.with_pending_choice(
-                state, 1 - player_idx, "discard_from_hand", card_id, location_idx,
-                prim.choose_options_for_cards(enemy_hand), "Choose a card to discard",
-            )
-        )
+    chained = start_opponent_chain(rt, state, player_idx, "serpent_discard", card_id, location_idx)
+    if chained is not None:
+        return Halt(chained)
     return state
 
 
@@ -190,25 +205,29 @@ def _humbaba_reward(rt: Any, state: GameState, player_idx: int, location_idx: in
     return replace(state, next_free_play_max_cost=tuple(free))
 
 
-def _bull_of_heaven_reward(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> EffectResult:
-    # "Each opponent must banish two of their beings": the opponent chooses.
-    opponent_idx = 1 - player_idx
+def _bull_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
     enemy_beings = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opponent_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx
     ]
     if len(enemy_beings) >= 2:
-        return Halt(
-            prim.with_pending_choice(
-                state, opponent_idx, "banish_two_enemies", card_id, location_idx,
-                prim.pair_choice_options(enemy_beings), "Banish two of your beings",
-            )
-        )
+        return ("opponent", "banish_two_enemies", prim.pair_choice_options(enemy_beings), "Banish two of your beings")
     if enemy_beings:
-        return Halt(prim.with_pending_choice(state, opponent_idx, "banish_enemy", card_id, location_idx, enemy_beings, "Banish one of your beings"))
+        return ("opponent", "banish_enemy", enemy_beings, "Banish one of your beings")
+    return None
+
+
+def _bull_of_heaven_reward(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> EffectResult:
+    # "Each opponent must banish two of their beings": each opponent chooses.
+    chained = start_opponent_chain(rt, state, player_idx, "bull_banish_two", card_id, location_idx)
+    if chained is not None:
+        return Halt(chained)
     return state
 
+
+register_opponent_chain("serpent_discard", _serpent_chain_step)
+register_opponent_chain("bull_banish_two", _bull_chain_step)
 
 register("Mountain Lions", CardBehavior(monster_reward=monster(1, _mountain_lions_reward)))
 register("Scorpion-Men", CardBehavior(monster_reward=monster(1, _scorpion_men_reward)))

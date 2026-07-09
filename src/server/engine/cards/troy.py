@@ -49,33 +49,54 @@ register("Calchas, Prophet of Apollo", CardBehavior(on_enter=_calchas_enter))
 register_choice("calchas_pick", _handle_calchas_pick)
 
 
+def _dolon_scout_pending(state: GameState, player_idx: int, location_idx: int, card_id: str, target_idx: int) -> GameState:
+    top_id = state.decks[target_idx][0]
+    return prim.with_pending_choice(
+        state, player_idx, "dolon_bottom_top_card", card_id, location_idx,
+        ["PASS", f"BOTTOM|{top_id}"], f"Top of enemy deck: {card(top_id).name}. Put it on the bottom?",
+        follow_up=(str(target_idx),),
+    )
+
+
 def _dolon_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
     # "While on top: Once per turn you may look at the top card of the
     # opponent's deck and choose to put it on the bottom." Revealing the card
-    # id in the option is the look; choosing BOTTOM buries it.
-    enemy_deck = state.decks[1 - player_idx]
-    if enemy_deck:
-        top_id = enemy_deck[0]
-        return prim.with_pending_choice(
-            state, player_idx, "dolon_bottom_top_card", card_id, location_idx,
-            ["PASS", f"BOTTOM|{top_id}"], f"Top of enemy deck: {card(top_id).name}. Put it on the bottom?",
-        )
-    return None
+    # id in the option is the look; choosing BOTTOM buries it. In multiplayer
+    # the scout first picks which opponent's deck to peek at.
+    targets = [i for i in prim.other_side_indices(state, player_idx) if state.decks[i]]
+    if not targets:
+        return None
+    if len(targets) == 1:
+        return _dolon_scout_pending(state, player_idx, location_idx, card_id, targets[0])
+    return prim.with_pending_choice(
+        state, player_idx, "dolon_pick_opponent", card_id, location_idx,
+        ["PASS", *[f"OPP|{i}" for i in targets]], "Choose an opponent's deck to scout",
+    )
+
+
+def _handle_dolon_pick_opponent(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    _, raw_idx = option.split("|", 1)
+    target_idx = int(raw_idx)
+    if not state.decks[target_idx]:
+        return state
+    return _dolon_scout_pending(state, chooser_idx, pending.location_id, pending.source_card_id, target_idx)
 
 
 def _handle_dolon_bottom(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     _, revealed_id = option.split("|", 1)
-    deck = [list(state.decks[0]), list(state.decks[1])]
-    enemy_deck = deck[1 - chooser_idx]
+    target_idx = int(pending.follow_up[0]) if pending.follow_up else (1 - chooser_idx)
+    decks = [list(d) for d in state.decks]
+    enemy_deck = decks[target_idx]
     if enemy_deck and enemy_deck[0] == revealed_id:
         top = enemy_deck.pop(0)
         enemy_deck.append(top)
-        return replace(state, decks=(tuple(deck[0]), tuple(deck[1])))
+        return replace(state, decks=tuple(tuple(d) for d in decks))
     return state
 
 
 register("Sinon the Deceiver", CardBehavior(on_enter=defect_to_enemy_side()))
 register("Dolon the Scout", CardBehavior(on_enter=defect_to_enemy_side(), top_ability=_dolon_top_ability))
+register_choice("dolon_pick_opponent", _handle_dolon_pick_opponent)
 register_choice("dolon_bottom_top_card", _handle_dolon_bottom)
 
 
@@ -132,11 +153,17 @@ def _trojan_horse_moved(rt: Any, state: GameState, owner_idx: int, card_id: str,
 def _handle_trojan_horse_payload(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     if option == "NONE":
         return state
+    # The humans smuggle themselves onto whichever enemy side the horse
+    # currently stands on (the horse just moved there).
+    horse = prim.find_card_in_play(state, pending.source_card_id)
+    horse_side = horse[1] if horse is not None else (1 - chooser_idx)
+    if horse_side == chooser_idx:
+        return state
     facedown = set(state.facedown_cards)
     for card_id in option.split("|"):
-        state = rt.move_card(state, card_id, pending.location_id, 1 - chooser_idx, source_effect_owner_idx=chooser_idx)
+        state = rt.move_card(state, card_id, pending.location_id, horse_side, source_effect_owner_idx=chooser_idx)
         found = prim.find_card_in_play(state, card_id)
-        if found is None or found[1] != 1 - chooser_idx:
+        if found is None or found[1] != horse_side:
             continue  # the move was vetoed or blocked (e.g. a full side): no penalty for a card that stayed put.
         facedown.add(card_id)
     return replace(state, facedown_cards=tuple(sorted(facedown)))
@@ -175,10 +202,12 @@ register_choice("odysseus_move", _handle_odysseus_move)
 
 def _patroclus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
     if any(card(cid).name == "Achilles" and side_idx == player_idx for _, side_idx, cid in prim.find_cards_in_play(state, named("Achilles"))):
+        own_power = rt.dynamic_power(state, card_id, location_idx, player_idx)
         options = [
             cid
-            for cid in state.locations[location_idx].stacks[1 - player_idx]
-            if is_being(cid) and rt.dynamic_power(state, cid, location_idx, 1 - player_idx) <= rt.dynamic_power(state, card_id, location_idx, player_idx)
+            for side in prim.other_side_indices(state, player_idx)
+            for cid in state.locations[location_idx].stacks[side]
+            if is_being(cid) and rt.dynamic_power(state, cid, location_idx, side) <= own_power
         ]
         if options:
             return Halt(
@@ -191,19 +220,21 @@ def _patroclus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, l
 
 
 def _achilles_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    enemy_beings_with_power = [
+        (cid, rt.dynamic_power(state, cid, location_idx, side))
+        for side in prim.other_side_indices(state, player_idx)
+        for cid in state.locations[location_idx].stacks[side]
+        if is_being(cid)
+    ]
     if any(card(cid).name == "Patroclus" for cid in state.underworlds[player_idx]):
-        enemy_beings = [cid for cid in state.locations[location_idx].stacks[1 - player_idx] if is_being(cid)]
-        if enemy_beings:
-            strongest_power = max(rt.dynamic_power(state, cid, location_idx, 1 - player_idx) for cid in enemy_beings)
-            options = [cid for cid in enemy_beings if rt.dynamic_power(state, cid, location_idx, 1 - player_idx) == strongest_power]
+        if enemy_beings_with_power:
+            strongest_power = max(power for _, power in enemy_beings_with_power)
+            options = [cid for cid, power in enemy_beings_with_power if power == strongest_power]
         else:
             options = []
     else:
-        options = [
-            cid
-            for cid in state.locations[location_idx].stacks[1 - player_idx]
-            if is_being(cid) and rt.dynamic_power(state, cid, location_idx, 1 - player_idx) <= rt.dynamic_power(state, card_id, location_idx, player_idx)
-        ]
+        own_power = rt.dynamic_power(state, card_id, location_idx, player_idx)
+        options = [cid for cid, power in enemy_beings_with_power if power <= own_power]
     if options:
         return Halt(
             prim.with_pending_choice(
@@ -220,7 +251,7 @@ def _menelaus_power(rt: Any, state: GameState, card_id: str, location_idx: int, 
     if prim.top_card(location, side_idx) != card_id:
         return base
     own_cards = len(location.stacks[side_idx])
-    opp_cards = len(location.stacks[1 - side_idx])
+    opp_cards = sum(len(stack) for i, stack in enumerate(location.stacks) if i != side_idx)
     return base + max(0, opp_cards - own_cards) * 2
 
 

@@ -23,8 +23,9 @@
         <div class="menu-buttons">
             <button class="menu-play" id="btnMenuPlay">
                 <span class="menu-play-label">Play</span>
-                <span class="menu-play-sub">Battle the AI on a random deck</span>
+                <span class="menu-play-sub" id="menuPlaySub">Battle the AI on a random deck</span>
             </button>
+            <div class="menu-mode-row" id="menuModeRow" role="radiogroup" aria-label="Favorite game mode"></div>
             <div class="menu-row">
                 <button class="menu-tile menu-decks-btn" id="btnMenuDecks">
                     <div class="menu-deck-art" id="menuDeckArt"></div>
@@ -32,6 +33,7 @@
                         <div class="menu-tile-title">Decks</div>
                         <div class="menu-tile-sub" id="menuDeckName"></div>
                     </div>
+                    <div class="menu-tile-lock hidden" id="menuDecksLock">🔒 Play your first game</div>
                 </button>
                 <button class="menu-tile menu-shop-btn" id="btnMenuShop">
                     <div class="menu-shop-icon" aria-hidden="true">🛍️</div>
@@ -40,8 +42,10 @@
                         <div class="menu-tile-sub"><span class="crown-chip"><span class="crown-icon"></span><span
                                     id="menuCrowns">0</span></span></div>
                     </div>
+                    <div class="menu-tile-lock hidden" id="menuShopLock">🔒 Earn your first crown</div>
                 </button>
             </div>
+            <div class="menu-quests hidden" id="menuQuests"></div>
         </div>
     </div>
 
@@ -58,6 +62,7 @@
         <div class="decks-top" id="decksTop"></div>
         <div class="collection-wrap">
             <div class="collection-label" id="collectionLabel">Your collection</div>
+            <div class="collection-controls" id="collectionControls"></div>
             <div class="collection-grid" id="collectionGrid"></div>
         </div>
     </div>
@@ -78,7 +83,12 @@
 
     <div class="app screen" id="gameScreen">
         <header class="status-panel">
-            <button class="icon-btn" id="btnHome" aria-label="Back to main menu">
+            <button class="icon-btn" id="btnSurrender" aria-label="Surrender the match">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z" />
+                </svg>
+            </button>
+            <button class="icon-btn hidden" id="btnHome" aria-label="Back to main menu">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5z" />
                 </svg>
@@ -93,11 +103,12 @@
         </header>
 
         <main class="board">
+            <section class="opp-chips hidden" id="oppChips"></section>
             <section class="opp-strip">
                 <div class="peek-pile">
                     <div class="peek-label">Deck <span class="peek-count" id="oppDeckCount">0</span></div>
                     <div class="peek-window">
-                        <div class="deck-stack">
+                        <div class="deck-stack deck-stack-opp">
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
@@ -128,6 +139,7 @@
 
             <section>
                 <div class="lanes" id="lanes"></div>
+                <div class="lane-dots hidden" id="laneDots" aria-hidden="true"></div>
             </section>
 
             <section class="center-action">
@@ -216,6 +228,20 @@
         </div>
     </div>
 
+    <div id="surrenderModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="surrenderTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="surrenderTitle">Surrender?</h2>
+                <button class="sheet-close" id="btnCloseSurrender" aria-label="Cancel surrender">&times;</button>
+            </div>
+            <p class="surrender-copy">This will immediately end the match as a loss. This can't be undone.</p>
+            <div class="surrender-actions">
+                <button class="btn ghost" id="btnSurrenderCancel">Cancel</button>
+                <button class="btn danger" id="btnSurrenderConfirm">Surrender</button>
+            </div>
+        </div>
+    </div>
+
     <div id="cardInspector" class="inspector-modal" aria-hidden="true">
         <div class="inspector-card" role="dialog" aria-modal="true" aria-labelledby="inspectorTitle">
             <div class="inspector-headline">
@@ -226,6 +252,7 @@
             <div class="inspector-type" id="inspectorType"></div>
             <div class="inspector-media" id="inspectorMedia"></div>
             <p class="inspector-effect" id="inspectorEffect"></p>
+            <p class="inspector-anecdote hidden" id="inspectorAnecdote"></p>
             <button class="btn inspector-action hidden" id="inspectorAction"></button>
         </div>
     </div>

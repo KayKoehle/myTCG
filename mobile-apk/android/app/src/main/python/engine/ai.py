@@ -37,14 +37,17 @@ def evaluate_state(state: GameState, ai_idx: int) -> float:
     if is_terminal(state):
         return returns(state)[ai_idx] * WIN_SCORE
 
-    opp_idx = 1 - ai_idx
-    score = _W_VICTORY_POINTS * (state.victory_points[ai_idx] - state.victory_points[opp_idx])
+    # Against several opponents, measure against the strongest of them —
+    # in a duel this reduces to the classic head-to-head margins.
+    opponents = [i for i in range(state.n_players) if i != ai_idx]
+    best_opp_vp = max(state.victory_points[i] for i in opponents)
+    score = _W_VICTORY_POINTS * (state.victory_points[ai_idx] - best_opp_vp)
 
     lanes_ahead = 0.0
     power_margin = 0.0
     for location in state.locations:
         own_power = _location_power_for_side(state, location, ai_idx)
-        enemy_power = _location_power_for_side(state, location, opp_idx)
+        enemy_power = max(_location_power_for_side(state, location, i) for i in opponents)
         power_margin += own_power - enemy_power
         if own_power > enemy_power:
             lanes_ahead += location.weight
@@ -53,8 +56,8 @@ def evaluate_state(state: GameState, ai_idx: int) -> float:
 
     score += _W_LANES_AHEAD * lanes_ahead
     score += _W_POWER_MARGIN * power_margin
-    score += _W_HAND_CARDS * (len(state.hands[ai_idx]) - len(state.hands[opp_idx]))
-    score += _W_DECK_CARDS * (len(state.decks[ai_idx]) - len(state.decks[opp_idx]))
+    score += _W_HAND_CARDS * (len(state.hands[ai_idx]) - max(len(state.hands[i]) for i in opponents))
+    score += _W_DECK_CARDS * (len(state.decks[ai_idx]) - max(len(state.decks[i]) for i in opponents))
     return score
 
 

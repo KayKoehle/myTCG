@@ -218,9 +218,12 @@ def revive_choice_on_enter(
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
         if condition is not None and not condition(state, player_idx, location_idx, card_id):
             return state
-        # No location anywhere has room for the revived card: don't offer a
+        # No reachable location has room for the revived card: don't offer a
         # choice that would silently do nothing.
-        if not any(prim.location_total_cards(loc) < loc.capacity for loc in state.locations):
+        if not any(
+            player_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
+            for loc in state.locations
+        ):
             return state
         options = candidates(state, player_idx, location_idx)
         if not options:
@@ -344,13 +347,92 @@ def partners_in_underworld(*names: str) -> SynergyHook:
     return hook
 
 
+def next_opponent_at(state: GameState, player_idx: int, location_idx: int) -> int:
+    """The next opposing seat clockwise that can reach this location (in a
+    duel: simply the other player)."""
+    n = state.n_players
+    accessible = state.locations[location_idx].accessible
+    for offset in range(1, n):
+        candidate = (player_idx + offset) % n
+        if candidate in accessible:
+            return candidate
+    return (player_idx + 1) % n
+
+
 def defect_to_enemy_side() -> EnterHook:
-    """On enter: move this card to the opponent's side of this location."""
+    """On enter: move this card to an opponent's side of this location (the
+    next opposing seat clockwise in multiplayer)."""
 
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
-        return rt.move_card(state, card_id, location_idx, 1 - player_idx)
+        return rt.move_card(state, card_id, location_idx, next_opponent_at(state, player_idx, location_idx))
 
     return hook
+
+
+# --------------------------------------------------------------------------
+# "Each opponent ..." chains
+#
+# Cards whose text hits every opponent (e.g. "Each opponent must banish one
+# of their beings") resolve one opponent at a time in clockwise order. The
+# chain state rides in PendingChoice.follow_up; the rules runtime calls
+# `continue_opponent_chain` after each step resolves.
+# --------------------------------------------------------------------------
+
+OPP_CHAIN_MARKER = "OPP_CHAIN"
+
+# chain_kind -> spec(rt, state, actor_idx, opp_idx) ->
+#   (chooser: "actor"|"opponent", choice_kind, options, prompt) | None (skip this opponent)
+_OPP_CHAIN_SPECS: dict[str, Callable[[Any, GameState, int, int], "tuple[str, str, list[str], str] | None"]] = {}
+
+
+def register_opponent_chain(chain_kind: str, spec) -> None:
+    if chain_kind in _OPP_CHAIN_SPECS:
+        raise ValueError(f"Duplicate opponent chain registration: {chain_kind}")
+    _OPP_CHAIN_SPECS[chain_kind] = spec
+
+
+def _chain_follow_up(chain_kind: str, actor_idx: int, remaining: list[int]) -> tuple[str, ...]:
+    return (OPP_CHAIN_MARKER, chain_kind, str(actor_idx), *[str(i) for i in remaining])
+
+
+def start_opponent_chain(
+    rt: Any,
+    state: GameState,
+    actor_idx: int,
+    chain_kind: str,
+    source_card_id: str,
+    location_idx: int | None,
+    remaining: list[int] | None = None,
+) -> GameState | None:
+    """Open the chain's choice for the first opponent with valid options.
+
+    Returns None when no opponent has anything to do (the effect fizzles).
+    """
+    spec = _OPP_CHAIN_SPECS[chain_kind]
+    if remaining is None:
+        n = state.n_players
+        remaining = [(actor_idx + offset) % n for offset in range(1, n)]
+    while remaining:
+        opp_idx, remaining = remaining[0], remaining[1:]
+        step = spec(rt, state, actor_idx, opp_idx)
+        if step is None:
+            continue
+        chooser, choice_kind, options, prompt = step
+        chooser_idx = actor_idx if chooser == "actor" else opp_idx
+        return prim.with_pending_choice(
+            state, chooser_idx, choice_kind, source_card_id, location_idx, options, prompt,
+            follow_up=_chain_follow_up(chain_kind, actor_idx, remaining),
+        )
+    return None
+
+
+def continue_opponent_chain(rt: Any, state: GameState, pending: PendingChoice) -> GameState:
+    """Resume a chain after one of its steps resolved."""
+    chain_kind = pending.follow_up[1]
+    actor_idx = int(pending.follow_up[2])
+    remaining = [int(x) for x in pending.follow_up[3:]]
+    resumed = start_opponent_chain(rt, state, actor_idx, chain_kind, pending.source_card_id, pending.location_id, remaining)
+    return state if resumed is None else resumed
 
 
 # --------------------------------------------------------------------------
@@ -367,7 +449,10 @@ def _handle_move_to_pending_location(rt: Any, state: GameState, chooser_idx: int
 
 
 def _handle_revive_here(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    open_locations = [i for i, loc in enumerate(state.locations) if prim.location_total_cards(loc) < loc.capacity]
+    open_locations = [
+        i for i, loc in enumerate(state.locations)
+        if chooser_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
+    ]
     if len(open_locations) <= 1:
         target = open_locations[0] if open_locations else pending.location_id
         return rt.revive_from_underworld(state, chooser_idx, target, lambda cid: cid == option)
