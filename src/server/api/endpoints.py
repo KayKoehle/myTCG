@@ -14,6 +14,7 @@ from .schemas import (
     ActionResponse,
     AiMoveRequest,
     AiMoveResponse,
+    CollectionResponse,
     DrawRequest,
     DrawResponse,
     ErrorResponse,
@@ -90,6 +91,8 @@ def register_ws_routes(app: FastAPI):
             seed=request.seed,
             deck_a=request.deck_a,
             deck_b=request.deck_b,
+            deck_a_cards=request.deck_a_cards,
+            deck_b_cards=request.deck_b_cards,
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return StateResponse(snapshot=snapshot)
@@ -106,6 +109,8 @@ def register_ws_routes(app: FastAPI):
             seed=request.seed,
             deck_a=request.deck_a,
             deck_b=request.deck_b,
+            deck_a_cards=request.deck_a_cards,
+            deck_b_cards=request.deck_b_cards,
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
@@ -113,6 +118,10 @@ def register_ws_routes(app: FastAPI):
     @app.post("/api/matchup-stats", response_model=MatchupStatsResponse)
     async def matchup_stats(request: dict | None = None):
         return MatchupStatsResponse(stats=game_service.matchup_stats.summary())
+
+    @app.post("/api/collection", response_model=CollectionResponse)
+    async def collection(request: dict | None = None):
+        return CollectionResponse(decks=game_service.collection()["decks"])
 
     @app.post("/api/ai-move", response_model=AiMoveResponse)
     async def apply_ai_move(request: AiMoveRequest):
@@ -125,6 +134,8 @@ def register_ws_routes(app: FastAPI):
             seed=request.seed,
             deck_a=request.deck_a,
             deck_b=request.deck_b,
+            deck_a_cards=request.deck_a_cards,
+            deck_b_cards=request.deck_b_cards,
         )
         return AiMoveResponse(action=action, snapshot=snapshot)
 

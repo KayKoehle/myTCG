@@ -5,12 +5,11 @@ from dataclasses import replace
 
 from engine_utils import by_name, put_in_hand, put_in_play, put_in_underworld, start_game
 from server.engine import transitions as rules
-from server.engine.actions import ChooseOptionAction
+from server.engine.actions import ChooseOptionAction, UseAbilityAction
 from server.engine.catalog import CARD_LIBRARY
 from server.engine.snapshot import build_state_snapshot, hand_is_revealed
 from server.engine.transitions import (
     _apply_on_enter,
-    _auto_top_abilities,
     _resolve_monster_rewards,
     apply_action,
     destroy_card,
@@ -127,31 +126,16 @@ def test_inanna_on_revive_banish_mandatory_beings_only():
     assert "PASS" not in pending.options
 
 
-# --- While-on-top abilities at end of turn --------------------------------------
-
-
-def test_auto_top_abilities_offer_only_one_choice():
-    state = start_game(INA, TROY)
-    gesh = by_name(INA, "Geshtinanna, Dumuzid's Sister")
-    dumuzid = by_name(INA, "Dumuzid, Shepherd God")
-    dolon = by_name(TROY, "Dolon the Scout")
-    # Two abilities would fire: Geshtinanna (p0) and Dolon (p1, sitting on p0's stack).
-    state = put_in_play(state, gesh, 0, 0)
-    state = put_in_underworld(state, dumuzid, 0)
-    state = put_in_play(state, dolon, 1, 0)
-
-    after = _auto_top_abilities(state)
-    assert after.pending_choice is not None
-    used = after.used_top_abilities
-    assert sum(len(u) for u in used) == 1, "only the offered ability is marked used"
+# --- While-on-top abilities, used proactively during MAIN --------------------
 
 
 def test_dolon_reveals_and_buries_enemy_top_card():
     state = start_game(GIL, TROY)
     dolon = by_name(TROY, "Dolon the Scout")
     state = put_in_play(state, dolon, 0, 0)  # defected onto p0's stack, owned by p1
+    state = replace(state, phase="MAIN", current_player_idx=1)
 
-    after = _auto_top_abilities(state)
+    after = apply_action(state, UseAbilityAction(player_id=state.player_ids[1], card_id=dolon))
     pending = after.pending_choice
     assert pending is not None and pending.choice_kind == "dolon_bottom_top_card"
     assert pending.chooser_idx == 1
@@ -168,8 +152,9 @@ def test_enkidu_top_ability_moves_to_gilgamesh():
     gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
     state = put_in_play(state, gil, 2, 0)
     state = put_in_play(state, enk, 0, 0)
+    state = replace(state, phase="MAIN", current_player_idx=0)
 
-    after = _auto_top_abilities(state)
+    after = apply_action(state, UseAbilityAction(player_id=state.player_ids[0], card_id=enk))
     pending = after.pending_choice
     assert pending is not None and pending.choice_kind == "enkidu_join_gilgamesh"
     resolved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id="2|0"))
@@ -187,7 +172,8 @@ def test_cuneiform_tutors_ark_from_whole_deck_and_reorders_on_top():
     assert ark in after.hands[0]
 
     # While on top: discard a card to reorder the top three.
-    offered = _auto_top_abilities(after)
+    after = replace(after, phase="MAIN", current_player_idx=0)
+    offered = apply_action(after, UseAbilityAction(player_id=after.player_ids[0], card_id=tablets))
     pending = offered.pending_choice
     assert pending is not None and pending.choice_kind == "cuneiform_discard_for_peek"
     discard = pending.options[1]
@@ -317,7 +303,27 @@ def test_move_options_skip_full_locations():
     assert f"{mover}|2|0" in options
 
 
-def test_revive_choice_not_offered_at_a_full_location():
+def test_revive_choice_not_offered_when_nowhere_has_room():
+    state = start_game(INA, TROY)
+    lulal = by_name(INA, "Lulal, Inanna's Bodyguard")
+    inanna = by_name(INA, "Inanna, Goddess of Love and War")
+    state = put_in_underworld(state, inanna, 0)
+    loc0_fillers = ["Kur-Jara", "Gala-Tura", "Gatekeeper Neti", "Galla Demons", "Šara, Inanna's Beautician", "Ninšubur, Sukkal to Inanna"]
+    loc1_fillers = ["Geshtinanna, Dumuzid's Sister", "Sirtur, Mourning Mother", "Dirt under Enki's Fingernail", "Underworld Courier", "Dumuzid, Shepherd God", "Namtar, Sukkal to Ereshkigal", "Anunnaki, The Seven Judges"]
+    loc2_fillers = ["Eurybates, Herald of Odysseus", "Calchas, Prophet of Apollo", "Sinon the Deceiver", "Greek Soldiers", "Dolon the Scout", "Menelaus, the Wronged King", "Camp Guard at the Ships"]
+    for name in loc0_fillers:
+        state = put_in_play(state, by_name(INA, name), 0, 0)
+    for name in loc1_fillers:
+        state = put_in_play(state, by_name(INA, name), 1, 0)
+    for name in loc2_fillers:
+        state = put_in_play(state, by_name(TROY, name), 2, 0)
+    state = put_in_play(state, lulal, 0, 0)  # every location is now full (7 cards each)
+
+    after = _apply_on_enter(state, 0, lulal, 0)
+    assert after.pending_choice is None, "no revive offer when nowhere has room for the revived card"
+
+
+def test_revive_choice_offers_a_different_location_when_trigger_spot_is_full():
     state = start_game(INA, TROY)
     lulal = by_name(INA, "Lulal, Inanna's Bodyguard")
     inanna = by_name(INA, "Inanna, Goddess of Love and War")
@@ -325,10 +331,17 @@ def test_revive_choice_not_offered_at_a_full_location():
     fillers = ["Kur-Jara", "Gala-Tura", "Gatekeeper Neti", "Galla Demons", "Sirtur, Mourning Mother", "Šara, Inanna's Beautician"]
     for name in fillers:
         state = put_in_play(state, by_name(INA, name), 0, 0)
-    state = put_in_play(state, lulal, 0, 0)  # 7th card: the location is now full
+    state = put_in_play(state, lulal, 0, 0)  # 7th card: location 0 is now full, 1 and 2 are open
 
     after = _apply_on_enter(state, 0, lulal, 0)
-    assert after.pending_choice is None, "no revive offer when the revived card has no room"
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "revive_underworld_here"
+    resolved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id=inanna))
+    location_pending = resolved.pending_choice
+    assert location_pending is not None and location_pending.choice_kind == "revive_choose_location"
+    assert set(location_pending.options) == {"1", "2"}, "the full location is not offered as a destination"
+    revived = apply_action(resolved, ChooseOptionAction(player_id=resolved.player_ids[0], option_id="1"))
+    assert inanna in revived.locations[1].stacks[0]
 
 
 # --- Synergy hints for the UI ----------------------------------------------------------

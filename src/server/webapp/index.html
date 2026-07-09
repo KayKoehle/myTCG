@@ -15,12 +15,72 @@
 </head>
 
 <body>
-    <div class="app">
-        <header class="status-panel">
-            <button class="icon-btn" id="btnSettings" aria-label="Open settings">
+    <div id="menuScreen" class="screen menu-screen active">
+        <div class="menu-hero">
+            <h1 class="menu-title">MyTCG</h1>
+            <p class="menu-sub">Myths clash. Crowns fall.</p>
+        </div>
+        <div class="menu-buttons">
+            <button class="menu-play" id="btnMenuPlay">
+                <span class="menu-play-label">Play</span>
+                <span class="menu-play-sub">Battle the AI on a random deck</span>
+            </button>
+            <div class="menu-row">
+                <button class="menu-tile menu-decks-btn" id="btnMenuDecks">
+                    <div class="menu-deck-art" id="menuDeckArt"></div>
+                    <div class="menu-tile-text">
+                        <div class="menu-tile-title">Decks</div>
+                        <div class="menu-tile-sub" id="menuDeckName"></div>
+                    </div>
+                </button>
+                <button class="menu-tile menu-shop-btn" id="btnMenuShop">
+                    <div class="menu-shop-icon" aria-hidden="true">🛍️</div>
+                    <div class="menu-tile-text">
+                        <div class="menu-tile-title">Shop</div>
+                        <div class="menu-tile-sub"><span class="crown-chip"><span class="crown-icon"></span><span
+                                    id="menuCrowns">0</span></span></div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="decksScreen" class="screen decks-screen">
+        <header class="screen-head">
+            <button class="icon-btn" id="btnDecksBack" aria-label="Back to menu">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path fill="currentColor"
-                        d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" />
+                    <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+                </svg>
+            </button>
+            <h2 class="screen-title" id="decksTitle">Decks</h2>
+            <span class="screen-head-spacer"></span>
+        </header>
+        <div class="decks-top" id="decksTop"></div>
+        <div class="collection-wrap">
+            <div class="collection-label" id="collectionLabel">Your collection</div>
+            <div class="collection-grid" id="collectionGrid"></div>
+        </div>
+    </div>
+
+    <div id="shopScreen" class="screen shop-screen">
+        <header class="screen-head">
+            <button class="icon-btn" id="btnShopBack" aria-label="Back to menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+                </svg>
+            </button>
+            <h2 class="screen-title">Shop</h2>
+            <span class="crown-chip"><span class="crown-icon"></span><span id="shopCrowns">0</span></span>
+        </header>
+        <div class="shop-tabs" id="shopTabs"></div>
+        <div class="shop-items" id="shopItems"></div>
+    </div>
+
+    <div class="app screen" id="gameScreen">
+        <header class="status-panel">
+            <button class="icon-btn" id="btnHome" aria-label="Back to main menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5z" />
                 </svg>
             </button>
             <div class="score-panel" id="scorePanel"></div>
@@ -64,7 +124,7 @@
             <div class="hud" id="hud"></div>
             <div id="pending"></div>
 
-            <div class="status" id="status">Ready.</div>
+            <div class="status" id="status"></div>
 
             <section>
                 <div class="lanes" id="lanes"></div>
@@ -89,6 +149,16 @@
                             <span class="deck-card"></span>
                         </div>
                     </div>
+                </div>
+
+                <div class="emote-widget">
+                    <button class="icon-btn emote-btn" id="btnEmote" aria-label="Send an emote">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="currentColor"
+                                d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
+                        </svg>
+                    </button>
+                    <div class="emote-menu" id="emoteMenu" aria-hidden="true"></div>
                 </div>
 
                 <div class="peek-pile">

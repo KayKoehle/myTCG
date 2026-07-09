@@ -67,7 +67,10 @@ def is_human(card_id: str) -> bool:
 
 
 def is_hero(card_id: str) -> bool:
-    return has_subtype(card_id, "hero") or has_subtype(card_id, "king")
+    # "King" alone does not make a hero (e.g. Utnapishtim, Atrahasis are
+    # flood survivors, not monster-slaying heroes) — only the explicit
+    # "Hero" subtype counts.
+    return has_subtype(card_id, "hero")
 
 
 def is_monster(card_id: str) -> bool:

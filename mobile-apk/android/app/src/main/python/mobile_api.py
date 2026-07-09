@@ -18,9 +18,9 @@ from engine.ai import choose_heuristic_action
 from engine.matchup_stats import MatchupStats
 from engine.openspiel_adapter import parse_action
 from engine.policy import PurePolicy, find_default_weights
-from engine.snapshot import build_state_snapshot, observation_string
+from engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from engine.state import GameState
-from engine.transitions import apply_action, create_initial_state, legal_actions, returns
+from engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
 
 
 def _matchup_stats_path() -> Path | None:
@@ -81,10 +81,18 @@ class MobileGameService:
         player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> Match:
         match = self._matches.get(match_id)
         if match is not None:
             return match
+        # Player-edited decks arrive as explicit card lists; register them
+        # under the (non-stock) name the client picked before dealing.
+        if deck_a_cards:
+            register_custom_deck(deck_a, deck_a_cards)
+        if deck_b_cards:
+            register_custom_deck(deck_b, deck_b_cards)
         created = Match(
             match_id=match_id,
             state=create_initial_state(seed=seed, player_ids=player_ids, deck_a=deck_a, deck_b=deck_b),
@@ -105,8 +113,13 @@ class MobileGameService:
         seed: int = 42,
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> GameState:
-        match = self.get_or_create_match(match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b)
+        match = self.get_or_create_match(
+            match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+        )
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
         match.state = apply_action(match.state, action)
@@ -121,10 +134,15 @@ class MobileGameService:
         seed: int = 42,
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
         ai_mode: str = "auto",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Play one AI action. Modes: auto (best available), neural, heuristic, random."""
-        match = self.get_or_create_match(match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b)
+        match = self.get_or_create_match(
+            match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+        )
         state = match.state
 
         legal = [a for a in legal_actions(state) if a.player_id == ai_player_id]
@@ -189,10 +207,15 @@ def handle_post_json(url: str, body_json: str) -> str:
         seed = int(body.get("seed", 42))
         deck_a = str(body.get("deck_a", "epic_of_gilgamesh"))
         deck_b = str(body.get("deck_b", "siege_of_troy"))
+        deck_a_cards = body.get("deck_a_cards") or None
+        deck_b_cards = body.get("deck_b_cards") or None
 
         if url == "/api/state":
             player_id = int(body.get("player_id", 1))
-            SERVICE.get_or_create_match(match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b)
+            SERVICE.get_or_create_match(
+                match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
+                deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+            )
             snapshot = SERVICE.state_snapshot(match_id=match_id, viewer_player_id=player_id)
             return _response_ok({"snapshot": snapshot})
 
@@ -208,6 +231,8 @@ def handle_post_json(url: str, body_json: str) -> str:
                 seed=seed,
                 deck_a=deck_a,
                 deck_b=deck_b,
+                deck_a_cards=deck_a_cards,
+                deck_b_cards=deck_b_cards,
             )
             snapshot = SERVICE.state_snapshot(match_id=match_id, viewer_player_id=player_id)
             return _response_ok({"snapshot": snapshot})
@@ -220,12 +245,17 @@ def handle_post_json(url: str, body_json: str) -> str:
                 seed=seed,
                 deck_a=deck_a,
                 deck_b=deck_b,
+                deck_a_cards=deck_a_cards,
+                deck_b_cards=deck_b_cards,
                 ai_mode=str(body.get("ai_mode", "auto")),
             )
             return _response_ok({"action": action, "snapshot": snapshot})
 
         if url == "/api/matchup-stats":
             return _response_ok({"stats": SERVICE.matchup_stats.summary()})
+
+        if url == "/api/collection":
+            return _response_ok(build_collection_snapshot())
 
         return _response_error(f"Unsupported local API path: {url}")
     except Exception as exc:  # noqa: BLE001

@@ -135,8 +135,10 @@ def _handle_trojan_horse_payload(rt: Any, state: GameState, chooser_idx: int, op
     facedown = set(state.facedown_cards)
     for card_id in option.split("|"):
         state = rt.move_card(state, card_id, pending.location_id, 1 - chooser_idx, source_effect_owner_idx=chooser_idx)
+        found = prim.find_card_in_play(state, card_id)
+        if found is None or found[1] != 1 - chooser_idx:
+            continue  # the move was vetoed or blocked (e.g. a full side): no penalty for a card that stayed put.
         facedown.add(card_id)
-        state = prim.add_power_modifier(state, chooser_idx, card_id, -6)
     return replace(state, facedown_cards=tuple(sorted(facedown)))
 
 
@@ -147,7 +149,10 @@ register_choice("trojan_horse_payload", _handle_trojan_horse_payload)
 # --- Heroes of the Achaean camp ---------------------------------------------------
 
 def _odysseus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    movable = prim.enemy_cards_here(state, player_idx, location_idx) + prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
+    # Odysseus only rallies his own side: he can send a friendly card to any
+    # location, optionally switching it to the enemy side there — never move
+    # an opponent's card.
+    movable = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
     if movable:
         return Halt(
             prim.with_pending_choice(

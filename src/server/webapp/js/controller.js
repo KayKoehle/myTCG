@@ -1,12 +1,14 @@
 import { postJson } from './api.js';
 import { createCardStackPopup } from './cardstack.js';
 import { cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
+import { addCrowns, ownedEmotes } from './profile.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
 import { buildConfig, createAppState } from './state.js';
 
 export function createGameController(ui) {
     const app = createAppState();
     const cardStack = createCardStackPopup(ui);
+    let onExitToMenu = null;
 
     const cfg = () => buildConfig(ui, app);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,6 +70,16 @@ export function createGameController(ui) {
         notice.textContent = 'This location is full';
         lane.appendChild(notice);
         setTimeout(() => notice.remove(), 1900);
+    }
+
+    // Warnings and errors surface as a transient floating toast (the fixed
+    // status element) so they never take layout space or shift the board.
+    function flashStatus(message) {
+        ui.status.textContent = String(message);
+        clearTimeout(app.statusTimer);
+        app.statusTimer = setTimeout(() => {
+            ui.status.textContent = '';
+        }, 2600);
     }
 
     function isOpeningMulligan(snapshot) {
@@ -163,7 +175,7 @@ export function createGameController(ui) {
                     flashLaneFull(target.loc);
                 } else {
                     const verb = payload.type === 'play' ? 'play' : 'move';
-                    ui.status.textContent = `Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc)} right now.`;
+                    flashStatus(`Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc)} right now.`);
                 }
                 return;
             }
@@ -276,7 +288,6 @@ export function createGameController(ui) {
                 zone.classList.add('tap-target');
             }
         });
-        ui.status.textContent = `Tap a highlighted lane to play ${cardDisplayName(cardId, app.cardNameById)}.`;
     }
 
     // Activate a card's "while on top" ability from the inspector (e.g. move
@@ -385,7 +396,7 @@ export function createGameController(ui) {
                     if (laneIsFull(loc)) {
                         flashLaneFull(loc);
                     } else {
-                        ui.status.textContent = `Cannot play ${cardDisplayName(cardId, app.cardNameById)} to ${laneLabel(loc)} right now.`;
+                        flashStatus(`Cannot play ${cardDisplayName(cardId, app.cardNameById)} to ${laneLabel(loc)} right now.`);
                     }
                     return;
                 }
@@ -474,6 +485,8 @@ export function createGameController(ui) {
         for (const entry of fresh) {
             const raw = String(entry || '');
             if (raw.startsWith('round_result:')) {
+                // Every crown won in a round is banked as shop currency.
+                if (Number(raw.split(':')[2]) === cfg().player_id) addCrowns(1);
                 if (!gameEnded) animateRoundResult(raw);
             } else if (raw.startsWith('game_result:')) {
                 animateGameResult(raw);
@@ -503,7 +516,7 @@ export function createGameController(ui) {
         const w = isHuman ? 56 : 30;
         const h = isHuman ? 80 : 42;
         const ghost = document.createElement('div');
-        ghost.className = 'draw-ghost';
+        ghost.className = isHuman ? 'draw-ghost' : 'draw-ghost draw-ghost-opp';
         ghost.style.width = `${w}px`;
         ghost.style.height = `${h}px`;
         const startX = from.left + from.width / 2 - w / 2;
@@ -759,6 +772,72 @@ export function createGameController(ui) {
         }, 1450 + n * 130);
     }
 
+    // --- Emotes --------------------------------------------------------------
+    // A speech bubble pops up above the emote button, floats up, and fades —
+    // purely cosmetic flavor, there is no human opponent to receive it.
+
+    function sendEmote(text) {
+        const anchor = ui.btnEmote.getBoundingClientRect();
+        const bubble = document.createElement('div');
+        bubble.className = 'emote-bubble';
+        bubble.textContent = text;
+        bubble.style.left = `${anchor.left + anchor.width / 2}px`;
+        bubble.style.top = `${anchor.top - 10}px`;
+        document.body.appendChild(bubble);
+        if (!window.Element.prototype.animate) {
+            setTimeout(() => bubble.remove(), 2400);
+            return;
+        }
+        const anim = bubble.animate(
+            [
+                { transform: 'translate(-50%, 10px) scale(0.6)', opacity: 0 },
+                { transform: 'translate(-50%, -10px) scale(1.05)', opacity: 1, offset: 0.18 },
+                { transform: 'translate(-50%, -16px) scale(1)', opacity: 1, offset: 0.78 },
+                { transform: 'translate(-50%, -46px) scale(0.96)', opacity: 0 },
+            ],
+            { duration: 2400, easing: 'ease-out' }
+        );
+        const done = () => bubble.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    function closeEmoteMenu() {
+        ui.emoteMenu.classList.remove('open');
+        ui.emoteMenu.setAttribute('aria-hidden', 'true');
+    }
+
+    function initEmotes() {
+        if (!ui.btnEmote || !ui.emoteMenu) return;
+        // Rebuilt on every open so emotes bought in the shop show up
+        // immediately in the next game.
+        const renderEmoteMenu = () => {
+            const emotes = ownedEmotes();
+            ui.emoteMenu.innerHTML = emotes.map((emote) => (
+                `<button type="button" class="emote-option" data-emote-id="${emote.id}">${escapeHtml(emote.text)}</button>`
+            )).join('');
+            ui.emoteMenu.querySelectorAll('.emote-option').forEach((btn) => {
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const emote = emotes.find((e) => e.id === btn.dataset.emoteId);
+                    closeEmoteMenu();
+                    if (emote) sendEmote(emote.text);
+                });
+            });
+        };
+        ui.btnEmote.onclick = (event) => {
+            event.stopPropagation();
+            const open = ui.emoteMenu.classList.toggle('open');
+            if (open) renderEmoteMenu();
+            ui.emoteMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+        };
+        document.addEventListener('click', (event) => {
+            if (!ui.emoteMenu.classList.contains('open')) return;
+            if (event.target.closest('.emote-widget')) return;
+            closeEmoteMenu();
+        });
+    }
+
     // --- Opponent turn indicator -------------------------------------------
     // While the AI acts, the End Turn button flips over (like the cards do)
     // into a disabled, differently colored "Opponent's Turn" state.
@@ -832,6 +911,7 @@ export function createGameController(ui) {
             seed: c.seed,
             deck_a: c.deck_a,
             deck_b: c.deck_b,
+            deck_a_cards: c.deck_a_cards,
         });
         rerender(data.snapshot);
     }
@@ -860,11 +940,12 @@ export function createGameController(ui) {
                 seed: c.seed,
                 deck_a: c.deck_a,
                 deck_b: c.deck_b,
+                deck_a_cards: c.deck_a_cards,
             });
             rerender(data.snapshot);
             if (playedFromRect) animateCardPlay(action.card_id, playedFromRect);
         } catch (error) {
-            ui.status.textContent = String(error);
+            flashStatus(error);
         } finally {
             app.actionPending = false;
         }
@@ -881,6 +962,7 @@ export function createGameController(ui) {
                 seed: c.seed,
                 deck_a: c.deck_a,
                 deck_b: c.deck_b,
+                deck_a_cards: c.deck_a_cards,
                 checkpoint_path: c.checkpoint_path,
                 device: c.device,
             });
@@ -889,7 +971,7 @@ export function createGameController(ui) {
                 animateCardPlay(data.action.card_id, oppHandRect, { flip: true });
             }
         } catch (error) {
-            ui.status.textContent = String(error);
+            flashStatus(error);
         }
     }
 
@@ -955,7 +1037,12 @@ export function createGameController(ui) {
         if (!snap) return;
 
         if (snap.phase === 'GAME_OVER') {
-            await newGame();
+            // Back to the main menu; the next game starts from its Play button.
+            if (onExitToMenu) {
+                onExitToMenu();
+            } else {
+                await newGame();
+            }
             return;
         }
 
@@ -974,7 +1061,21 @@ export function createGameController(ui) {
         app.matchId = `snap-match-${Math.floor(Math.random() * 1_000_000)}`;
         app.seed = Math.floor(Math.random() * 1_000_000_000);
         app.mulliganSelected.clear();
+        app.opponentTurnActive = false;
         await refresh();
+    }
+
+    // Entry point for the main menu's Play button: the player's (possibly
+    // edited) deck against the given AI deck, in a fresh match.
+    async function startGame({ deckAName, deckACards, deckBName }) {
+        app.deckAName = deckAName || null;
+        app.deckACards = deckACards || null;
+        app.deckBName = deckBName || null;
+        try {
+            await newGame();
+        } catch (error) {
+            flashStatus(error);
+        }
     }
 
     function openSheet(modal) {
@@ -987,11 +1088,13 @@ export function createGameController(ui) {
         modal.setAttribute('aria-hidden', 'true');
     }
 
-    function init() {
-        ui.btnSettings.onclick = () => {
-            openSheet(ui.settingsModal);
-            loadMatchupStats();
-        };
+    function init(options = {}) {
+        onExitToMenu = options.onExitToMenu || null;
+        if (ui.btnHome) {
+            ui.btnHome.onclick = () => {
+                if (onExitToMenu) onExitToMenu();
+            };
+        }
         ui.btnHistory.onclick = () => {
             openSheet(ui.historyModal);
         };
@@ -1007,12 +1110,18 @@ export function createGameController(ui) {
             });
         });
         ui.btnNewGame.onclick = () => {
+            // Debug path: the settings-sheet deck dropdowns take over from
+            // whatever the main menu picked.
+            app.deckAName = null;
+            app.deckBName = null;
+            app.deckACards = null;
             closeSheet(ui.settingsModal);
             newGame();
         };
         ui.btnEndTurn.onclick = () => {
             onEndTurn();
         };
+        initEmotes();
         window.addEventListener('resize', () => {
             layoutHand(ui);
         });
@@ -1055,12 +1164,12 @@ export function createGameController(ui) {
             clearTapSelection();
         });
 
-        refresh().catch((error) => {
-            ui.status.textContent = String(error);
-        });
+        // No initial refresh: the app opens on the main menu and the first
+        // match is created by its Play button.
     }
 
     return {
         init,
+        startGame,
     };
 }

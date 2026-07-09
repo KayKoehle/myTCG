@@ -10,6 +10,8 @@ class ActionRequest(BaseModel):
     seed: int = 42
     deck_a: str = "epic_of_gilgamesh"
     deck_b: str = "siege_of_troy"
+    deck_a_cards: Optional[list[str]] = None
+    deck_b_cards: Optional[list[str]] = None
     card_id: Optional[str] = None
     location_id: Optional[int] = None
     option_id: Optional[str] = None
@@ -45,6 +47,8 @@ class StateRequest(BaseModel):
     seed: int = 42
     deck_a: str = "epic_of_gilgamesh"
     deck_b: str = "siege_of_troy"
+    deck_a_cards: Optional[list[str]] = None
+    deck_b_cards: Optional[list[str]] = None
 
 
 class StateResponse(BaseModel):
@@ -59,6 +63,8 @@ class AiMoveRequest(BaseModel):
     seed: int = 42
     deck_a: str = "epic_of_gilgamesh"
     deck_b: str = "siege_of_troy"
+    deck_a_cards: Optional[list[str]] = None
+    deck_b_cards: Optional[list[str]] = None
     checkpoint_path: str = "stats/checkpoints/ai_nn_distributed_latest.pt"
     device: str = "auto"
 
@@ -72,3 +78,8 @@ class AiMoveResponse(BaseModel):
 class MatchupStatsResponse(BaseModel):
     ok: bool = True
     stats: list[dict[str, Any]]
+
+
+class CollectionResponse(BaseModel):
+    ok: bool = True
+    decks: list[dict[str, Any]]

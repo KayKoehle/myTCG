@@ -7,9 +7,9 @@ from typing import Any
 from ..engine.ai import choose_heuristic_action
 from ..engine.matchup_stats import MatchupStats
 from ..engine.openspiel_adapter import parse_action
-from ..engine.snapshot import build_state_snapshot, observation_string
+from ..engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from ..engine.state import GameState
-from ..engine.transitions import apply_action, create_initial_state, legal_actions, returns
+from ..engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
 from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 
 
@@ -47,7 +47,15 @@ class GameService:
         player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> Match:
+        # Player-edited decks arrive as explicit card lists; register them
+        # under the (non-stock) name the client picked before dealing.
+        if deck_a_cards:
+            register_custom_deck(deck_a, deck_a_cards)
+        if deck_b_cards:
+            register_custom_deck(deck_b, deck_b_cards)
         match = Match(
             match_id=match_id,
             state=create_initial_state(seed=seed, player_ids=player_ids, deck_a=deck_a, deck_b=deck_b),
@@ -64,6 +72,8 @@ class GameService:
         player_ids: tuple[int, int] = (1, 2),
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> Match:
         return self._matches.get(match_id) or self.create_match(
             match_id=match_id,
@@ -71,7 +81,12 @@ class GameService:
             player_ids=player_ids,
             deck_a=deck_a,
             deck_b=deck_b,
+            deck_a_cards=deck_a_cards,
+            deck_b_cards=deck_b_cards,
         )
+
+    def collection(self) -> dict[str, Any]:
+        return build_collection_snapshot()
 
     def submit_action(
         self,
@@ -84,8 +99,13 @@ class GameService:
         seed: int = 42,
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> GameState:
-        match = self.get_or_create_match(match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b)
+        match = self.get_or_create_match(
+            match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+        )
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
         match.state = apply_action(match.state, action)
@@ -124,8 +144,13 @@ class GameService:
         seed: int = 42,
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        match = self.get_or_create_match(match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b)
+        match = self.get_or_create_match(
+            match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
+            deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards,
+        )
         state = match.state
         ai_idx = state.player_ids.index(ai_player_id)
         pending_chooser_id = None

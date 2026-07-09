@@ -8,10 +8,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import effects
-from .catalog import CARD_LIBRARY, card_owner_idx
+from . import effects, primitives as prim
+from .catalog import CARD_LIBRARY, DECK_LIBRARY, card as _card, card_owner_idx
+from .data_loader import FINISHED_DECK_FILES
 from .state import GameState
-from .transitions import RT, available_decks, deck_card_ids, dynamic_card_power, legal_actions
+from .transitions import (
+    RT,
+    available_decks,
+    deck_card_ids,
+    dynamic_card_power,
+    legal_actions,
+    play_cost,
+    power_before_overrides,
+)
 
 _LANE_NAMES = {0: "left lane", 1: "middle lane", 2: "right lane"}
 
@@ -67,13 +76,14 @@ def hand_is_revealed(state: GameState, hand_owner_idx: int) -> bool:
     return False
 
 
-def _hand_card(card_id: str) -> dict[str, Any]:
+def _hand_card(card_id: str, dynamic_cost: int | None = None) -> dict[str, Any]:
     card = CARD_LIBRARY[card_id]
     return {
         "id": card_id,
         "name": card.name,
         "effect": card.effect,
-        "cost": card.cost,
+        "cost": card.cost if dynamic_cost is None else dynamic_cost,
+        "base_cost": card.cost,
         "power": card.power,
         "type": card.type_name,
         "subtype": card.subtype,
@@ -95,6 +105,86 @@ def hand_synergies(state: GameState, viewer_idx: int) -> dict[str, list[str]]:
     return result
 
 
+def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -> bool:
+    """Is this card's "While on top:" text currently doing something?
+
+    Best-effort: structural flags (blocking moves, capping the enemy stack,
+    discounts) are active whenever the card sits on top; conditional ones
+    (Menelaus, Diomedes, Elders, Sinon) are only flagged once they'd actually
+    change something right now.
+    """
+    if prim.top_card(location, side_idx) != card_id:
+        return False
+    behavior = effects.behavior_of(card_id)
+    name = _card(card_id).name
+
+    if name == "Sinon the Deceiver":
+        return card_owner_idx(state, card_id) != side_idx
+
+    if (
+        behavior.blocks_enemy_move_while_top
+        or behavior.max_enemy_stack_while_top is not None
+        or behavior.artifact_discount_while_top
+        or behavior.sacrifice_artifact_discount_while_top
+        or behavior.on_friendly_hero_left_while_top is not None
+        or behavior.on_friendly_revive_while_top is not None
+    ):
+        return True
+
+    if behavior.friendly_power_bonus_while_top is not None:
+        powers = {cid: dynamic_card_power(state, cid, location.location_id, side_idx) for cid in location.stacks[side_idx]}
+        return bool(behavior.friendly_power_bonus_while_top(RT, state, location, side_idx, powers))
+
+    if behavior.enemy_card_power_override_while_top is not None:
+        # Matches transitions.dynamic_card_power's call convention: the hook
+        # is invoked with the *target* card's own side_idx, not the ability
+        # holder's.
+        enemy_side = 1 - side_idx
+        enemy_top = prim.top_card(location, enemy_side)
+        if enemy_top is None:
+            return False
+        base = power_before_overrides(state, enemy_top, location.location_id, enemy_side)
+        overridden = behavior.enemy_card_power_override_while_top(RT, state, location, enemy_side, enemy_top, base)
+        return overridden != base
+
+    if name == "Menelaus, the Wronged King":
+        return len(location.stacks[1 - side_idx]) > len(location.stacks[side_idx])
+
+    return False
+
+
+def _card_details(card_id: str) -> dict[str, Any]:
+    card = CARD_LIBRARY[card_id]
+    return {
+        "id": card_id,
+        "name": card.name,
+        "effect": card.effect,
+        "cost": card.cost,
+        "power": card.power,
+        "type": card.type_name,
+        "subtype": card.subtype,
+    }
+
+
+def build_collection_snapshot() -> dict[str, Any]:
+    """The player's collection: every finished deck with full card details.
+
+    Shared by the FastAPI server and the mobile app (`/api/collection`); the
+    webapp's deck builder and shop are built on top of it.
+    """
+    available_decks()  # ensure card/deck data is loaded
+    decks = []
+    for deck_id in FINISHED_DECK_FILES:
+        card_ids = DECK_LIBRARY.get(deck_id)
+        if not card_ids:
+            continue
+        decks.append({
+            "deck_id": deck_id,
+            "cards": [_card_details(card_id) for card_id in card_ids if card_id in CARD_LIBRARY],
+        })
+    return {"decks": decks}
+
+
 def build_state_snapshot(
     state: GameState,
     match_id: str,
@@ -105,10 +195,12 @@ def build_state_snapshot(
 ) -> dict[str, Any]:
     viewer_idx = state.player_ids.index(viewer_player_id)
     opp_idx = 1 - viewer_idx
-    known_card_ids = deck_card_ids((deck_a, deck_b))
+    # state.deck_names (not the requested deck_a/deck_b) so mirror-match
+    # aliases and custom decks resolve to names too.
+    known_card_ids = deck_card_ids(state.deck_names)
     card_name_by_id = {card_id: CARD_LIBRARY[card_id].name for card_id in known_card_ids if card_id in CARD_LIBRARY}
 
-    def _public_card(card_id: str, dynamic_power: int | None = None) -> dict[str, Any]:
+    def _public_card(card_id: str, dynamic_power: int | None = None, while_top_active: bool = False) -> dict[str, Any]:
         owner_idx = card_owner_idx(state, card_id)
         is_hidden = card_id in state.facedown_cards and owner_idx != viewer_idx
         if is_hidden:
@@ -121,6 +213,7 @@ def build_state_snapshot(
                 "type": None,
                 "subtype": None,
                 "facedown": True,
+                "while_top_active": False,
             }
         card = CARD_LIBRARY[card_id]
         return {
@@ -129,9 +222,11 @@ def build_state_snapshot(
             "effect": card.effect,
             "cost": card.cost,
             "power": card.power if dynamic_power is None else dynamic_power,
+            "base_power": card.power,
             "type": card.type_name,
             "subtype": card.subtype,
             "facedown": card_id in state.facedown_cards,
+            "while_top_active": while_top_active,
         }
 
     opponent_hand_revealed = hand_is_revealed(state, opp_idx)
@@ -174,11 +269,16 @@ def build_state_snapshot(
             str(state.player_ids[1]): len(state.decks[1]),
         },
         "available_checkpoints": available_checkpoints or [],
-        "hand": [_hand_card(c) for c in state.hands[viewer_idx]],
+        "hand": [_hand_card(c, play_cost(state, viewer_idx, c)) for c in state.hands[viewer_idx]],
         "hand_synergies": hand_synergies(state, viewer_idx),
         "opponent_hand_size": len(state.hands[opp_idx]),
         "opponent_hand_revealed": opponent_hand_revealed,
-        "opponent_hand": [_hand_card(c) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,
+        "opponent_hand": [_hand_card(c, play_cost(state, opp_idx, c)) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,
+        "known_cards": {
+            card_id: _card_details(card_id)
+            for card_id in known_card_ids
+            if card_id in CARD_LIBRARY
+        },
         "legal_actions": [
             {
                 "kind": a.kind,
@@ -205,8 +305,14 @@ def build_state_snapshot(
                 "capacity": loc.capacity,
                 "weight": loc.weight,
                 "stacks": {
-                    str(state.player_ids[0]): [_public_card(c, dynamic_card_power(state, c, loc.location_id, 0)) for c in loc.stacks[0]],
-                    str(state.player_ids[1]): [_public_card(c, dynamic_card_power(state, c, loc.location_id, 1)) for c in loc.stacks[1]],
+                    str(state.player_ids[0]): [
+                        _public_card(c, dynamic_card_power(state, c, loc.location_id, 0), _while_top_active(state, loc, 0, c))
+                        for c in loc.stacks[0]
+                    ],
+                    str(state.player_ids[1]): [
+                        _public_card(c, dynamic_card_power(state, c, loc.location_id, 1), _while_top_active(state, loc, 1, c))
+                        for c in loc.stacks[1]
+                    ],
                 },
             }
             for loc in state.locations

@@ -208,7 +208,8 @@ def revive_choice_on_enter(
     include_pass: bool = True,
     condition: Callable[[GameState, int, int, str], bool] | None = None,
 ) -> EnterHook:
-    """On enter: choose a card from your underworld to revive here.
+    """On enter: choose a card from your underworld to revive, then (if more
+    than one location has room) choose where to revive it.
 
     `candidates(state, player_idx, location_idx)` returns eligible underworld
     card ids; `condition` optionally gates the whole effect.
@@ -217,10 +218,9 @@ def revive_choice_on_enter(
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
         if condition is not None and not condition(state, player_idx, location_idx, card_id):
             return state
-        # A full location cannot take the revived card, so don't offer a
+        # No location anywhere has room for the revived card: don't offer a
         # choice that would silently do nothing.
-        location = state.locations[location_idx]
-        if prim.location_total_cards(location) >= location.capacity:
+        if not any(prim.location_total_cards(loc) < loc.capacity for loc in state.locations):
             return state
         options = candidates(state, player_idx, location_idx)
         if not options:
@@ -246,8 +246,13 @@ def partner_here(partner_name: str) -> Callable[[GameState, int, int, str], bool
     )
 
 
-def send_hand_being_to_underworld(prompt: str) -> EnterHook:
-    """On enter: you may put a being from your hand into your underworld."""
+def send_hand_being_to_underworld(prompt: str, include_pass: bool = True) -> EnterHook:
+    """On enter: put a being from your hand into your underworld.
+
+    Optional (`include_pass=True`) unless the card forces it — mandatory
+    effects (e.g. Underworld Courier, Gatekeeper Neti) pass `False` so no
+    PASS option is offered whenever a being is available to send down.
+    """
 
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
         options = [cid for cid in state.hands[player_idx] if catalog.is_being(cid)]
@@ -255,7 +260,7 @@ def send_hand_being_to_underworld(prompt: str) -> EnterHook:
             return Halt(
                 prim.with_pending_choice(
                     state, player_idx, "put_hand_to_underworld", card_id, location_idx,
-                    prim.choose_options_for_cards(options, include_pass=True), prompt,
+                    prim.choose_options_for_cards(options, include_pass=include_pass), prompt,
                 )
             )
         return state
@@ -308,6 +313,27 @@ def partners_in_play(predicate: Predicate | None = None, *names: str) -> Synergy
     return hook
 
 
+def partners_in_play_if_revivable(partner_predicate: Predicate, underworld_predicate: Predicate) -> SynergyHook:
+    """Synergy: a friendly partner is in play, but only where playing here
+    would actually do something — the owner's underworld holds a matching
+    card to revive, and the partner's location still has room for it."""
+
+    def hook(rt: Any, state: GameState, player_idx: int, card_id: str) -> list[str]:
+        if not any(underworld_predicate(cid) for cid in state.underworlds[player_idx]):
+            return []
+        partners: list[str] = []
+        for loc_idx, side_idx, cid in prim.find_cards_in_play(state, partner_predicate):
+            if side_idx != player_idx:
+                continue
+            location = state.locations[loc_idx]
+            if prim.location_total_cards(location) >= location.capacity:
+                continue
+            partners.append(cid)
+        return partners
+
+    return hook
+
+
 def partners_in_underworld(*names: str) -> SynergyHook:
     """Synergy: matching cards in the owner's underworld fulfil the clause."""
     name_set = set(names)
@@ -341,7 +367,20 @@ def _handle_move_to_pending_location(rt: Any, state: GameState, chooser_idx: int
 
 
 def _handle_revive_here(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    return rt.revive_from_underworld(state, chooser_idx, pending.location_id, lambda cid: cid == option)
+    open_locations = [i for i, loc in enumerate(state.locations) if prim.location_total_cards(loc) < loc.capacity]
+    if len(open_locations) <= 1:
+        target = open_locations[0] if open_locations else pending.location_id
+        return rt.revive_from_underworld(state, chooser_idx, target, lambda cid: cid == option)
+    return prim.with_pending_choice(
+        state, chooser_idx, "revive_choose_location", pending.source_card_id, pending.location_id,
+        [str(i) for i in open_locations], "Choose a location to revive to",
+        follow_up=(option,),
+    )
+
+
+def _handle_revive_choose_location(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    revived_card_id = pending.follow_up[0]
+    return rt.revive_from_underworld(state, chooser_idx, int(option), lambda cid: cid == revived_card_id)
 
 
 def _handle_put_hand_to_underworld(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
@@ -382,6 +421,7 @@ register_choice("move_friendly_here", _handle_move_card_option)
 register_choice("move_hero_after_monster", _handle_move_card_option)
 register_choice("move_hero_to_here", _handle_move_to_pending_location)
 register_choice("revive_underworld_here", _handle_revive_here)
+register_choice("revive_choose_location", _handle_revive_choose_location)
 register_choice("put_hand_to_underworld", _handle_put_hand_to_underworld)
 register_choice("draw_from_underworld", _handle_draw_from_underworld)
 register_choice("tutor_from_deck", _handle_tutor_from_deck)

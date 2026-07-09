@@ -51,6 +51,51 @@ def _resolve_default_deck(deck_name: str) -> tuple[str, ...]:
     return DECK_LIBRARY[first_deck_name]
 
 
+def register_custom_deck(name: str, card_ids: Iterable[str]) -> None:
+    """Register (or replace) a runtime deck list, e.g. a player-edited deck
+    sent by the webapp. Stock deck names stay untouchable so an edited deck
+    can never shadow the AI's copy of the original."""
+    from .data_loader import FINISHED_DECK_FILES
+
+    _load_data_if_needed()
+    if name in FINISHED_DECK_FILES:
+        raise ValueError(f"Deck name '{name}' is reserved for a stock deck")
+    ids = tuple(cid for cid in card_ids if cid in CARD_LIBRARY)
+    if not ids:
+        raise ValueError(f"Custom deck '{name}' contains no known cards")
+    DECK_LIBRARY[name] = ids
+
+
+# Card ownership is decklist-based (catalog.card_owner_idx), so the two sides
+# of a match must never share a card id. When they do (mirror matches, edited
+# decks borrowing another deck's cards), side B plays aliased copies of the
+# shared cards, registered under a shadow deck name. Behaviors are keyed by
+# card *name*, so an alias keeps the exact same rules and art.
+_MIRROR_SUFFIX = "-P2"
+
+
+def _mirror_safe_deck_b(deck_a: str, deck_b: str) -> tuple[str, list[str]]:
+    deck_a_ids = set(_resolve_default_deck(deck_a))
+    deck_b_ids = list(_resolve_default_deck(deck_b))
+    shared = deck_a_ids.intersection(deck_b_ids)
+    if not shared:
+        return deck_b, deck_b_ids
+
+    aliased: list[str] = []
+    for card_id in deck_b_ids:
+        if card_id not in shared:
+            aliased.append(card_id)
+            continue
+        alias = f"{card_id}{_MIRROR_SUFFIX}"
+        if alias not in CARD_LIBRARY:
+            CARD_LIBRARY[alias] = replace(CARD_LIBRARY[card_id], card_id=alias)
+        aliased.append(alias)
+
+    shadow_name = f"{deck_b}{_MIRROR_SUFFIX}"
+    DECK_LIBRARY[shadow_name] = tuple(aliased)
+    return shadow_name, aliased
+
+
 def _opening_mulligan_options(hand: tuple[str, ...]) -> list[str]:
     return ["KEEP", *list(hand)]
 
@@ -68,7 +113,7 @@ def create_initial_state(
     _load_data_if_needed()
     rng = random.Random(seed)
     deck_a_ids = list(_resolve_default_deck(deck_a))
-    deck_b_ids = list(_resolve_default_deck(deck_b))
+    deck_b, deck_b_ids = _mirror_safe_deck_b(deck_a, deck_b)
     set_aside_a = tuple(card_id for card_id in deck_a_ids if effects.behavior_of(card_id).set_aside_at_start)
     set_aside_b = tuple(card_id for card_id in deck_b_ids if effects.behavior_of(card_id).set_aside_at_start)
     deck_a_ids = [card_id for card_id in deck_a_ids if not effects.behavior_of(card_id).set_aside_at_start]
@@ -151,9 +196,16 @@ def _reset_turn_state(state: GameState) -> GameState:
 # Card powers
 # --------------------------------------------------------------------------
 
+TROJAN_HORSE_PAYLOAD_POWER = -6
+
+
 def power_before_overrides(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
     """A card's power from its own printing, modifiers, and power hook —
     before enemy top-card overrides (e.g. Diomedes) are applied."""
+    if card_id in state.facedown_cards:
+        # Smuggled in by the Trojan Horse: power is a flat -6 regardless of
+        # printing or other modifiers, not a -6 penalty off the base stat.
+        return TROJAN_HORSE_PAYLOAD_POWER
     base = _card(card_id).power
     mods = prim.mod_map(state, _card_owner_idx(state, card_id))
     base += mods.get(card_id, 0)
@@ -451,36 +503,10 @@ def _resolve_flood(state: GameState) -> GameState:
 # End-of-turn effects
 # --------------------------------------------------------------------------
 
-def _auto_top_abilities(state: GameState) -> GameState:
-    """Offer at most one "While on top" ability per end of turn.
-
-    The ability belongs to the *owner* of the top card (defectors like Dolon
-    sit on the enemy's stack but still serve their owner). Offering only one
-    per end of turn keeps a single PendingChoice slot sound; the rest stay
-    unused and can trigger at the next end of turn.
-    """
-    used = [list(v) for v in state.used_top_abilities]
-    for side_idx in (0, 1):
-        for location_idx, location in enumerate(state.locations):
-            top = prim.top_card(location, side_idx)
-            if top is None:
-                continue
-            ability_hook = effects.behavior_of(top).top_ability
-            if ability_hook is None:
-                continue
-            owner_idx = _card_owner_idx(state, top)
-            name = _card(top).name
-            if name in used[owner_idx]:
-                continue
-            result = ability_hook(RT, state, owner_idx, location_idx, top)
-            if result is not None:
-                used[owner_idx].append(name)
-                return replace(result, used_top_abilities=(tuple(used[0]), tuple(used[1])))
-    return replace(state, used_top_abilities=(tuple(used[0]), tuple(used[1])))
-
-
 def _resolve_end_turn_effects(state: GameState) -> GameState:
-    state = _auto_top_abilities(state)
+    # "While on top" abilities (e.g. Enkidu -> Gilgamesh) are no longer forced
+    # here: they're offered proactively during MAIN via UseAbilityAction, and
+    # the webapp highlights cards that have one available (see legal_actions).
     if state.flood_pending_turn == state.turn_number:
         state = _resolve_flood(state)
     return state
@@ -509,6 +535,12 @@ def _play_cost(state: GameState, player_idx: int, card_id: str) -> int:
         cost -= state.next_artifact_discount[player_idx]
     cost -= state.next_cost_discount[player_idx]
     return max(0, cost)
+
+
+def play_cost(state: GameState, player_idx: int, card_id: str) -> int:
+    """The mana cost to play `card_id` right now, after discounts (e.g. the
+    Humbaba reward's next-free-play, human/artifact discounts)."""
+    return _play_cost(state, player_idx, card_id)
 
 
 def _artifact_top_discount(state: GameState, player_idx: int) -> int:

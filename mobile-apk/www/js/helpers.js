@@ -124,12 +124,22 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
     const directName = cardNameById.get(optionId);
     if (directName) return directName;
 
+    // A lone location index (e.g. the Ark's "choose a location" choice, or
+    // the revive-destination follow-up choice) reads far better as a lane name.
+    if (typeof optionId === 'string' && /^\d+$/.test(optionId)) {
+        return `Move to ${laneLabel(Number(optionId))}`;
+    }
+
     if (typeof optionId === 'string') {
         const parts = optionId.split('|');
         const zone = parts[0];
         if (parts.length === 2 && (zone === 'hand' || zone === 'deck' || zone === 'underworld')) {
             const zoneName = zone.charAt(0).toUpperCase() + zone.slice(1);
             return `${zoneName}: ${cardDisplayName(parts[1], cardNameById)}`;
+        }
+
+        if (parts.length === 2 && zone === 'BOTTOM') {
+            return `Bury: ${cardDisplayName(parts[1], cardNameById)}`;
         }
 
         if (parts.length === 2) {
@@ -158,6 +168,12 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
                     : (maybeSide === Number(viewerSideIdx) ? ' (your side)' : ' (opponent side)');
                 return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane)}${sideSuffix}`;
             }
+        }
+
+        // A combination of card ids this function can't otherwise decode
+        // (e.g. a multi-pick combo) must never leak raw card ids to the UI.
+        if (parts.length > 1 && parts.every((part) => cardNameById.has(part) || looksLikeCardId(part))) {
+            return parts.map((part) => cardDisplayName(part, cardNameById)).join(', ');
         }
     }
     return looksLikeCardId(optionId) ? 'Unknown card' : optionId;
@@ -192,7 +208,24 @@ export function findCardById(snapshot, cardId) {
         if (found) return found;
     }
 
-    return scan(snapshot.opponent_hand);
+    const inOppHand = scan(snapshot.opponent_hand);
+    if (inOppHand) return inOppHand;
+
+    // Cards revealed by a deck peek (Calchas, Dolon) never sit in an exposed
+    // zone; fall back to the full-detail map of every card in both decks.
+    if (snapshot.known_cards && snapshot.known_cards[cardId]) return snapshot.known_cards[cardId];
+
+    return null;
+}
+
+// A stat (cost/power) modified by an effect (Humbaba, Diomedes, ...) colors
+// green when it's better for the card's owner (cheaper cost, higher power)
+// and red when it's worse. Returns '' when unaffected or unknown.
+export function statChangeClass(current, base, higherIsBetter) {
+    if (current === null || current === undefined || base === null || base === undefined) return '';
+    if (current === base) return '';
+    const better = higherIsBetter ? current > base : current < base;
+    return better ? 'stat-better' : 'stat-worse';
 }
 
 export function stackPower(cards) {

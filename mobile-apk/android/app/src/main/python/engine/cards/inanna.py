@@ -10,7 +10,7 @@ from ..effects import (
     EffectResult,
     Halt,
     partner_here,
-    partners_in_play,
+    partners_in_play_if_revivable,
     partners_in_underworld,
     register,
     register_choice,
@@ -117,13 +117,15 @@ register(
 
 # --- Enki's creations ---------------------------------------------------------
 
+_UNDERWORLD_CHEAP = lambda cid: card(cid).cost <= 3
+
 register(
     "Kur-Jara",
     CardBehavior(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Gala-Tura"),
         ),
-        synergy_partners=partners_in_play(None, "Gala-Tura"),
+        synergy_partners=partners_in_play_if_revivable(named("Gala-Tura"), _UNDERWORLD_CHEAP),
     ),
 )
 register(
@@ -132,7 +134,7 @@ register(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Kur-Jara"),
         ),
-        synergy_partners=partners_in_play(None, "Kur-Jara"),
+        synergy_partners=partners_in_play_if_revivable(named("Kur-Jara"), _UNDERWORLD_CHEAP),
     ),
 )
 register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-Jara", "Gala-Tura", count=2)))
@@ -140,7 +142,9 @@ register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-
 
 # --- Underworld dwellers ------------------------------------------------------
 
-_UNDERWORLD_GATE = send_hand_being_to_underworld("Choose a being from your hand to send to the Underworld")
+_UNDERWORLD_GATE = send_hand_being_to_underworld(
+    "Choose a being from your hand to send to the Underworld", include_pass=False,
+)
 register("Gatekeeper Neti", CardBehavior(on_enter=_UNDERWORLD_GATE))
 register("Underworld Courier", CardBehavior(on_enter=_UNDERWORLD_GATE))
 

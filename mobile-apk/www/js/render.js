@@ -13,6 +13,7 @@ import {
     laneLabel,
     ordinalLabel,
     stackPower,
+    statChangeClass,
     typeLabel,
 } from './helpers.js';
 
@@ -22,17 +23,25 @@ const CHOICE_VERB_BY_KIND = {
     banish_enemy: 'Banish',
     banish_other_friendly: 'Banish',
     banish_friendly_for_inanna: 'Banish',
+    banish_two_enemies: 'Banish',
     ishtar_banish_small_enemy: 'Banish',
     slave_banish_for_artifact_discount: 'Banish',
     destroy_enemy_here: 'Destroy',
+    greek_soldiers_destroy_weaklings: 'Destroy',
     discard_from_hand: 'Discard',
     return_human_to_hand: 'Return',
     revive_underworld_here: 'Revive',
+    revive_choose_location: 'Revive at',
     put_hand_to_underworld: 'Bury',
     namtar_send_to_underworld: 'Send',
     move_hero_to_here: 'Move',
     farmer_free_human: 'Free',
     enkidu_join_gilgamesh: 'Join',
+    trojan_horse_payload: 'Send',
+    fisherman_draw_two_humans: 'Draw',
+    tutor_from_deck: 'Draw',
+    calchas_pick: 'Draw',
+    dolon_bottom_top_card: 'Bury',
 };
 
 // Decide whether a pending choice is a simple "pick one card" selection that
@@ -52,22 +61,73 @@ function classifyCardChoice(pending, snapshot, cardNameById) {
         }
     }
     if (cardEntries.length === 0) return null;
-    return { cardEntries, extraEntries };
+    return { mode: 'select', cardEntries, extras: extraEntries };
+}
+
+// Dolon's "look at the top card, then choose to bury it" choice encodes the
+// revealed card as "BOTTOM|<id>" so the player can both see it and bury it —
+// never just a bare id or raw text.
+function classifyDolonChoice(pending, snapshot) {
+    if (pending.choice_kind !== 'dolon_bottom_top_card') return null;
+    const revealOption = (pending.options || []).find((opt) => typeof opt === 'string' && opt.startsWith('BOTTOM|'));
+    if (!revealOption) return null;
+    const cardId = revealOption.split('|')[1];
+    const card = findCardById(snapshot, cardId);
+    if (!card) return null;
+    return {
+        mode: 'select',
+        cardEntries: [{ card, option: revealOption }],
+        extras: [{ value: 'PASS', label: 'Leave it on top' }],
+    };
+}
+
+// A "pick some cards" choice whose options are pipe-joined combinations of
+// card ids (Bull of Heaven's two banishes, the Trojan Horse payload, Greek
+// Soldiers, tutoring more than one named card, ...). Instead of listing every
+// precomputed combination, show each candidate card once and let the player
+// toggle a selection until it matches one of the engine's valid combos.
+function classifyMultiCardChoice(pending, snapshot) {
+    const options = pending.options || [];
+    const real = options.filter((opt) => opt !== 'PASS' && opt !== 'NONE');
+    if (real.length === 0) return null;
+    const hasCombo = real.some((opt) => typeof opt === 'string' && opt.includes('|'));
+    if (!hasCombo) return null; // a plain single-card list is handled by classifyCardChoice instead
+
+    const idOrder = [];
+    const seen = new Set();
+    for (const opt of real) {
+        if (typeof opt !== 'string') return null;
+        for (const part of opt.split('|')) {
+            if (!findCardById(snapshot, part)) return null; // not a pure card combo (e.g. a move option)
+            if (!seen.has(part)) {
+                seen.add(part);
+                idOrder.push(part);
+            }
+        }
+    }
+
+    const cardEntries = idOrder.map((id) => ({ card: findCardById(snapshot, id) }));
+    const extras = [];
+    if (options.includes('NONE')) extras.push({ value: 'NONE', label: 'None' });
+    if (options.includes('PASS')) extras.push({ value: 'PASS', label: 'Pass' });
+    return { mode: 'multi-select', cardEntries, comboOptions: real, extras };
 }
 
 function renderCards(cards, options = {}) {
-    const { movableCards = new Set(), synergyCards = new Set(), emptyAsCardSlot = false } = options;
+    const { movableCards = new Set(), synergyCards = new Set(), abilityCards = new Set(), emptyAsCardSlot = false } = options;
     if (!cards || cards.length === 0) {
         return emptyAsCardSlot
             ? '<div class="empty-card-slot-wrap"><div class="empty-card-slot" aria-hidden="true"></div></div>'
             : '';
     }
-    return cards.map((c) => `
-        <div class="card ${c.id && movableCards.has(c.id) ? 'movable-choice' : ''} ${c.id && synergyCards.has(c.id) ? 'synergy-ref' : ''}" ${c.id ? `data-board-card-id="${c.id}"` : ''}>
+    return cards.map((c) => {
+        const powerClass = statChangeClass(c.power, c.base_power, true);
+        return `
+        <div class="card ${c.id && movableCards.has(c.id) ? 'movable-choice' : ''} ${c.id && synergyCards.has(c.id) ? 'synergy-ref' : ''} ${c.id && abilityCards.has(c.id) ? 'ability-ready' : ''} ${c.while_top_active ? 'while-top-active' : ''}" ${c.id ? `data-board-card-id="${c.id}"` : ''}>
             <div class="card-headline">
                 <span class="stat-badge cost">${c.cost ?? '?'}</span>
                 <div class="card-title">${c.name}</div>
-                <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
+                <span class="stat-badge power ${powerClass}">${c.power !== null ? c.power : '?'}</span>
             </div>
             ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
             <div class="card-media">
@@ -77,7 +137,8 @@ function renderCards(cards, options = {}) {
                 <div class="tiny">${effectLabel(c)}</div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderVpTrack(vpValue) {
@@ -127,7 +188,7 @@ function renderOpponentHand(cardCount, revealedCards) {
     return Array.from({ length: count }, () => '<div class="opp-card-back" aria-hidden="true"></div>').join('');
 }
 
-function renderUnderworldStack(cards) {
+function renderUnderworldStack(cards, isOpp) {
     const list = Array.isArray(cards) ? cards : [];
     const count = list.length;
     if (count === 0) {
@@ -139,7 +200,7 @@ function renderUnderworldStack(cards) {
         : '';
 
     return `
-        <div class="deck-stack underworld-stack">
+        <div class="deck-stack underworld-stack${isOpp ? ' deck-stack-opp' : ''}">
             <span class="deck-card"></span>
             <span class="deck-card"></span>
             <span class="underworld-top-card">${topCard}</span>
@@ -171,7 +232,9 @@ function renderActionHistory(snapshot, ui, config) {
     const crownCounts = { [human]: 0, [ai]: 0 };
 
     const pushCurrentGroup = () => {
-        if (!currentGroup || !currentGroup.items.length) return;
+        // Keep the group even with zero items: a turn where the player did
+        // nothing but draw and end still deserves its "Round X - ..." entry.
+        if (!currentGroup) return;
         groups.push(currentGroup);
         currentGroup = null;
     };
@@ -248,14 +311,17 @@ function renderActionHistory(snapshot, ui, config) {
     }
     pushCurrentGroup();
 
+    // Keep the full play history (no cap): the history panel scrolls.
     const groupedMarkup = groups
-        .slice(-12)
+        .slice()
         .reverse()
         .map((group) => `
             <section class="history-group">
                 <div class="history-group-title">${escapeHtml(group.title)}</div>
                 <div class="history-group-items">
-                    ${group.items.map((entry) => `<div class="history-item">${escapeHtml(entry)}</div>`).join('')}
+                    ${group.items.length
+                        ? group.items.map((entry) => `<div class="history-item">${escapeHtml(entry)}</div>`).join('')
+                        : '<div class="history-item history-item-empty">They did not do anything.</div>'}
                     ${group.result ? `<div class="history-round-result">${escapeHtml(group.result)}</div>` : ''}
                 </div>
             </section>
@@ -312,7 +378,7 @@ export function updateEndTurnButton(ui, app, config) {
         ui.btnEndTurn.textContent = "Opponent's Turn";
     } else {
         ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
-        ui.btnEndTurn.textContent = isGameOver ? 'New Game' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+        ui.btnEndTurn.textContent = isGameOver ? 'Main Menu' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
     }
     ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
     ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
@@ -340,6 +406,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     app.playableCardSet = new Set(
         legal
             .filter((a) => a.kind === 'play_card' && a.card_id != null)
+            .map((a) => a.card_id)
+    );
+    app.abilityReadyCardSet = new Set(
+        legal
+            .filter((a) => a.kind === 'use_ability' && a.card_id != null)
             .map((a) => a.card_id)
     );
     app.legalMoveChoiceSet = new Set();
@@ -402,7 +473,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     }
 
     const underworld = snapshot.underworld || {};
-    ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[ai] || []);
+    ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[ai] || [], true);
     ui.yourUnderworld.innerHTML = renderUnderworldStack(underworld[human] || []);
     const underworldSynergy = (underworld[human] || []).some((card) => card && synergyRefSet.has(card.id));
     ui.yourUnderworld.classList.toggle('synergy-glow', underworldSynergy);
@@ -418,7 +489,9 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         && !isOpeningMulligan
         && Number(snapshot.pending_choice.player_id) === config.player_id
         && cardStack)
-        ? classifyCardChoice(snapshot.pending_choice, snapshot, app.cardNameById)
+        ? (classifyDolonChoice(snapshot.pending_choice, snapshot)
+            || classifyCardChoice(snapshot.pending_choice, snapshot, app.cardNameById)
+            || classifyMultiCardChoice(snapshot.pending_choice, snapshot))
         : null;
 
     if (cardChoice) {
@@ -428,11 +501,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         ui.choiceModal.setAttribute('aria-hidden', 'true');
         ui.choiceOptions.innerHTML = '';
         cardStack.open({
-            mode: 'select',
+            mode: cardChoice.mode,
             title: p.prompt || p.choice_kind,
             confirmVerb: CHOICE_VERB_BY_KIND[p.choice_kind] || 'Choose',
             cards: cardChoice.cardEntries,
-            extras: cardChoice.extraEntries,
+            extras: cardChoice.extras,
+            comboOptions: cardChoice.comboOptions,
             onConfirm: (optionId) => onChooseOption(optionId),
             onExtra: (value) => onChooseOption(value),
         });
@@ -510,7 +584,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                     <span class="lane-score ${laneLeadClass}"><span class="opp">${oppPower}</span> / <span class="you">${yourPower}</span></span>
                 </div>
                 <div class="lane-row lane-drop" data-location-id="${loc.location_id}">
-                    <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet })}</div>
+                    <div class="stack-cards" data-count="${yourCards.length}">${renderCards(yourCards, { movableCards: app.movableChoiceCardSet, synergyCards: synergyRefSet, abilityCards: app.abilityReadyCardSet })}</div>
                 </div>
             </article>
         `;
@@ -523,10 +597,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const isPlayable = !isOpeningMulligan && app.playableCardSet.has(c.id);
             const isUnplayable = !isOpeningMulligan && !app.playableCardSet.has(c.id);
             const hasSynergy = !isOpeningMulligan && synergyHandSet.has(c.id);
+            const costClass = statChangeClass(c.cost, c.base_cost, false);
             return `
                 <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''} ${hasSynergy ? 'synergy' : ''}" data-card-id="${c.id}">
                     <div class="hand-card-headline">
-                        <span class="stat-badge cost">${c.cost ?? '?'}</span>
+                        <span class="stat-badge cost ${costClass}">${c.cost ?? '?'}</span>
                         <div class="hand-title-main" style="--title-scale: ${titleScale};"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
                         <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
                     </div>

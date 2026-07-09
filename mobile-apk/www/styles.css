@@ -9,6 +9,97 @@
     --warn: #ff8a3a;
     --good: #2dd4a9;
     --lane-bg: linear-gradient(160deg, rgba(15, 48, 78, 0.9), rgba(8, 26, 43, 0.95));
+    /* Fixed (not swapped by [data-cardback]): the AI opponent always shows this
+       card back, regardless of what the player has bought/equipped for themself. */
+    --card-back-opponent:
+        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+}
+
+/* --- Cosmetics (shop) -------------------------------------------------------
+   Card backs and board themes are CSS variables switched by data attributes.
+   The same [data-cardback]/[data-board] rules style both the whole app (the
+   attribute sits on <body>) and the shop's small preview tiles. */
+
+:root,
+[data-cardback="classic"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+}
+
+[data-cardback="cedar"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(154, 255, 173, 0.5), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(24, 74, 44, 0.92), rgba(24, 74, 44, 0.92) 6px, rgba(12, 44, 26, 0.94) 6px, rgba(12, 44, 26, 0.94) 12px);
+}
+
+[data-cardback="ember"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(255, 176, 97, 0.55), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(105, 36, 22, 0.92), rgba(105, 36, 22, 0.92) 6px, rgba(58, 16, 12, 0.94) 6px, rgba(58, 16, 12, 0.94) 12px);
+}
+
+[data-cardback="aegean"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(133, 246, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(90deg, rgba(12, 84, 112, 0.92), rgba(12, 84, 112, 0.92) 5px, rgba(6, 44, 66, 0.94) 5px, rgba(6, 44, 66, 0.94) 10px);
+}
+
+[data-cardback="royal"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(255, 232, 145, 0.6), transparent 45%),
+        repeating-linear-gradient(45deg, rgba(122, 92, 24, 0.94), rgba(122, 92, 24, 0.94) 6px, rgba(74, 52, 10, 0.95) 6px, rgba(74, 52, 10, 0.95) 12px);
+}
+
+[data-cardback="obsidian"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(178, 116, 255, 0.55), transparent 45%),
+        repeating-linear-gradient(120deg, rgba(45, 15, 74, 0.92), rgba(45, 15, 74, 0.92) 6px, rgba(18, 6, 32, 0.94) 6px, rgba(18, 6, 32, 0.94) 12px);
+}
+
+[data-cardback="bronze"] {
+    --card-back:
+        repeating-linear-gradient(45deg, rgba(196, 132, 58, 0.85) 0, rgba(196, 132, 58, 0.85) 4px, transparent 4px, transparent 8px),
+        repeating-linear-gradient(-45deg, rgba(120, 72, 28, 0.85) 0, rgba(120, 72, 28, 0.85) 4px, transparent 4px, transparent 8px),
+        linear-gradient(160deg, #3a2410, #1c1206);
+}
+
+[data-cardback="starlit"] {
+    --card-back:
+        repeating-radial-gradient(circle at 10px 10px, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 1.5px 20px),
+        linear-gradient(160deg, #131a42, #060a1e);
+}
+
+[data-cardback="crimson"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(255, 130, 130, 0.5), transparent 45%),
+        repeating-linear-gradient(135deg, rgba(120, 20, 24, 0.92), rgba(120, 20, 24, 0.92) 6px, rgba(60, 8, 10, 0.94) 6px, rgba(60, 8, 10, 0.94) 12px);
+}
+
+:root,
+[data-board="classic"] {
+    --board-glow-1: rgba(23, 182, 255, 0.28);
+    --board-glow-2: rgba(255, 138, 58, 0.25);
+    --board-base: linear-gradient(165deg, #07131f, #10253b);
+}
+
+[data-board="dawn"] {
+    --board-glow-1: rgba(255, 190, 92, 0.32);
+    --board-glow-2: rgba(255, 96, 82, 0.26);
+    --board-base: linear-gradient(165deg, #1d1020, #3a1d2b);
+}
+
+[data-board="underworld"] {
+    --board-glow-1: rgba(157, 96, 255, 0.3);
+    --board-glow-2: rgba(64, 224, 170, 0.2);
+    --board-base: linear-gradient(165deg, #0b0714, #1f1030);
+}
+
+[data-board="sea"] {
+    --board-glow-1: rgba(64, 220, 255, 0.3);
+    --board-glow-2: rgba(120, 88, 255, 0.22);
+    --board-base: linear-gradient(165deg, #041520, #0a2f42);
 }
 
 * {
@@ -53,9 +144,9 @@ body {
     font-family: "Barlow", "Segoe UI", sans-serif;
     color: var(--ink);
     background:
-        radial-gradient(900px 480px at 16% -8%, rgba(23, 182, 255, 0.28), transparent 60%),
-        radial-gradient(700px 450px at 95% 0%, rgba(255, 138, 58, 0.25), transparent 60%),
-        linear-gradient(165deg, var(--bg-1), var(--bg-2));
+        radial-gradient(900px 480px at 16% -8%, var(--board-glow-1), transparent 60%),
+        radial-gradient(700px 450px at 95% 0%, var(--board-glow-2), transparent 60%),
+        var(--board-base);
     min-height: 100vh;
 }
 
@@ -72,14 +163,14 @@ body {
     display: none !important;
 }
 
-/* Sticky top bar: settings on the left, crown score in the center,
+/* Sticky top bar: home + settings on the left, crown score in the center,
    history on the right. */
 .status-panel {
     position: sticky;
     top: 8px;
     z-index: 120;
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto;
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
@@ -210,15 +301,25 @@ select {
     border: 1px solid var(--line);
 }
 
+/* Transient warning/error toast: floats over the board instead of taking
+   layout space, and only shows while it has text. */
 .status {
-    margin-top: 10px;
-    padding: 8px;
-    border-radius: 9px;
+    position: fixed;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 260;
+    max-width: min(92vw, 480px);
+    margin: 0;
+    padding: 8px 14px;
+    border-radius: 999px;
     border: 1px solid var(--line);
-    background: rgba(10, 25, 39, 0.85);
-    color: var(--muted);
-    min-height: 46px;
+    background: rgba(10, 25, 39, 0.95);
+    color: #d3e8f6;
     font-size: 13px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
 .status:empty {
@@ -353,6 +454,12 @@ select {
     color: var(--muted);
 }
 
+.history-item-empty {
+    color: var(--muted);
+    font-style: italic;
+    border-left-color: rgba(159, 193, 216, 0.35);
+}
+
 .board {
     display: grid;
     gap: 12px;
@@ -373,8 +480,9 @@ select {
 
 .your-strip {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr auto 1fr;
     gap: 8px;
+    align-items: center;
 }
 
 .your-strip .peek-pile {
@@ -433,10 +541,14 @@ select {
     height: 86px;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.24);
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Opponent's underworld stack always shows the default back — cosmetics the
+   player buys/equips are theirs alone, never mirrored onto the AI. */
+.deck-stack-opp .deck-card {
+    background: var(--card-back-opponent);
 }
 
 .deck-card:nth-child(1) {
@@ -980,19 +1092,24 @@ select {
     align-content: start;
 }
 
-/* Once a location holds more than 4 beings the vertical stack would overflow
-   its lane row, so overlap the cards (headline stays visible) to keep them
-   inside the lane. More cards -> tighter overlap. */
+/* Once a location holds more than 3 beings the vertical stack (including the
+   front card's taller art window) would overflow its lane row, so overlap the
+   cards (headline stays visible) to keep them inside the lane. More cards ->
+   tighter overlap. */
+.stack-cards[data-count="4"] .card:not(:first-child) {
+    margin-top: -8px;
+}
+
 .stack-cards[data-count="5"] .card:not(:first-child) {
-    margin-top: -14px;
+    margin-top: -21px;
 }
 
 .stack-cards[data-count="6"] .card:not(:first-child) {
-    margin-top: -22px;
+    margin-top: -28px;
 }
 
 .stack-cards[data-count="7"] .card:not(:first-child) {
-    margin-top: -30px;
+    margin-top: -33px;
 }
 
 .stack-cards .card {
@@ -1027,6 +1144,12 @@ select {
     height: 12px;
     overflow: hidden;
     border-radius: 6px;
+}
+
+/* The stack's front card (last child paints on top) is fully visible, so it
+   can afford a taller art window than the buried cards' slim sliver. */
+.stack-cards .card:last-child .card-media {
+    height: 30px;
 }
 
 .stack-cards .card .card-body {
@@ -1109,6 +1232,18 @@ select {
     box-shadow: 0 0 8px rgba(235, 60, 60, 0.5);
 }
 
+/* A cost/power modified by an effect (Humbaba, Diomedes, Menelaus, ...)
+   colors green when it now favors the card's owner, red when it hurts them. */
+.stat-badge.stat-better {
+    background: radial-gradient(circle at 30% 28%, #c3ffb0, #3ecb3e 62%, #0f6f16);
+    box-shadow: 0 0 8px rgba(70, 210, 70, 0.55);
+}
+
+.stat-badge.stat-worse {
+    background: radial-gradient(circle at 30% 28%, #ffd6d6, #b12a2a 62%, #5c0f0f);
+    box-shadow: 0 0 8px rgba(210, 60, 60, 0.55);
+}
+
 .card-body,
 .hand-body {
     display: grid;
@@ -1164,6 +1299,29 @@ select {
     display: none;
 }
 
+/* The opponent's mana bar reads compact: smaller gems, tighter padding, and
+   pulled up toward the deck/hand/underworld strip above it. */
+#oppMana {
+    padding: 3px 8px;
+    margin-top: -6px;
+}
+
+#oppMana .mana-track {
+    margin-top: 0;
+    gap: 4px;
+    padding: 1px 0;
+}
+
+#oppMana .mana-gem {
+    width: 14px;
+    height: 14px;
+}
+
+#oppMana .mana-gem.empty {
+    width: 10px;
+    height: 10px;
+}
+
 .your-hand-wrap .mana-zone {
     margin-bottom: 10px;
 }
@@ -1202,9 +1360,7 @@ select {
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.28);
     overflow: hidden;
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
@@ -1220,9 +1376,7 @@ select {
     height: 70px;
     border-radius: 7px;
     border: 1px solid rgba(255, 255, 255, 0.22);
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back-opponent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
@@ -1446,6 +1600,10 @@ select {
         gap: 10px;
     }
 
+    .board {
+        gap: 8px;
+    }
+
     .status-panel {
         top: 6px;
     }
@@ -1458,15 +1616,49 @@ select {
         gap: 6px;
     }
 
+    /* Locations keep one fixed size for the whole game: the lane never grows
+       when cards pile up, the stacks overlap harder instead (below). */
     .lane {
-        height: auto;
-        min-height: 320px;
+        height: 320px;
+        min-height: 0;
         padding: 6px;
         gap: 6px;
     }
 
     .stack-cards .card .card-title {
         font-size: 9px;
+    }
+
+    /* Save vertical space inside lanes: no type line ("Being - Human") and no
+       art on buried cards; the stack's front card keeps a slim art sliver so
+       the lane still shows the top card's image. */
+    .stack-cards .card .card-type,
+    .stack-cards .card .card-media {
+        display: none;
+    }
+
+    .stack-cards .card:last-child .card-media {
+        display: block;
+        height: 18px;
+    }
+
+    /* Lane cards are much shorter without type/art, so the overlap needed to
+       keep full stacks inside the fixed lane is milder than on desktop; the
+       margins also absorb the front card's art sliver. */
+    .stack-cards[data-count="4"] .card:not(:first-child) {
+        margin-top: -4px;
+    }
+
+    .stack-cards[data-count="5"] .card:not(:first-child) {
+        margin-top: -10px;
+    }
+
+    .stack-cards[data-count="6"] .card:not(:first-child) {
+        margin-top: -13px;
+    }
+
+    .stack-cards[data-count="7"] .card:not(:first-child) {
+        margin-top: -15px;
     }
 
     .stack-cards .card .stat-badge {
@@ -1533,6 +1725,58 @@ select {
         min-width: 0;
     }
 }
+
+/* Short phone screens: there is genuinely not enough room for full hand
+   cards, so only their top half shows (headline + cropped art, no type
+   line). Tapping a card still pops it up with the full effect text, and
+   taller screens keep the full cards. Everything else tightens a notch so
+   the whole board fits the screen without scrolling. */
+@media (max-width: 700px) and (max-height: 799px) {
+    .app {
+        gap: 8px;
+    }
+
+    .board {
+        gap: 6px;
+    }
+
+    .status-panel {
+        padding: 5px 8px;
+    }
+
+    .icon-btn {
+        width: 34px;
+        height: 34px;
+    }
+
+    .lane {
+        height: 300px;
+    }
+
+    .stack-cards[data-count="7"] .card:not(:first-child) {
+        margin-top: -13px;
+    }
+
+    .hand {
+        min-height: 100px;
+    }
+
+    .hand-card .card-type {
+        display: none;
+    }
+
+    .hand-media {
+        height: 44px;
+        min-height: 0;
+        overflow: hidden;
+        border-radius: 7px;
+    }
+
+    .hand-media .hand-art {
+        height: 112px;
+    }
+}
+
 /* --- Card type line (Being - Human, Hero, ...) --------------------------- */
 
 .card-type {
@@ -1609,11 +1853,10 @@ select {
 }
 
 .fly-back {
+    /* Opponent plays flip up from their (always-default) card back. */
     transform: rotateY(180deg);
     border: 1px solid rgba(255, 255, 255, 0.24);
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back-opponent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
@@ -1753,6 +1996,29 @@ select {
     animation: synergyPulse 1.8s ease-in-out infinite;
 }
 
+/* A board card with a "while on top" ability available right now (e.g.
+   Enkidu able to join Gilgamesh) glows violet; tap it to open the
+   inspector's ability button. */
+.card.ability-ready {
+    border-color: rgba(180, 130, 255, 0.95);
+    box-shadow: 0 0 0 2px rgba(180, 130, 255, 0.32), 0 0 16px rgba(180, 130, 255, 0.35);
+    animation: abilityPulse 1.8s ease-in-out infinite;
+    cursor: pointer;
+}
+
+@keyframes abilityPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.2); }
+}
+
+/* A "While on top:" printed effect that is doing something right now (Sinon
+   exposing the hand, Ajax blocking moves, Diomedes nullifying a deity, ...)
+   glows teal so its impact on the board is visible at a glance. */
+.card.while-top-active {
+    border-color: rgba(90, 220, 210, 0.9);
+    box-shadow: 0 0 0 2px rgba(90, 220, 210, 0.3), 0 0 14px rgba(90, 220, 210, 0.4);
+}
+
 .underworld-grid.synergy-glow .underworld-stack {
     border-radius: 8px;
     box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.4), 0 0 16px rgba(255, 200, 79, 0.45);
@@ -1819,9 +2085,7 @@ select {
     height: 40px;
     border-radius: 5px;
     border: 1px solid rgba(255, 255, 255, 0.24);
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back-opponent);
     box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
     pointer-events: none;
     display: flex;
@@ -1849,11 +2113,14 @@ select {
     z-index: 400;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.28);
-    background:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    background: var(--card-back);
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
     pointer-events: none;
+}
+
+/* Opponent draws always show the default back, not the player's cosmetic. */
+.draw-ghost.draw-ghost-opp {
+    background: var(--card-back-opponent);
 }
 
 /* --- Game over animation ------------------------------------------------------ */
@@ -1934,4 +2201,617 @@ select {
     letter-spacing: 0.04em;
     color: #e8f4fc;
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+/* --- Emotes --------------------------------------------------------------- */
+/* The emote button sits between "Your Deck" and "Your Underworld"; tapping it
+   opens a small popover of canned messages. Picking one pops a speech bubble
+   above the button that floats up and fades, like the other transient
+   animations on this board. */
+
+.emote-widget {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+.emote-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 140;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 150px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: linear-gradient(165deg, rgba(19, 48, 74, 0.98), rgba(9, 26, 42, 0.98));
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+
+.emote-menu.open {
+    display: flex;
+}
+
+.emote-option {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(10, 25, 39, 0.8);
+    color: var(--ink);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.emote-option:hover {
+    border-color: rgba(23, 182, 255, 0.85);
+    transform: translateY(-1px);
+}
+
+.emote-bubble {
+    position: fixed;
+    z-index: 380;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, 0);
+    max-width: min(70vw, 260px);
+    padding: 8px 14px;
+    border-radius: 14px;
+    background: #f3f9ff;
+    color: #10253b;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.emote-bubble::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: #f3f9ff;
+}
+
+/* --- Screens (main menu / decks / shop / game) ------------------------------- */
+
+.screen:not(.active) {
+    display: none !important;
+}
+
+.screen-head {
+    position: sticky;
+    top: 8px;
+    z-index: 120;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.92), rgba(9, 24, 38, 0.95));
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+}
+
+.screen-title {
+    margin: 0;
+    font-size: 18px;
+    text-align: center;
+    letter-spacing: 0.04em;
+}
+
+.screen-head-spacer {
+    width: 40px;
+}
+
+.crown-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 200, 79, 0.5);
+    background: rgba(66, 48, 6, 0.55);
+    color: #ffe9ad;
+    font-weight: 800;
+    font-size: 14px;
+}
+
+.crown-icon {
+    width: 16px;
+    height: 12px;
+    display: inline-block;
+    background: no-repeat center / contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18'><path d='M2 14 L4 6 L8 10 L12 3 L16 10 L20 6 L22 14 Z' fill='%23ffc84f' stroke='%23fff4b3' stroke-width='1.2'/><rect x='2' y='14' width='20' height='2.8' rx='1' fill='%23ffc84f'/></svg>");
+}
+
+/* --- Main menu -------------------------------------------------------------- */
+
+.menu-screen {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 12px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 34px;
+}
+
+.menu-hero {
+    text-align: center;
+}
+
+.menu-title {
+    margin: 0;
+    font-size: 42px;
+    letter-spacing: 0.06em;
+    line-height: 1.05;
+    text-shadow: 0 4px 24px rgba(23, 182, 255, 0.45);
+}
+
+.menu-title span {
+    display: block;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--hero);
+}
+
+.menu-sub {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing: 0.08em;
+}
+
+.menu-buttons {
+    display: grid;
+    gap: 14px;
+}
+
+.menu-play {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 20px;
+    padding: 22px;
+    display: grid;
+    gap: 4px;
+    justify-items: center;
+    cursor: pointer;
+    color: white;
+    background: linear-gradient(135deg, #0ea7e8, #1479c3);
+    box-shadow: 0 16px 34px rgba(14, 128, 200, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: transform 120ms ease, filter 120ms ease;
+}
+
+.menu-play:active {
+    transform: scale(0.98);
+}
+
+@media (hover: hover) {
+    .menu-play:hover {
+        filter: brightness(1.08);
+        transform: translateY(-2px);
+    }
+}
+
+.menu-play-label {
+    font-size: 30px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.menu-play-sub {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.menu-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.menu-tile {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.92), rgba(9, 24, 38, 0.95));
+    color: var(--ink);
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    text-align: left;
+    min-height: 92px;
+    transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.menu-tile:active {
+    transform: scale(0.98);
+}
+
+@media (hover: hover) {
+    .menu-tile:hover {
+        border-color: rgba(23, 182, 255, 0.7);
+    }
+}
+
+.menu-deck-art {
+    width: 52px;
+    height: 72px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: var(--card-back);
+}
+
+.menu-deck-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.menu-shop-icon {
+    font-size: 34px;
+    line-height: 1;
+}
+
+.menu-tile-title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.menu-tile-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* --- Decks screen ------------------------------------------------------------ */
+
+.decks-screen,
+.shop-screen {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+    min-height: 100vh;
+}
+
+.deck-row {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 4px 2px 10px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.deck-tile {
+    flex: 0 0 128px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.92), rgba(9, 24, 38, 0.95));
+    color: var(--ink);
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.deck-tile.selected {
+    border-color: rgba(255, 200, 79, 0.75);
+    box-shadow: 0 0 0 1px rgba(255, 200, 79, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.deck-tile:active {
+    transform: scale(0.97);
+}
+
+.deck-tile-art {
+    width: 84px;
+    height: 116px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: var(--card-back);
+}
+
+.deck-tile-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.deck-tile-name {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.25;
+    min-height: 30px;
+}
+
+.deck-tile-tags {
+    display: flex;
+    gap: 5px;
+    min-height: 18px;
+}
+
+.deck-tag {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+
+.deck-tag-selected {
+    border-color: rgba(255, 200, 79, 0.6);
+    background: rgba(66, 48, 6, 0.55);
+    color: #ffe9ad;
+}
+
+/* Deck editor (opens when a deck tile is tapped) */
+
+.deck-editor {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(10, 25, 39, 0.6);
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.deck-editor-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.deck-name-input {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.deck-reset-btn {
+    background: rgba(14, 29, 44, 0.8);
+    border: 1px solid var(--line);
+    padding: 9px 14px;
+}
+
+.deck-editor-hint {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.deck-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+.collection-wrap {
+    display: grid;
+    gap: 8px;
+}
+
+.collection-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+    padding-bottom: 24px;
+}
+
+.mini-card {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: linear-gradient(165deg, rgba(15, 48, 78, 0.9), rgba(8, 26, 43, 0.95));
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.mini-card:active {
+    transform: scale(0.96);
+}
+
+.mini-card.selected {
+    border-color: rgba(255, 200, 79, 0.85);
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.4), 0 0 18px rgba(255, 200, 79, 0.35);
+}
+
+.mini-card.in-deck {
+    opacity: 0.45;
+}
+
+.mini-head {
+    display: flex;
+    justify-content: space-between;
+}
+
+.mini-head .stat-badge {
+    transform: scale(0.82);
+}
+
+.mini-media {
+    height: 74px;
+    border-radius: 7px;
+    overflow: hidden;
+    background: rgba(6, 18, 30, 0.7);
+}
+
+.mini-art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.mini-name {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    min-height: 24px;
+}
+
+.mini-flag {
+    position: absolute;
+    top: 34%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-10deg);
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(8, 20, 32, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+}
+
+/* --- Shop screen ------------------------------------------------------------- */
+
+.shop-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.shop-tab {
+    flex: 1;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(10, 25, 39, 0.7);
+    color: var(--muted);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease;
+}
+
+.shop-tab.active {
+    color: var(--ink);
+    border-color: rgba(23, 182, 255, 0.8);
+    background: rgba(14, 62, 96, 0.6);
+}
+
+.shop-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    padding-bottom: 24px;
+}
+
+.shop-item {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.92), rgba(9, 24, 38, 0.95));
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+}
+
+.cardback-preview {
+    width: 74px;
+    height: 104px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: var(--card-back);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.board-preview {
+    width: 104px;
+    height: 74px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background:
+        radial-gradient(70px 40px at 25% 10%, var(--board-glow-1), transparent 65%),
+        radial-gradient(60px 40px at 90% 5%, var(--board-glow-2), transparent 65%),
+        var(--board-base);
+}
+
+.emote-preview {
+    min-height: 74px;
+    display: flex;
+    align-items: center;
+    text-align: center;
+    font-size: 15px;
+    padding: 6px;
+}
+
+.shop-item-name {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.shop-item-btn {
+    width: 100%;
+    padding: 8px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.shop-item-btn:disabled {
+    cursor: default;
+    filter: grayscale(0.4) brightness(0.75);
+    transform: none;
+}
+
+.shop-item-btn.owned:disabled,
+.shop-item-btn.equipped:disabled {
+    filter: none;
+    background: rgba(14, 29, 44, 0.8);
+    border: 1px solid rgba(45, 212, 169, 0.6);
+    color: var(--good);
 }
