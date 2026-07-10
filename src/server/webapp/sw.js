@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mytcg-webapp-v21';
+const CACHE_NAME = 'mytcg-webapp-v22';
 const STATIC_ASSETS = [
     '/webapp/',
     '/webapp/styles.css',

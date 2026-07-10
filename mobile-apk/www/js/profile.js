@@ -92,7 +92,7 @@ function defaultProfile() {
             boards: ['classic'],
             emotes: ['good_luck', 'heart', 'good_game'],
         },
-        equipped: { cardBack: 'classic', board: 'classic' },
+        equipped: { cardBack: 'classic', board: 'classic', emotes: ['good_luck', 'heart', 'good_game'] },
         stats: defaultStats(),
         quests: {}, // managed by quests.js: { daily: {key, items}, weekly: {key, items} }
     };
@@ -385,6 +385,34 @@ export function ownedEmotes() {
     return EMOTES.filter((emote) => ownsItem('emote', emote.id));
 }
 
+// The default emote loadout, equipped in the shop like card backs and boards
+// (a deck's own loadout still overrides it). Always 1..MAX_ACTIVE_EMOTES
+// owned ids; profiles from before this slot fall back to the first owned.
+export function equippedEmoteIds() {
+    const list = Array.isArray(profile.equipped.emotes) ? profile.equipped.emotes : [];
+    const owned = list.filter((id) => ownsItem('emote', id));
+    if (owned.length) return owned.slice(0, MAX_ACTIVE_EMOTES);
+    return ownedEmotes().slice(0, MAX_ACTIVE_EMOTES).map((emote) => emote.id);
+}
+
+// Equips (or unequips) an emote in the default loadout. Returns 'equipped',
+// 'unequipped', 'full' (already MAX_ACTIVE_EMOTES picked), or 'last' (the
+// final emote can't be removed).
+export function toggleEquippedEmote(itemId) {
+    if (!ownsItem('emote', itemId)) return 'full';
+    const current = equippedEmoteIds();
+    if (current.includes(itemId)) {
+        if (current.length <= 1) return 'last';
+        profile.equipped.emotes = current.filter((id) => id !== itemId);
+        save();
+        return 'unequipped';
+    }
+    if (current.length >= MAX_ACTIVE_EMOTES) return 'full';
+    profile.equipped.emotes = [...current, itemId];
+    save();
+    return 'equipped';
+}
+
 // --- Per-deck cosmetics --------------------------------------------------------
 // A deck may override the default card back / board / emote loadout; null
 // means "use my defaults". Overrides referencing unowned items are ignored.
@@ -446,7 +474,8 @@ export function activeEmotes() {
         const loadout = deckEmoteLoadout(activeCosmeticsDeckId);
         if (loadout) return EMOTES.filter((emote) => loadout.includes(emote.id)).slice(0, MAX_ACTIVE_EMOTES);
     }
-    return ownedEmotes().slice(0, MAX_ACTIVE_EMOTES);
+    const equipped = equippedEmoteIds();
+    return EMOTES.filter((emote) => equipped.includes(emote.id)).slice(0, MAX_ACTIVE_EMOTES);
 }
 
 // Equipped cosmetics style the whole app through data attributes on <body>

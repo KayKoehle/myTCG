@@ -332,11 +332,12 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
 [b]: ./templates/color/blue.svg
  
 
- ### TODO
+ ### Bugs
 
 - Add some Sound Effects. We can include a ComfyUI Workflow that generates Sound Effects. We should have Sound Effects for getting a crown, getting a coin, start of turn, mulligan and shuffling, end of turn, winning, losing, and each card should have their own sound/ battlecry when they are getting played, being banished, being revived, and being discarded. If there are any sound effects that make sense also add them.
 - Add theme music
 
+# Long Term Roadmap
 - Draft Mode
 - Puzzle Challenges
 - Story Mode
@@ -344,11 +345,3 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
 
 - LAN Multiplayer
 - LAN Card Trading
-
-- when the flood occues, there should be a pop up, maybe with animation
-- edit deck mode is not mobile friendly anymore, specifically the cards in the deck and the recommended for this deck list does not fit
-- Clicking on a card and showing the card in big should not have the card in another box with the name and an [x] button. Just the card is fine
-- we should be able to equip the 3 default emotes in the shop, similar to how we equip card backs or boards
-- in FFA mode, for out of reach locations, make the "out of reach" box way smaller. the text is good, but there should be no space that indicates that we could play cards there. Just the space for the two opponents that can play there.
-- If not even the mulligan was done, there should not be a surrender button but one can just quit the game for free and click the home button
-- 

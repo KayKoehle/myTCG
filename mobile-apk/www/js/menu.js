@@ -23,7 +23,9 @@ import {
     decksUnlocked,
     deleteCustomDeck,
     equipItem,
+    equippedEmoteIds,
     equippedItem,
+    toggleEquippedEmote,
     GAME_MODES,
     gameModeById,
     getCrowns,
@@ -173,9 +175,11 @@ export function createMenuController(ui, game, cardStack) {
             return;
         }
         const target = state && state.screen ? state : { screen: 'menu' };
-        // Backing out of a live match asks for surrender instead of leaving.
+        // Backing out of a live match asks for surrender instead of leaving —
+        // unless the player hasn't even done the mulligan, then leaving is free.
         if (ui.gameScreen.classList.contains('active') && target.screen !== 'game'
-            && game.isMatchLive && game.isMatchLive()) {
+            && game.isMatchLive && game.isMatchLive()
+            && !(game.canQuitFree && game.canQuitFree())) {
             pushNav({ screen: 'game' });
             game.promptSurrender();
             return;
@@ -615,7 +619,7 @@ export function createMenuController(ui, game, cardStack) {
     function emoteRowHtml() {
         const owned = ownedEmotes();
         const loadout = deckEmoteLoadout(editorDeckId);
-        const active = new Set((loadout || owned.map((e) => e.id)).slice(0, MAX_ACTIVE_EMOTES));
+        const active = new Set((loadout || equippedEmoteIds()).slice(0, MAX_ACTIVE_EMOTES));
         return `
             <div class="cos-row">
                 <span class="cos-row-label">Emotes</span>
@@ -636,10 +640,9 @@ export function createMenuController(ui, game, cardStack) {
                 renderDecks();
             });
         });
-        const owned = ownedEmotes();
         ui.decksTop.querySelectorAll('[data-emote-id]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                const current = new Set((deckEmoteLoadout(editorDeckId) || owned.map((e) => e.id)).slice(0, MAX_ACTIVE_EMOTES));
+                const current = new Set((deckEmoteLoadout(editorDeckId) || equippedEmoteIds()).slice(0, MAX_ACTIVE_EMOTES));
                 const emoteId = btn.dataset.emoteId;
                 if (current.has(emoteId)) {
                     if (current.size === 1) {
@@ -654,8 +657,11 @@ export function createMenuController(ui, game, cardStack) {
                     }
                     current.add(emoteId);
                 }
-                // A loadout covering everything owned is just the default.
-                const next = current.size === owned.length ? null : Array.from(current);
+                // A loadout matching the shop-equipped default is no override.
+                const equipped = equippedEmoteIds();
+                const next = current.size === equipped.length && equipped.every((id) => current.has(id))
+                    ? null
+                    : Array.from(current);
                 setDeckEmoteLoadout(editorDeckId, next);
                 renderDecks();
             });
@@ -1063,7 +1069,11 @@ export function createMenuController(ui, game, cardStack) {
                 Buy · ${item.cost} <span class="crown-icon"></span></button>`;
         }
         if (kind === 'emote') {
-            return '<button class="btn shop-item-btn owned" disabled>Owned</button>';
+            // Emotes equip into a loadout of MAX_ACTIVE_EMOTES; tapping an
+            // equipped one takes it out again.
+            return equippedEmoteIds().includes(item.id)
+                ? '<button class="btn shop-item-btn equipped" data-shop-action="equip">Equipped ✓</button>'
+                : '<button class="btn shop-item-btn" data-shop-action="equip">Equip</button>';
         }
         const equipped = equippedItem(kind) === item.id;
         return equipped
@@ -1098,9 +1108,16 @@ export function createMenuController(ui, game, cardStack) {
                 const item = tab.items.find((i) => i.id === itemEl.dataset.itemId);
                 if (!item) return;
                 if (btn.dataset.shopAction === 'buy') {
-                    if (buyItem(tab.kind, item.id, item.cost) && tab.kind !== 'emote') {
-                        equipItem(tab.kind, item.id); // wear new cosmetics right away
+                    if (buyItem(tab.kind, item.id, item.cost)) {
+                        // Wear new cosmetics right away (emotes only when the
+                        // loadout has a free slot).
+                        if (tab.kind !== 'emote') equipItem(tab.kind, item.id);
+                        else if (equippedEmoteIds().length < MAX_ACTIVE_EMOTES) toggleEquippedEmote(item.id);
                     }
+                } else if (tab.kind === 'emote') {
+                    const result = toggleEquippedEmote(item.id);
+                    if (result === 'full') showToast(`Pick at most ${MAX_ACTIVE_EMOTES} emotes — unequip one first.`);
+                    if (result === 'last') showToast('Keep at least one emote equipped.');
                 } else {
                     equipItem(tab.kind, item.id);
                 }

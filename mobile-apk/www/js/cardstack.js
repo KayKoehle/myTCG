@@ -13,6 +13,9 @@ import { anecdoteText, cardArtTag, effectLabel, escapeHtml, typeLabel } from './
 // picking requires reading every candidate's effect.
 export function createCardStackPopup(ui) {
     let mode = 'view';
+    // Viewing a single card drops the dialog chrome (title bar, close button,
+    // frame) and shows just the card; tapping anywhere dismisses it.
+    let soloView = false;
     let selectedOption = null;
     let selectedName = '';
     let confirmVerb = 'Confirm';
@@ -133,6 +136,9 @@ export function createCardStackPopup(ui) {
             || '<div class="tiny stackpop-empty">No cards here.</div>';
         renderExtras(opts.extras, opts.note);
 
+        soloView = mode === 'view' && cards.length === 1;
+        ui.stackModal.classList.toggle('stack-solo', soloView);
+
         ui.stackConfirm.classList.toggle('hidden', mode !== 'select' && mode !== 'multi-select');
         ui.stackExtras.classList.toggle('hidden', !(opts.extras && opts.extras.length) && !opts.note);
 
@@ -174,6 +180,7 @@ export function createCardStackPopup(ui) {
 
     // Wire events once.
     ui.stackList.addEventListener('click', (event) => {
+        if (soloView) return; // the modal-level handler closes on any tap
         const tile = event.target.closest('.stackpop-card');
         if (!tile) return;
         if (mode === 'multi-select') {
@@ -202,7 +209,8 @@ export function createCardStackPopup(ui) {
 
     ui.stackClose.addEventListener('click', close);
     ui.stackModal.addEventListener('click', (event) => {
-        if (event.target === ui.stackModal) close();
+        // Solo card view: any tap that isn't an action button dismisses it.
+        if (event.target === ui.stackModal || (soloView && !event.target.closest('.stackpop-extra'))) close();
     });
 
     return { open, close, isOpen };

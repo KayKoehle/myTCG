@@ -943,6 +943,36 @@ select {
     margin-top: 8px;
 }
 
+/* Solo card view (a single card in 'view' mode): no dialog chrome — no frame,
+   no title bar, no close button. Just the card; tapping anywhere closes it. */
+.stack-modal.stack-solo .stack-dialog {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    width: min(360px, 92vw);
+}
+
+.stack-modal.stack-solo .stack-head {
+    display: none;
+}
+
+.stack-modal.stack-solo .stack-list {
+    padding: 0;
+    overflow-y: auto;
+}
+
+.stack-modal.stack-solo .stackpop-card {
+    padding: 10px;
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.stack-modal.stack-solo .stackpop-art {
+    max-height: 44vh;
+}
+
 .stack-actions {
     margin-top: 10px;
 }
@@ -2626,6 +2656,10 @@ select {
     background: rgba(10, 25, 39, 0.6);
     padding: 12px;
     display: grid;
+    /* minmax(0, 1fr), never a bare auto track: a wide row (cosmetics chips,
+       recommendation strip) must scroll or wrap, not stretch the editor past
+       the phone's viewport. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
 }
 
@@ -3304,6 +3338,9 @@ details[open]>.cos-summary::before {
 
 .rec-wrap {
     display: grid;
+    /* minmax(0, 1fr): the recommendation strip must scroll inside this track,
+       not stretch it (and the whole editor) past the phone's viewport. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     border-top: 1px solid var(--line);
     padding-top: 10px;
@@ -3741,13 +3778,21 @@ details[open]>.cos-summary::before {
     background: rgba(10, 20, 30, 0.6);
 }
 
+/* Just a slim text strip: no empty card space suggesting cards could be
+   played here — the rival rows above take the room instead. */
 .lane-unreachable {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 44px;
+    min-height: 0;
+    padding: 2px 6px;
     border: 1px dashed rgba(120, 145, 168, 0.35);
     border-radius: 10px;
+}
+
+.lanes.lanes-carousel .lane-row.lane-unreachable {
+    flex: 0 0 auto;
+    min-height: 0;
 }
 
 .lane-unreachable-text {
@@ -4013,6 +4058,69 @@ details[open]>.cos-summary::before {
     font-size: 13px;
     line-height: 1.5;
     color: var(--muted);
+    text-align: center;
+    max-width: 340px;
+}
+
+/* The Deluge strikes: a full-screen wave washes over the board while every
+   unprotected human is swept to the underworld (see animateFloodEvent). */
+.flood-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 260;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    overflow: hidden;
+    background: rgba(3, 14, 26, 0.8);
+    backdrop-filter: blur(2px);
+    pointer-events: none;
+}
+
+.flood-water {
+    position: absolute;
+    left: -25%;
+    right: -25%;
+    bottom: -14%;
+    height: 65%;
+    background: linear-gradient(180deg,
+        rgba(64, 176, 255, 0.35),
+        rgba(23, 108, 186, 0.65) 35%,
+        rgba(8, 52, 104, 0.92));
+    border-radius: 48% 52% 0 0 / 60px 44px 0 0;
+    filter: blur(1px);
+}
+
+.flood-water.flood-water-back {
+    height: 78%;
+    opacity: 0.55;
+    border-radius: 52% 48% 0 0 / 44px 64px 0 0;
+}
+
+.flood-emoji {
+    position: relative;
+    font-size: 56px;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+}
+
+.flood-title {
+    position: relative;
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #eaf7ff;
+    text-align: center;
+    text-shadow: 0 2px 14px rgba(23, 108, 186, 0.8);
+}
+
+.flood-sub {
+    position: relative;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #bcdcf2;
     text-align: center;
     max-width: 340px;
 }

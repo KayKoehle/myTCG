@@ -45,13 +45,15 @@ export function createGameController(ui, cardStack) {
         layoutHand(ui);
         runHistoryAnimations(snapshot);
         maybeAutoAdvance();
-        // Top-left slot: surrender flag while the match runs, home once it ends.
+        // Top-left slot: surrender flag while the match runs, home once it
+        // ends — or before the player's mulligan, when leaving is still free.
         const gameOver = snapshot.phase === 'GAME_OVER';
+        const showHome = gameOver || canQuitFree();
         if (ui.btnSurrender) {
-            ui.btnSurrender.classList.toggle('hidden', gameOver);
+            ui.btnSurrender.classList.toggle('hidden', showHome);
         }
         if (ui.btnHome) {
-            ui.btnHome.classList.toggle('hidden', !gameOver);
+            ui.btnHome.classList.toggle('hidden', !showHome);
         }
     }
 
@@ -607,14 +609,22 @@ export function createGameController(ui, cardStack) {
 
     function runHistoryAnimations(snapshot) {
         const history = Array.isArray(snapshot.action_history) ? snapshot.action_history : [];
+        const floodUsed = Boolean(snapshot.flood && snapshot.flood.used);
         if (app.animMatchId !== snapshot.match_id) {
             // First render of a match (or a reload): nothing to replay.
             app.animMatchId = snapshot.match_id;
             app.historySeen = history.length;
+            app.floodSeen = floodUsed;
             // A brand-new match (empty history) with a set-aside scenario card
             // introduces it: big reveal, then it flies to its HUD chip.
             if (history.length === 0) animateSetAsideIntro(snapshot);
             return;
+        }
+        // The flood leaves no history entry of its own (only the banishes it
+        // causes), so the wave pops when the scenario clock flips to "used".
+        if (floodUsed && !app.floodSeen) {
+            app.floodSeen = true;
+            animateFloodEvent();
         }
         const fresh = history.slice(app.historySeen);
         app.historySeen = history.length;
@@ -729,6 +739,51 @@ export function createGameController(ui, cardStack) {
             // Safety net if animations get cancelled midway.
             setTimeout(() => { if (overlay.isConnected) overlay.remove(); }, 4500 + i * 400);
         });
+    }
+
+    // The Deluge resolves: a wave washes over the whole board, then recedes,
+    // while the banished humans disappear underneath it.
+    function animateFloodEvent() {
+        if (!window.Element.prototype.animate) return;
+        if (document.querySelector('.flood-overlay')) return;
+        const overlay = document.createElement('div');
+        overlay.className = 'flood-overlay';
+        overlay.innerHTML = `
+            <div class="flood-water flood-water-back"></div>
+            <div class="flood-water"></div>
+            <div class="flood-emoji">🌊</div>
+            <div class="flood-title">The Flood!</div>
+            <div class="flood-sub">The Great Deluge washes every unprotected human into the underworld.</div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, fill: 'both' });
+        overlay.querySelectorAll('.flood-water').forEach((water, i) => {
+            water.animate(
+                [
+                    { transform: 'translateY(115%)' },
+                    { transform: 'translateY(0%)', offset: 0.3 },
+                    { transform: 'translateY(7%)', offset: 0.5 },
+                    { transform: 'translateY(0%)', offset: 0.72 },
+                    { transform: 'translateY(118%)' },
+                ],
+                { duration: 3100, delay: i * 150, easing: 'ease-in-out', fill: 'both' }
+            );
+        });
+        const emoji = overlay.querySelector('.flood-emoji');
+        emoji.animate(
+            [
+                { transform: 'translateY(46px) scale(0.5)', opacity: 0 },
+                { transform: 'translateY(0) scale(1.18)', opacity: 1, offset: 0.35 },
+                { transform: 'translateY(-6px) scale(1)', opacity: 1 },
+            ],
+            { duration: 950, delay: 250, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1.1)', fill: 'both' }
+        );
+        const fade = overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 520, delay: 2800, fill: 'forwards' });
+        const done = () => overlay.remove();
+        fade.addEventListener('finish', done);
+        fade.addEventListener('cancel', done);
+        // Safety net if animations get cancelled midway.
+        setTimeout(() => { if (overlay.isConnected) overlay.remove(); }, 4200);
     }
 
     // A finished game (win, loss, draw, surrender — they all append a
@@ -1466,6 +1521,15 @@ export function createGameController(ui, cardStack) {
         return Boolean(app.snapshot && app.snapshot.phase !== 'GAME_OVER');
     }
 
+    // Before the player has even submitted their mulligan the match hasn't
+    // really begun: leaving is free (no surrender, no game_result, no stats).
+    function canQuitFree() {
+        if (!isMatchLive()) return false;
+        const history = (app.snapshot && app.snapshot.action_history) || [];
+        const prefix = `mulligan_keep:${cfg().player_id}:`;
+        return !history.some((entry) => String(entry).startsWith(prefix));
+    }
+
     function promptSurrender() {
         openSheet(ui.surrenderModal);
     }
@@ -1474,6 +1538,7 @@ export function createGameController(ui, cardStack) {
         init,
         startGame,
         isMatchLive,
+        canQuitFree,
         promptSurrender,
     };
 }
