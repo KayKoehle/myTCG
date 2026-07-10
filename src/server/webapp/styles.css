@@ -155,7 +155,10 @@ body {
     margin: 0 auto;
     padding: 12px;
     display: grid;
-    grid-template-columns: 1fr;
+    /* minmax(0, …): a plain 1fr's min-content floor lets any wide row (5-seat
+       score panel, FFA rival chips, the hand) stretch the whole board past the
+       phone viewport, which zooms the page out and clips the hand. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
 }
 
@@ -479,6 +482,7 @@ select {
 
 .board {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
 }
 
@@ -2528,6 +2532,9 @@ select {
     margin: 0 auto;
     padding: 12px;
     display: grid;
+    /* Cap the implicit column at the viewport so the deck-tile row and the
+       filter row scroll inside their own boxes instead of widening the page. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     align-content: start;
     min-height: 100vh;
@@ -3819,5 +3826,287 @@ details[open]>.cos-summary::before {
         flex-basis: 78%;
         min-height: 340px;
         height: auto;
+    }
+}
+
+/* ==========================================================================
+   Player-colored lane capacity bars
+   ========================================================================== */
+
+/* The 2P opponent has no FFA seat class; give them the classic orange. */
+.seat-opp { --seat-color: #ff8a3a; }
+
+.lane-slot.filled[class*="seat-"] {
+    border-color: color-mix(in srgb, var(--seat-color) 80%, white);
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--seat-color) 60%, white),
+        var(--seat-color));
+    box-shadow: 0 0 5px color-mix(in srgb, var(--seat-color) 45%, transparent);
+}
+
+/* ==========================================================================
+   Compact FFA center-lane rows (top card per player + "+N below" badge)
+   ========================================================================== */
+
+.lanes.lanes-carousel .lane-row-compact {
+    flex: none;
+    min-height: 0;
+}
+
+.lanes.lanes-carousel .lane-row-compact .stack-cards[data-count="0"]::after {
+    min-height: 18px;
+}
+
+.stack-buried-chip {
+    align-self: flex-start;
+    border: 1px solid color-mix(in srgb, var(--seat-color, #46627a) 60%, transparent);
+    border-radius: 999px;
+    background: rgba(8, 20, 32, 0.92);
+    color: var(--seat-color, var(--muted));
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    margin-bottom: 2px;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   Card-stack popup anecdote (flavour text on enlarged cards)
+   ========================================================================== */
+
+.stackpop-anecdote {
+    display: none;
+    font-style: italic;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--muted);
+    border-top: 1px dashed rgba(255, 255, 255, 0.16);
+    padding-top: 6px;
+}
+
+.stackpop-card.expanded .stackpop-anecdote {
+    display: block;
+}
+
+/* ==========================================================================
+   Set-aside scenario cards (the Great Sumerian Deluge)
+   ========================================================================== */
+
+.hud {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.hud:empty {
+    display: none;
+}
+
+.setaside-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid color-mix(in srgb, var(--seat-color, #46627a) 55%, transparent);
+    border-left: 3px solid var(--seat-color, var(--line));
+    border-radius: 10px;
+    background: rgba(10, 24, 38, 0.85);
+    color: var(--ink);
+    padding: 4px 10px 4px 6px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.setaside-chip.used {
+    opacity: 0.62;
+}
+
+.setaside-art {
+    width: 26px;
+    height: 36px;
+    flex: none;
+    border-radius: 5px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(6, 18, 30, 0.7);
+}
+
+.setaside-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.setaside-text {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.setaside-owner {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--seat-color, #d7e9f7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 210px;
+}
+
+.setaside-clock {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8fd8ff;
+    white-space: nowrap;
+}
+
+.setaside-clock.setaside-pending {
+    color: #ff8a3a;
+    animation: setasidePulse 1.2s ease-in-out infinite;
+}
+
+.setaside-clock.setaside-done {
+    color: var(--muted);
+}
+
+@keyframes setasidePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+/* Match intro: the scenario card shows big, then flies onto its chip. */
+.setaside-intro {
+    position: fixed;
+    inset: 0;
+    z-index: 260;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 24px;
+    background: rgba(2, 8, 14, 0.82);
+    backdrop-filter: blur(3px);
+}
+
+.setaside-intro-art {
+    max-width: min(320px, 72vw);
+    max-height: 52vh;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+}
+
+.setaside-intro-title {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    color: #f5fbff;
+    text-align: center;
+}
+
+.setaside-intro-sub {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+    text-align: center;
+    max-width: 340px;
+}
+
+/* ==========================================================================
+   FFA on phones (5 players): scrollable chips, tighter score tracks
+   ========================================================================== */
+
+@media (max-width: 700px) {
+    .opp-chips {
+        display: flex;
+        overflow-x: auto;
+        gap: 6px;
+        padding-bottom: 3px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .opp-chip {
+        flex: 0 0 122px;
+    }
+
+    .chip-stats {
+        gap: 5px;
+        font-size: 10px;
+    }
+
+    .ffa-mode .score-panel {
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+
+    .score-side-ffa {
+        padding-left: 4px;
+    }
+
+    .score-side-ffa .score-name {
+        max-width: 48px;
+        font-size: 10px;
+    }
+
+    .ffa-mode .score-panel .vp-crown {
+        width: 9px;
+        height: 8px;
+    }
+
+    .setaside-owner {
+        max-width: 130px;
+    }
+}
+
+/* ==========================================================================
+   Collection browsing on phones
+   ========================================================================== */
+
+@media (max-width: 600px) {
+    .decks-screen {
+        padding: 10px;
+    }
+
+    /* Search + filters stay reachable while scrolling the long card grid. */
+    .collection-controls {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        background: linear-gradient(180deg, rgba(8, 22, 36, 0.97) 82%, rgba(8, 22, 36, 0));
+        padding: 6px 0 10px;
+    }
+
+    /* One horizontally scrollable filter row instead of a tall stack. */
+    .collection-filters {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .collection-filters select {
+        flex: 0 0 auto;
+        min-width: 104px;
+    }
+
+    .deck-tile {
+        flex: 0 0 112px;
+        padding: 8px;
+    }
+
+    .deck-tile-art {
+        width: 72px;
+        height: 100px;
+    }
+
+    .collection-grid {
+        padding-bottom: 44px;
     }
 }

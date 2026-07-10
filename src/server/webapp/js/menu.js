@@ -1,7 +1,7 @@
 import { postJson } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
-import { getQuestBoard } from './quests.js';
+import { getQuestBoard, weekendBannerLabel } from './quests.js';
 import {
     BOARDS,
     CARD_BACKS,
@@ -71,6 +71,7 @@ export function createMenuController(ui, game, cardStack) {
     let shopTab = 'cardBack';
     let confirmingDelete = false; // two-tap guard for deleting a custom deck
     let styleOpen = false; // deck-style section stays collapsed across re-renders
+    let recOpen = true; // "Recommended for this deck" starts expanded, stays where the user put it
 
     // Collection browsing state.
     let searchQuery = '';
@@ -142,6 +143,70 @@ export function createMenuController(ui, game, cardStack) {
 
     // --- Screen switching -------------------------------------------------
 
+    // History-based navigation: every screen change pushes a history entry so
+    // the Android hardware back button (and the browser's back) walks back
+    // through the app — shop -> menu, deck editor -> deck list -> menu — and
+    // never straight out of it.
+    let navCurrent = { screen: 'menu' };
+
+    function pushNav(state) {
+        navCurrent = state;
+        try {
+            history.pushState(state, '');
+        } catch (error) {
+            // History API unavailable: navigation still works, back just exits.
+        }
+    }
+
+    function handleNav(state) {
+        // Back closes a floating overlay first (card popup, inspector, sheet)
+        // and stays on the current screen.
+        const overlay = document.querySelector('.stack-modal.open, .inspector-modal.open, .sheet-modal.open, .choice-modal.open');
+        if (overlay) {
+            try { history.pushState(navCurrent, ''); } catch (error) { /* ignore */ }
+            if (overlay.classList.contains('stack-modal')) {
+                cardStack.close();
+            } else if (!overlay.classList.contains('choice-modal')) {
+                overlay.classList.remove('open');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+            return;
+        }
+        const target = state && state.screen ? state : { screen: 'menu' };
+        // Backing out of a live match asks for surrender instead of leaving.
+        if (ui.gameScreen.classList.contains('active') && target.screen !== 'game'
+            && game.isMatchLive && game.isMatchLive()) {
+            pushNav({ screen: 'game' });
+            game.promptSurrender();
+            return;
+        }
+        navCurrent = target;
+        if (target.screen === 'decks' && decksUnlocked()) {
+            editorDeckId = target.editor || null;
+            confirmingDelete = false;
+            showScreen('decks');
+            renderDecks();
+            ensureCollection().then(() => renderDecks());
+        } else if (target.screen === 'shop' && shopUnlocked()) {
+            showScreen('shop');
+            renderShop();
+        } else if (target.screen === 'game') {
+            showScreen('game');
+        } else {
+            applyCosmetics();
+            renderMenu();
+            showScreen('menu');
+        }
+    }
+
+    function navBack() {
+        try {
+            history.back();
+        } catch (error) {
+            handleNav({ screen: 'menu' });
+        }
+    }
+
     function showScreen(name) {
         const screens = {
             menu: ui.menuScreen,
@@ -203,7 +268,13 @@ export function createMenuController(ui, game, cardStack) {
     function renderMenu() {
         updateCrowns();
         const deckId = getSelectedDeckId();
-        ui.menuDeckArt.innerHTML = deckArtHtml(deckId);
+        // Only rewrite the art when it actually changed — recreating the <img>
+        // on every re-render (e.g. tapping a mode chip) makes it flicker.
+        const artCard = deckArtCardName(deckId) || '';
+        if (ui.menuDeckArt.dataset.artCard !== artCard) {
+            ui.menuDeckArt.dataset.artCard = artCard;
+            ui.menuDeckArt.innerHTML = deckArtHtml(deckId);
+        }
         ui.menuDeckName.textContent = deckDisplayName(deckId);
         renderModeRow();
 
@@ -269,7 +340,7 @@ export function createMenuController(ui, game, cardStack) {
         ui.menuQuests.innerHTML = `
             <div class="weekend-banner ${eventActive ? 'live' : ''}">
                 <div class="weekend-head">
-                    <span class="weekend-label">${eventActive ? 'Weekend event — live now' : 'This weekend'}</span>
+                    <span class="weekend-label">${escapeHtml(weekendBannerLabel())}</span>
                     <span class="weekend-name">${escapeHtml(eventDef.name)}</span>
                 </div>
                 <div class="weekend-desc">${escapeHtml(eventDef.desc)}</div>
@@ -307,6 +378,7 @@ export function createMenuController(ui, game, cardStack) {
             () => DECK_IDS[Math.floor(Math.random() * DECK_IDS.length)]
         );
         applyCosmetics(deckId); // this deck's card back / board / emotes
+        pushNav({ screen: 'game' });
         showScreen('game');
         await game.startGame({
             deckAName: deckA.name,
@@ -507,6 +579,7 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     function openEditor(deckId) {
+        pushNav({ screen: 'decks', editor: deckId });
         editorDeckId = deckId;
         confirmingDelete = false;
         styleOpen = false;
@@ -643,10 +716,10 @@ export function createMenuController(ui, game, cardStack) {
                 ? 'No recommendations right now.'
                 : 'Add a few cards and recommendations will appear here.'}</div>`;
         return `
-            <div class="rec-wrap">
-                <div class="collection-label">Recommended for this deck</div>
+            <details class="rec-wrap cos-section" id="recSection" ${recOpen ? 'open' : ''}>
+                <summary class="collection-label cos-summary">Recommended for this deck</summary>
                 <div class="rec-row" id="recRow">${body}</div>
-            </div>
+            </details>
         `;
     }
 
@@ -755,6 +828,12 @@ export function createMenuController(ui, game, cardStack) {
         if (styleSection) {
             styleSection.addEventListener('toggle', () => {
                 styleOpen = styleSection.open;
+            });
+        }
+        const recSection = ui.decksTop.querySelector('#recSection');
+        if (recSection) {
+            recSection.addEventListener('toggle', () => {
+                recOpen = recSection.open;
             });
         }
 
@@ -961,6 +1040,7 @@ export function createMenuController(ui, game, cardStack) {
             return;
         }
         editorDeckId = null;
+        pushNav({ screen: 'decks' });
         showScreen('decks');
         renderDecks();
         await ensureCollection();
@@ -1034,6 +1114,7 @@ export function createMenuController(ui, game, cardStack) {
             showToast('Earn your first crown to unlock the Shop.');
             return;
         }
+        pushNav({ screen: 'shop' });
         showScreen('shop');
         renderShop();
     }
@@ -1052,17 +1133,16 @@ export function createMenuController(ui, game, cardStack) {
             openShop();
         });
         ui.btnDecksBack.addEventListener('click', () => {
-            if (editorDeckId) {
-                editorDeckId = null;
-                renderDecks();
-                renderMenu();
-            } else {
-                openMenu();
-            }
+            navBack();
         });
         ui.btnShopBack.addEventListener('click', () => {
-            openMenu();
+            navBack();
         });
+        // Hardware/browser back walks the in-app history (see handleNav).
+        try {
+            history.replaceState(navCurrent, '');
+        } catch (error) { /* ignore */ }
+        window.addEventListener('popstate', (event) => handleNav(event.state));
         renderMenu();
         // Quest countdowns tick while the menu is visible.
         setInterval(() => {
@@ -1073,5 +1153,5 @@ export function createMenuController(ui, game, cardStack) {
         ensureCollection().then(() => renderMenu());
     }
 
-    return { init, openMenu, showScreen };
+    return { init, openMenu, showScreen, navBack };
 }

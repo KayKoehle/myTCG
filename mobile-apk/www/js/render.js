@@ -12,6 +12,7 @@ import {
     humanLegalActions,
     laneLabel,
     ordinalLabel,
+    preloadCardArt,
     stackPower,
     statChangeClass,
     typeLabel,
@@ -135,13 +136,19 @@ function classifyMultiCardChoice(pending, snapshot) {
 }
 
 function renderCards(cards, options = {}) {
-    const { movableCards = new Set(), synergyCards = new Set(), abilityCards = new Set(), emptyAsCardSlot = false } = options;
+    const { movableCards = new Set(), synergyCards = new Set(), abilityCards = new Set(), emptyAsCardSlot = false, topOnly = false } = options;
     if (!cards || cards.length === 0) {
         return emptyAsCardSlot
             ? '<div class="empty-card-slot-wrap"><div class="empty-card-slot" aria-hidden="true"></div></div>'
             : '';
     }
-    return cards.map((c) => {
+    // Compact mode (FFA center lane): only the topmost card renders, with a
+    // badge for how many sit underneath. Tapping the badge lists the stack.
+    const visible = topOnly ? cards.slice(-1) : cards;
+    const buriedBadge = topOnly && cards.length > 1
+        ? `<button class="stack-buried-chip" data-stack-buried>+${cards.length - 1} below</button>`
+        : '';
+    return buriedBadge + visible.map((c) => {
         const powerClass = statChangeClass(c.power, c.base_power, true);
         return `
         <div class="card ${c.id && movableCards.has(c.id) ? 'movable-choice' : ''} ${c.id && synergyCards.has(c.id) ? 'synergy-ref' : ''} ${c.id && abilityCards.has(c.id) ? 'ability-ready' : ''} ${c.while_top_active ? 'while-top-active' : ''}" ${c.id ? `data-board-card-id="${c.id}"` : ''}>
@@ -152,7 +159,7 @@ function renderCards(cards, options = {}) {
             </div>
             ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
             <div class="card-media">
-                ${cardArtTag(c.name, 'card-art')}
+                ${cardArtTag(c.name, 'card-art', { eager: true })}
             </div>
             <div class="card-body">
                 <div class="tiny">${effectLabel(c)}</div>
@@ -179,9 +186,17 @@ function renderVpTrack(vpValue) {
     return `<div class="vp-track">${Array.from({ length: totalDots }, (_, i) => `<span class="vp-dot">${crownIcon(i < filled)}</span>`).join('')}</div>`;
 }
 
-function renderLaneSlots(filledCount, totalSlots = 7) {
-    const filled = Math.max(0, Math.min(totalSlots, Number(filledCount) || 0));
-    const slots = Array.from({ length: totalSlots }, (_, i) => `<span class="lane-slot ${i < filled ? 'filled' : ''}"></span>`).join('');
+// segments: [{ cls, count }] in display order — each player's cards fill
+// slots in their seat color so the bar shows who occupies the location.
+function renderLaneSlots(segments, totalSlots = 7) {
+    const slotClasses = [];
+    for (const seg of segments || []) {
+        for (let i = 0; i < (Number(seg.count) || 0) && slotClasses.length < totalSlots; i += 1) {
+            slotClasses.push(`filled ${seg.cls || ''}`);
+        }
+    }
+    const filled = slotClasses.length;
+    const slots = Array.from({ length: totalSlots }, (_, i) => `<span class="lane-slot ${slotClasses[i] || ''}"></span>`).join('');
     return `<div class="lane-capacity"><div class="lane-slots">${slots}</div><span class="lane-capacity-text">${filled}/${totalSlots}</span></div>`;
 }
 
@@ -201,7 +216,7 @@ function renderOpponentHand(cardCount, revealedCards) {
     // snapshot includes their actual cards; show the art instead of card backs.
     if (Array.isArray(revealedCards) && revealedCards.length > 0) {
         return revealedCards
-            .map((card) => `<img class="opp-card-back opp-card-revealed" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}" draggable="false" loading="lazy" onerror="this.style.display='none';">`)
+            .map((card) => `<img class="opp-card-back opp-card-revealed" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}" draggable="false" onerror="this.style.display='none';">`)
             .join('');
     }
     const count = Math.max(0, Number(cardCount) || 0);
@@ -217,7 +232,7 @@ function renderUnderworldStack(cards, isOpp) {
     }
     const top = list[count - 1];
     const topCard = top && top.name
-        ? `<img class="underworld-top-art" src="${cardPngUrl(top.name)}" alt="${escapeHtml(top.name)}" loading="lazy" onerror="this.style.display='none';">`
+        ? `<img class="underworld-top-art" src="${cardPngUrl(top.name)}" alt="${escapeHtml(top.name)}" onerror="this.style.display='none';">`
         : '';
 
     return `
@@ -424,6 +439,10 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     app.snapshot = snapshot;
     app.cardNameById = buildCardNameMap(snapshot);
 
+    // Warm the art cache for every card that can appear this match, so
+    // re-renders (mulligan, opponent plays) never flash placeholder text.
+    preloadCardArt(Object.values(snapshot.card_name_by_id || {}));
+
     const human = String(config.player_id);
     const ai = String(config.ai_player_id);
     const current = String(snapshot.current_player_id);
@@ -494,7 +513,38 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         ui.checkpointPath.value || 'stats/checkpoints/ai_nn_distributed_latest.pt'
     );
 
-    ui.hud.innerHTML = '';
+    // Set-aside scenario cards (the Great Sumerian Deluge) live in the HUD as
+    // a chip per owner: card art plus the flood clock ("3/8 humans").
+    const setAside = snapshot.set_aside || {};
+    const flood = snapshot.flood || null;
+    ui.hud.innerHTML = players.map((pid) => {
+        const cards = setAside[pid] || [];
+        if (!cards.length) return '';
+        const isYou = pid === human;
+        const info = rivalInfo.get(pid);
+        const ownerCls = isYou ? 'seat-you' : ((info && info.cls) || 'seat-opp');
+        const ownerName = isYou ? 'You' : ((info && isFfa) ? info.name : 'Opponent');
+        return cards.map((card, cardIdx) => {
+            let clock = '';
+            if (flood && flood.used) {
+                clock = '<span class="setaside-clock setaside-done">Flooded</span>';
+            } else if (flood && flood.pending) {
+                clock = '<span class="setaside-clock setaside-pending">Floods at end of turn!</span>';
+            } else if (flood) {
+                clock = `<span class="setaside-clock">${flood.humans_in_play}/${flood.threshold} humans</span>`;
+            }
+            return `
+                <button class="setaside-chip ${ownerCls} ${flood && flood.used ? 'used' : ''}"
+                    data-setaside-pid="${pid}" data-setaside-idx="${cardIdx}" title="${escapeHtml(card.name)}">
+                    <span class="setaside-art">${cardArtTag(card.name, 'setaside-img', { eager: true })}</span>
+                    <span class="setaside-text">
+                        <span class="setaside-owner">${escapeHtml(ownerName)} — ${escapeHtml(card.name)}</span>
+                        ${clock}
+                    </span>
+                </button>
+            `;
+        }).join('');
+    }).join('');
 
     // FFA swaps the single-opponent strip for one compact chip per rival.
     ui.gameScreen.classList.toggle('ffa-mode', isFfa);
@@ -671,7 +721,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         return order.map((id) => byId.get(id)).filter(Boolean);
     })();
 
-    const laneRowHtml = (loc, pid, isYou) => {
+    const laneRowHtml = (loc, pid, isYou, compact = false) => {
         const cards = loc.stacks[pid] || [];
         const sideIdx = players.indexOf(pid);
         if (isYou) {
@@ -683,10 +733,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         }
         const info = rivalInfo.get(pid);
         const cls = info ? info.cls : '';
+        // Compact rows (FFA center lane) only show the top card; the buried
+        // rest opens as a stack popup via the badge.
+        const shownCount = compact ? Math.min(cards.length, 1) : cards.length;
         return `
-            <div class="lane-row lane-row-opp ${cls}" data-location-id="${loc.location_id}" data-side-idx="${sideIdx}">
+            <div class="lane-row lane-row-opp ${cls} ${compact ? 'lane-row-compact' : ''}" data-location-id="${loc.location_id}" data-side-idx="${sideIdx}" data-player-id="${pid}">
                 ${isFfa && info ? `<span class="lane-row-tag ${cls}">${escapeHtml(info.name)}</span>` : ''}
-                <div class="stack-cards" data-count="${cards.length}">${renderCards(cards, { synergyCards: synergyRefSet })}</div>
+                <div class="stack-cards" data-count="${shownCount}">${renderCards(cards, { synergyCards: synergyRefSet, topOnly: compact })}</div>
             </div>
         `;
     };
@@ -704,8 +757,16 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const accessibleIds = Array.isArray(loc.accessible) && loc.accessible.length ? loc.accessible : players;
         const youCanReach = accessibleIds.includes(human);
         const laneOpponents = players.filter((pid) => pid !== human && accessibleIds.includes(pid));
-        const laneCardCount = players.reduce((sum, pid) => sum + ((loc.stacks[pid] || []).length), 0);
         const isCenter = Number(loc.weight) > 1;
+        // Capacity bar segments in row order (rivals above, you below), each
+        // in its seat color.
+        const laneSlotSegments = [
+            ...laneOpponents.map((pid) => ({
+                cls: isFfa ? ((rivalInfo.get(pid) || {}).cls || 'seat-opp') : 'seat-opp',
+                count: (loc.stacks[pid] || []).length,
+            })),
+            { cls: 'seat-you', count: (loc.stacks[human] || []).length },
+        ];
 
         const yourPower = stackPower(loc.stacks[human] || []);
         const oppPowers = laneOpponents.map((pid) => ({ pid, power: stackPower(loc.stacks[pid] || []) }));
@@ -724,11 +785,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         return `
             <article class="lane ${isFfa && !youCanReach ? 'lane-locked' : ''} ${isFfa && isCenter ? 'lane-center' : ''}" data-location-id="${loc.location_id}">
                 <div class="lane-head">
-                    <div class="lane-head-left">${renderLaneSlots(laneCardCount, Number(loc.capacity) || 7)}</div>
+                    <div class="lane-head-left">${renderLaneSlots(laneSlotSegments, Number(loc.capacity) || 7)}</div>
                     ${isFfa && isCenter ? '<span class="lane-value-badge" title="Worth more when scoring">★</span>' : ''}
                     ${isFfa && !youCanReach ? '<span class="lane-lock" title="Out of your reach">🔒</span>' : ''}
                 </div>
-                ${laneOpponents.map((pid) => laneRowHtml(loc, pid, false)).join('')}
+                ${laneOpponents.map((pid) => laneRowHtml(loc, pid, false, isFfa && isCenter)).join('')}
                 <div class="lane-mid">${scoreHtml}</div>
                 ${youCanReach
                     ? laneRowHtml(loc, human, true)

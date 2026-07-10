@@ -30,11 +30,25 @@ export function cardPngUrl(cardName) {
     return `/assets/card_png/${encodeURIComponent(cardName)}.png`;
 }
 
-export function cardArtTag(cardName, cssClass) {
+export function cardArtTag(cardName, cssClass, { eager = false } = {}) {
     const safeName = cardName || 'card';
     // draggable="false" keeps the browser's native image drag from hijacking
-    // the pointer-based card drag on desktop.
-    return `<img class="${cssClass}" src="${cardPngUrl(safeName)}" alt="${safeName}" draggable="false" loading="lazy" onerror="this.style.display='none';">`;
+    // the pointer-based card drag on desktop. In-game art loads eagerly:
+    // lazy-loaded images flash (effect text shows through) on every re-render.
+    return `<img class="${cssClass}" src="${cardPngUrl(safeName)}" alt="${safeName}" draggable="false" loading="${eager ? 'eager' : 'lazy'}" onerror="this.style.display='none';">`;
+}
+
+// Warm the browser cache for card art so re-renders (mulligan, opponent
+// plays, lane updates) swap images in without a visible flicker.
+const preloadedArtNames = new Set();
+
+export function preloadCardArt(cardNames) {
+    for (const name of cardNames || []) {
+        if (!name || preloadedArtNames.has(name)) continue;
+        preloadedArtNames.add(name);
+        const img = new Image();
+        img.src = cardPngUrl(name);
+    }
 }
 
 export function effectLabel(card) {

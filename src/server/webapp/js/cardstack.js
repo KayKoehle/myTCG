@@ -1,4 +1,4 @@
-import { cardArtTag, effectLabel, escapeHtml, typeLabel } from './helpers.js';
+import { anecdoteText, cardArtTag, effectLabel, escapeHtml, typeLabel } from './helpers.js';
 
 // A reusable card-stack popup. Three modes:
 //   'select'      - pick one card from a stack, then press a confirm button
@@ -39,6 +39,7 @@ export function createCardStackPopup(ui) {
                 ${type ? `<div class="card-type">${escapeHtml(type)}</div>` : ''}
                 <div class="stackpop-media">${cardArtTag(card.name, 'stackpop-art')}</div>
                 <div class="stackpop-effect tiny">${escapeHtml(effectLabel(card))}</div>
+                ${anecdoteText(card) ? `<div class="stackpop-anecdote tiny">${escapeHtml(anecdoteText(card))}</div>` : ''}
             </div>
         `;
     }

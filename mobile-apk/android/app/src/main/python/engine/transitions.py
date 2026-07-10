@@ -347,7 +347,12 @@ def banish_card(state: GameState, card_id: str) -> GameState:
     owner_idx = _card_owner_idx(state, card_id)
     underworld = list(state.underworlds[owner_idx])
     underworld.append(card_id)
-    return replace(state, underworlds=prim.replace_tuple_index(state.underworlds, owner_idx, tuple(underworld)), beings_left_world_this_turn=True)
+    return replace(
+        state,
+        underworlds=prim.replace_tuple_index(state.underworlds, owner_idx, tuple(underworld)),
+        beings_left_world_this_turn=True,
+        action_history=state.action_history + (f"banish:{state.player_ids[owner_idx]}:{card_id}",),
+    )
 
 
 def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:
@@ -400,7 +405,11 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
     facedown = set(with_target.facedown_cards)
     if target_side_idx == owner_idx:
         facedown.discard(card_id)
-    state = replace(with_target, facedown_cards=tuple(sorted(facedown)))
+    state = replace(
+        with_target,
+        facedown_cards=tuple(sorted(facedown)),
+        action_history=with_target.action_history + (f"move_card:{state.player_ids[owner_idx]}:{card_id}:{target_location_idx}",),
+    )
 
     if hero_left_watcher is not None:
         watcher_hook = effects.behavior_of(hero_left_watcher).on_friendly_hero_left_while_top
@@ -488,6 +497,7 @@ def _apply_on_enter(state: GameState, player_idx: int, card_id: str, location_id
 
 
 def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
+    state = replace(state, action_history=state.action_history + (f"revive:{state.player_ids[player_idx]}:{card_id}",))
     revive_hook = effects.behavior_of(card_id).on_revive
     if revive_hook is not None:
         result = revive_hook(RT, state, player_idx, card_id, location_idx)
@@ -529,9 +539,11 @@ def _resolve_monster_rewards(state: GameState, location_idx: int, player_idx: in
             result = reward_hook(RT, state, player_idx, location_idx, card_id, heroes_here)
             if result is None:
                 continue
+            defeated_entry = f"monster_defeated:{state.player_ids[player_idx]}:{card_id}"
             if isinstance(result, Halt):
-                return result.state
-            state = result
+                halted = result.state
+                return replace(halted, action_history=halted.action_history + (defeated_entry,))
+            state = replace(result, action_history=result.action_history + (defeated_entry,))
             changed = True
             break
         if not changed:
@@ -542,14 +554,18 @@ def _resolve_monster_rewards(state: GameState, location_idx: int, player_idx: in
 # The flood scenario clock
 # --------------------------------------------------------------------------
 
-def _count_humans_in_play(state: GameState) -> int:
+# The Great Sumerian Deluge triggers once this many humans are in play.
+FLOOD_THRESHOLD = 8
+
+
+def count_humans_in_play(state: GameState) -> int:
     return sum(1 for _, _, cid in prim.find_cards_in_play(state, catalog.is_human))
 
 
 def _maybe_schedule_flood(state: GameState) -> GameState:
     if state.flood_used or state.flood_pending_turn:
         return state
-    if any(state.set_aside) and _count_humans_in_play(state) >= 8:
+    if any(state.set_aside) and count_humans_in_play(state) >= FLOOD_THRESHOLD:
         return replace(state, flood_pending_turn=state.turn_number)
     return state
 
@@ -816,10 +832,13 @@ def _apply_use_ability(state: GameState, action: UseAbilityAction) -> GameState:
         raise ValueError("Ability is not available right now")
     used = [list(v) for v in state.used_top_abilities]
     used[idx].append(_card(action.card_id).name)
+    # The ability hook may have logged its own entries (moves, banishes);
+    # keep them, with the use_ability entry first.
+    added_entries = result.action_history[len(state.action_history):]
     return replace(
         result,
         used_top_abilities=tuple(tuple(v) for v in used),
-        action_history=state.action_history + (f"use_ability:{action.player_id}:{action.card_id}",),
+        action_history=state.action_history + (f"use_ability:{action.player_id}:{action.card_id}",) + added_entries,
     )
 
 
@@ -995,7 +1014,10 @@ def _advance_turn(state: GameState) -> GameState:
 def _apply_end_turn(state: GameState, action: EndTurnAction) -> GameState:
     _active_index(state, action.player_id)
     advanced = _advance_turn(state)
+    # End-of-turn effects (the flood) log their own entries during
+    # _advance_turn; keep them, with the end_turn entry first.
     history_entries = [f"end_turn:{action.player_id}"]
+    history_entries.extend(advanced.action_history[len(state.action_history):])
     if _is_round_boundary(state):
         winner_idx = _round_winner_idx(state)
         if winner_idx is None:

@@ -1,7 +1,17 @@
 import { postJson } from './api.js';
-import { anecdoteText, cardArtTag, cardDisplayName, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, typeLabel } from './helpers.js';
+import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
 import { activeEmotes, addCrowns, recordGameResult } from './profile.js';
-import { questOnCardPlayed, questOnGameFinished, questOnRoundWon } from './quests.js';
+import {
+    questOnCardBanished,
+    questOnCardDrawn,
+    questOnCardMoved,
+    questOnCardPlayed,
+    questOnCardRevived,
+    questOnGameFinished,
+    questOnMonsterDefeated,
+    questOnPowerReached,
+    questOnRoundWon,
+} from './quests.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
 import { buildConfig, createAppState } from './state.js';
 
@@ -419,6 +429,38 @@ export function createGameController(ui, cardStack) {
             });
         });
 
+        // Set-aside scenario chips (the Deluge) open the card in the inspector.
+        ui.hud.querySelectorAll('.setaside-chip[data-setaside-pid]').forEach((chip) => {
+            chip.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const cards = (snapshot.set_aside || {})[chip.dataset.setasidePid] || [];
+                openInspector(cards[Number(chip.dataset.setasideIdx) || 0]);
+            });
+        });
+
+        // Compact FFA center rows: the "+N below" badge lists the whole stack.
+        ui.lanes.querySelectorAll('.lane-row[data-player-id] .stack-buried-chip').forEach((chipEl) => {
+            chipEl.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const row = chipEl.closest('.lane-row[data-location-id][data-player-id]');
+                if (!row) return;
+                const loc = (snapshot.locations || []).find((l) => Number(l.location_id) === Number(row.dataset.locationId));
+                const cards = loc ? (loc.stacks[row.dataset.playerId] || []) : [];
+                if (!cards.length) return;
+                cardStack.open({
+                    mode: 'view',
+                    title: 'Cards at this location',
+                    cards: cards.slice().reverse().map((card) => ({ card, option: card.id })),
+                    onClose: () => {
+                        const pending = app.snapshot && app.snapshot.pending_choice;
+                        if (pending && Number(pending.player_id) === cfg().player_id) {
+                            rerender(app.snapshot);
+                        }
+                    },
+                });
+            });
+        });
+
         ui.oppHand.querySelectorAll('.opp-card-revealed').forEach((imgEl) => {
             imgEl.addEventListener('click', (event) => {
                 event.stopPropagation();
@@ -549,46 +591,144 @@ export function createGameController(ui, cardStack) {
     // New action_history entries since the last render drive the round-end
     // crown animation and the opponent mulligan animation.
 
+    // Card type lookups for typed quests ("Play X beings/heroes", ...).
+    function knownCard(snapshot, cardId) {
+        return (snapshot.known_cards && snapshot.known_cards[cardId]) || findCardById(snapshot, cardId);
+    }
+
+    function cardTypeCtx(card) {
+        const type = String((card && card.type) || '').toLowerCase();
+        const subtype = String((card && card.subtype) || '').toLowerCase();
+        return {
+            isBeing: type === 'being' || type === 'creature',
+            isHero: subtype.includes('hero'),
+        };
+    }
+
     function runHistoryAnimations(snapshot) {
         const history = Array.isArray(snapshot.action_history) ? snapshot.action_history : [];
         if (app.animMatchId !== snapshot.match_id) {
             // First render of a match (or a reload): nothing to replay.
             app.animMatchId = snapshot.match_id;
             app.historySeen = history.length;
+            // A brand-new match (empty history) with a set-aside scenario card
+            // introduces it: big reveal, then it flies to its HUD chip.
+            if (history.length === 0) animateSetAsideIntro(snapshot);
             return;
         }
         const fresh = history.slice(app.historySeen);
         app.historySeen = history.length;
+        const you = cfg().player_id;
         // The fourth crown ends the game: the game-over animation replaces the
         // regular round-crown animation for that final round.
         const gameEnded = fresh.some((e) => String(e || '').startsWith('game_result:'));
         for (const entry of fresh) {
             const raw = String(entry || '');
+            const parts = raw.split(':');
             if (raw.startsWith('round_result:')) {
                 // Every crown won in a round is banked as shop currency.
-                if (Number(raw.split(':')[2]) === cfg().player_id) {
+                if (Number(parts[2]) === you) {
                     addCrowns(1);
                     if (app.statsMeta) questOnRoundWon();
                 }
                 if (!gameEnded) animateRoundResult(raw);
             } else if (raw.startsWith('play_card:')) {
-                const parts = raw.split(':');
-                if (Number(parts[1]) === cfg().player_id && app.statsMeta) {
+                if (Number(parts[1]) === you && app.statsMeta) {
                     if (parts[2]) playedCardIds.add(parts[2]);
-                    questOnCardPlayed();
+                    questOnCardPlayed(cardTypeCtx(knownCard(snapshot, parts[2])));
                 }
             } else if (raw.startsWith('game_result:')) {
                 recordFinishedGame(raw, snapshot);
                 animateGameResult(raw);
             } else if (raw.startsWith('draw_card:')) {
-                animateCardDraw(Number(raw.split(':')[1]));
+                animateCardDraw(Number(parts[1]));
+                if (Number(parts[1]) === you && app.statsMeta) questOnCardDrawn();
+            } else if (raw.startsWith('banish:')) {
+                // "Banish X enemy beings": a rival losing a being counts.
+                const ctx = cardTypeCtx(knownCard(snapshot, parts[2]));
+                if (Number(parts[1]) !== you && ctx.isBeing && app.statsMeta) questOnCardBanished();
+            } else if (raw.startsWith('revive:')) {
+                if (Number(parts[1]) === you && app.statsMeta) questOnCardRevived();
+            } else if (raw.startsWith('move_card:')) {
+                if (Number(parts[1]) === you && app.statsMeta) questOnCardMoved();
+            } else if (raw.startsWith('monster_defeated:')) {
+                if (Number(parts[1]) === you && app.statsMeta) questOnMonsterDefeated();
             } else if (raw.startsWith('mulligan_keep:')) {
-                const parts = raw.split(':');
                 if (aiIds().includes(Number(parts[1])) && Number(parts[2]) > 0) {
                     animateOpponentMulligan(Number(parts[2]));
                 }
             }
         }
+        // "Reach X power on one location" checks the board after every change.
+        if (fresh.length && app.statsMeta) {
+            const humanPid = String(you);
+            const best = Math.max(0, ...(snapshot.locations || []).map((loc) => stackPower((loc.stacks || {})[humanPid] || [])));
+            if (best > 0) questOnPowerReached(best);
+        }
+    }
+
+    // Match intro for set-aside scenario cards (the Deluge): show the card
+    // big in the center, then fly it onto its owner's HUD chip.
+    function animateSetAsideIntro(snapshot) {
+        if (!window.Element.prototype.animate) return;
+        const setAside = snapshot.set_aside || {};
+        const entries = [];
+        for (const [pid, cards] of Object.entries(setAside)) {
+            (cards || []).forEach((card, idx) => entries.push({ pid, idx, card }));
+        }
+        if (!entries.length) return;
+        const threshold = (snapshot.flood && snapshot.flood.threshold) || 8;
+        entries.forEach(({ pid, idx, card }, i) => {
+            const isYou = Number(pid) === cfg().player_id;
+            const overlay = document.createElement('div');
+            overlay.className = 'setaside-intro';
+            overlay.innerHTML = `
+                <img class="setaside-intro-art" src="${cardPngUrl(card.name)}" alt="${escapeHtml(card.name)}"
+                    draggable="false" onerror="this.style.display='none';">
+                <div class="setaside-intro-title">${escapeHtml(card.name)}</div>
+                <div class="setaside-intro-sub">${isYou ? 'Your scenario card' : "Your opponent's scenario card"} — set aside.
+                    It floods the world once ${threshold} humans are in play.</div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, delay: i * 400, fill: 'both' });
+
+            const flyToChip = () => {
+                const chip = ui.hud.querySelector(`.setaside-chip[data-setaside-pid="${CSS.escape(String(pid))}"][data-setaside-idx="${idx}"]`);
+                const art = overlay.querySelector('.setaside-intro-art');
+                if (!chip || !art) {
+                    overlay.remove();
+                    return;
+                }
+                const from = art.getBoundingClientRect();
+                const to = chip.getBoundingClientRect();
+                overlay.querySelectorAll('.setaside-intro-title, .setaside-intro-sub').forEach((el) => {
+                    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' });
+                });
+                overlay.animate([{ background: 'rgba(2, 8, 14, 0.82)' }, { background: 'rgba(2, 8, 14, 0)' }], { duration: 620, fill: 'forwards' });
+                const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+                const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+                const scale = Math.max(0.08, to.height / Math.max(1, from.height));
+                const fly = art.animate(
+                    [
+                        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 0.85 },
+                    ],
+                    { duration: 640, easing: 'cubic-bezier(0.5, 0, 0.3, 1)', fill: 'forwards' }
+                );
+                const done = () => {
+                    chip.animate(
+                        [{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }],
+                        { duration: 320, easing: 'ease-out' }
+                    );
+                    overlay.remove();
+                };
+                fly.addEventListener('finish', done);
+                fly.addEventListener('cancel', done);
+            };
+            setTimeout(flyToChip, 1600 + i * 400);
+            // Safety net if animations get cancelled midway.
+            setTimeout(() => { if (overlay.isConnected) overlay.remove(); }, 4500 + i * 400);
+        });
     }
 
     // A finished game (win, loss, draw, surrender — they all append a
@@ -1320,8 +1460,20 @@ export function createGameController(ui, cardStack) {
         // match is created by its Play button.
     }
 
+    // Used by the history-based back navigation: a live match intercepts the
+    // hardware back button with the surrender prompt instead of exiting.
+    function isMatchLive() {
+        return Boolean(app.snapshot && app.snapshot.phase !== 'GAME_OVER');
+    }
+
+    function promptSurrender() {
+        openSheet(ui.surrenderModal);
+    }
+
     return {
         init,
         startGame,
+        isMatchLive,
+        promptSurrender,
     };
 }

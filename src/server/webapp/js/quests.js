@@ -19,6 +19,14 @@ const DAILY_POOL = [
     { id: 'd_rounds5', title: 'Win 5 rounds', reward: 10, target: 5, event: 'round', counts: () => 1 },
     { id: 'd_cards12', title: 'Play 12 cards', reward: 8, target: 12, event: 'card', counts: () => 1 },
     { id: 'd_win2', title: 'Win 2 games', reward: 18, target: 2, event: 'game', counts: (ctx) => (ctx.won ? 1 : 0) },
+    { id: 'd_beings6', title: 'Play 6 beings', reward: 10, target: 6, event: 'card', counts: (ctx) => (ctx.isBeing ? 1 : 0) },
+    { id: 'd_heroes2', title: 'Play 2 heroes', reward: 12, target: 2, event: 'card', counts: (ctx) => (ctx.isHero ? 1 : 0) },
+    { id: 'd_banish2', title: 'Banish 2 enemy beings', reward: 12, target: 2, event: 'banish', counts: () => 1 },
+    { id: 'd_revive2', title: 'Revive 2 beings', reward: 12, target: 2, event: 'revive', counts: () => 1 },
+    { id: 'd_move3', title: 'Move beings 3 times', reward: 10, target: 3, event: 'move', counts: () => 1 },
+    { id: 'd_draw10', title: 'Draw 10 cards', reward: 8, target: 10, event: 'draw', counts: () => 1 },
+    { id: 'd_power12', title: 'Reach 12 power on one location', reward: 12, target: 1, event: 'power', counts: (ctx) => ((ctx.power || 0) >= 12 ? 1 : 0) },
+    { id: 'd_monster1', title: 'Defeat a monster', reward: 15, target: 1, event: 'monster', counts: () => 1 },
 ];
 
 const WEEKLY_POOL = [
@@ -27,6 +35,14 @@ const WEEKLY_POOL = [
     { id: 'w_rounds20', title: 'Win 20 rounds', reward: 45, target: 20, event: 'round', counts: () => 1 },
     { id: 'w_flawless3', title: 'Win 3 games 4:0', reward: 60, target: 3, event: 'game', counts: (ctx) => (ctx.flawless ? 1 : 0) },
     { id: 'w_cards40', title: 'Play 40 cards', reward: 35, target: 40, event: 'card', counts: () => 1 },
+    { id: 'w_beings25', title: 'Play 25 beings', reward: 45, target: 25, event: 'card', counts: (ctx) => (ctx.isBeing ? 1 : 0) },
+    { id: 'w_heroes8', title: 'Play 8 heroes', reward: 45, target: 8, event: 'card', counts: (ctx) => (ctx.isHero ? 1 : 0) },
+    { id: 'w_banish8', title: 'Banish 8 enemy beings', reward: 50, target: 8, event: 'banish', counts: () => 1 },
+    { id: 'w_revive6', title: 'Revive 6 beings', reward: 50, target: 6, event: 'revive', counts: () => 1 },
+    { id: 'w_move10', title: 'Move beings 10 times', reward: 45, target: 10, event: 'move', counts: () => 1 },
+    { id: 'w_draw40', title: 'Draw 40 cards', reward: 35, target: 40, event: 'draw', counts: () => 1 },
+    { id: 'w_power16', title: 'Reach 16 power on one location', reward: 55, target: 1, event: 'power', counts: (ctx) => ((ctx.power || 0) >= 16 ? 1 : 0) },
+    { id: 'w_monsters4', title: 'Defeat 4 monsters', reward: 60, target: 4, event: 'monster', counts: () => 1 },
 ];
 
 // Weekend events are passive modifiers, active Saturday and Sunday.
@@ -160,6 +176,15 @@ export function currentWeekendEvent() {
     return { def, active: isWeekend() };
 }
 
+// Banner label for the weekend event: on a weekday the event is an upcoming
+// preview, never "this weekend is live".
+export function weekendBannerLabel(now = new Date()) {
+    if (isWeekend(now)) return 'Weekend event — live now';
+    const daysToSaturday = (6 - now.getDay() + 7) % 7;
+    if (daysToSaturday === 1) return 'Weekend event — starts tomorrow';
+    return `Weekend event — starts in ${daysToSaturday} days`;
+}
+
 // Everything the menu needs to render the quest panel.
 export function getQuestBoard() {
     const state = ensureRotation();
@@ -232,8 +257,34 @@ export function questOnRoundWon() {
     applyEvent('round', {});
 }
 
-export function questOnCardPlayed() {
-    applyEvent('card', {});
+// ctx may carry { isBeing, isHero } for the typed play quests.
+export function questOnCardPlayed(ctx) {
+    applyEvent('card', ctx || {});
+}
+
+export function questOnCardBanished() {
+    applyEvent('banish', {});
+}
+
+export function questOnCardRevived() {
+    applyEvent('revive', {});
+}
+
+export function questOnCardMoved() {
+    applyEvent('move', {});
+}
+
+export function questOnCardDrawn() {
+    applyEvent('draw', {});
+}
+
+export function questOnMonsterDefeated() {
+    applyEvent('monster', {});
+}
+
+// Called with the player's best single-location power after each change.
+export function questOnPowerReached(power) {
+    applyEvent('power', { power });
 }
 
 export function questOnGameFinished(ctx) {

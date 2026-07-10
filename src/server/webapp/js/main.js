@@ -9,5 +9,7 @@ const ui = getUiElements();
 const cardStack = createCardStackPopup(ui);
 const controller = createGameController(ui, cardStack);
 const menu = createMenuController(ui, controller, cardStack);
-controller.init({ onExitToMenu: () => menu.openMenu() });
+// The in-game home button pops the history entry the match pushed, so the
+// hardware back stack stays consistent with what is on screen.
+controller.init({ onExitToMenu: () => menu.navBack() });
 menu.init();

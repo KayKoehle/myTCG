@@ -13,8 +13,10 @@ from .catalog import CARD_LIBRARY, DECK_LIBRARY, card as _card, card_owner_idx
 from .data_loader import FINISHED_DECK_FILES
 from .state import GameState
 from .transitions import (
+    FLOOD_THRESHOLD,
     RT,
     available_decks,
+    count_humans_in_play,
     deck_card_ids,
     dynamic_card_power,
     legal_actions,
@@ -52,6 +54,14 @@ def format_action_history_entry(entry: str) -> str:
         return f"P{parts[1]} selected {_card_name(parts[2])} for mulligan"
     if kind == "mulligan_keep" and len(parts) >= 3:
         return f"P{parts[1]} confirmed mulligan ({parts[2]} replaced)"
+    if kind == "banish" and len(parts) >= 3:
+        return f"P{parts[1]} lost {_card_name(parts[2])} (banished)"
+    if kind == "revive" and len(parts) >= 3:
+        return f"P{parts[1]} revived {_card_name(parts[2])}"
+    if kind == "move_card" and len(parts) >= 4:
+        return f"P{parts[1]} moved {_card_name(parts[2])} to {_lane_name(int(parts[3]))}"
+    if kind == "monster_defeated" and len(parts) >= 3:
+        return f"P{parts[1]} defeated {_card_name(parts[2])}"
     if kind == "round_result" and len(parts) >= 3:
         if parts[2] == "DRAW":
             return f"Round {parts[1]}: Draw"
@@ -323,6 +333,15 @@ def build_state_snapshot(
             for loc in state.locations
         ],
         "underworld": per_player(lambda i: [_public_card(c) for c in state.underworlds[i]]),
+        # Scenario cards set aside at the start of the game (e.g. the Deluge)
+        # are public knowledge, plus the flood clock the webapp shows for them.
+        "set_aside": per_player(lambda i: [_card_details(c) for c in state.set_aside[i]]),
+        "flood": {
+            "humans_in_play": count_humans_in_play(state),
+            "threshold": FLOOD_THRESHOLD,
+            "pending": bool(state.flood_pending_turn),
+            "used": state.flood_used,
+        },
         "action_history": list(state.action_history),
         "action_history_pretty": [format_action_history_entry(entry) for entry in state.action_history],
     }
