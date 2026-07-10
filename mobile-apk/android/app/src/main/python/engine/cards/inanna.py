@@ -148,11 +148,18 @@ register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-
 
 # --- Underworld dwellers ------------------------------------------------------
 
-_UNDERWORLD_GATE = send_hand_being_to_underworld(
-    "Choose a being from your hand to send to the Underworld", include_pass=False,
+register(
+    "Gatekeeper Neti",
+    CardBehavior(on_enter=send_hand_being_to_underworld(
+        "You may send a being from your hand to the Underworld", include_pass=True,
+    )),
 )
-register("Gatekeeper Neti", CardBehavior(on_enter=_UNDERWORLD_GATE))
-register("Underworld Courier", CardBehavior(on_enter=_UNDERWORLD_GATE))
+register(
+    "Underworld Courier",
+    CardBehavior(on_enter=send_hand_being_to_underworld(
+        "Choose a being from your hand to send to the Underworld", include_pass=False,
+    )),
+)
 
 
 def _galla_demons_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:

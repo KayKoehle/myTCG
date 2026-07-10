@@ -1072,7 +1072,7 @@ export function createMenuController(ui, game, cardStack) {
             // Emotes equip into a loadout of MAX_ACTIVE_EMOTES; tapping an
             // equipped one takes it out again.
             return equippedEmoteIds().includes(item.id)
-                ? '<button class="btn shop-item-btn equipped" data-shop-action="equip">Equipped ✓</button>'
+                ? '<button class="btn shop-item-btn equipped" data-shop-action="equip">Equipped</button>'
                 : '<button class="btn shop-item-btn" data-shop-action="equip">Equip</button>';
         }
         const equipped = equippedItem(kind) === item.id;

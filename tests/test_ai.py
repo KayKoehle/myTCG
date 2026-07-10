@@ -1,5 +1,6 @@
 """AI opponents: the search AI must clearly beat random; the neural runtime
-must be deterministic and faithful to the torch model."""
+must be deterministic and faithful to the torch model; the Elo ladder must
+always produce legal moves at any rating."""
 from __future__ import annotations
 
 import random
@@ -7,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from server.engine.ai import choose_heuristic_action
+from server.engine.ai import choose_heuristic_action, choose_minimax_action
+from server.engine.ladder import MAX_AI_ELO, MIN_AI_ELO, TIER_ANCHORS, _tier_for_elo, choose_ladder_action
 from server.engine.policy import PurePolicy, obs_to_features
 from server.engine.snapshot import observation_string
 from server.engine.transitions import apply_action, create_initial_state, is_terminal, legal_actions, returns
@@ -50,6 +52,80 @@ def test_heuristic_ai_beats_random_player():
             if outcome > 0:
                 wins += 1
     assert wins / games >= 0.75, f"search AI won only {wins}/{games} vs random"
+
+
+def test_minimax_ai_beats_random_player():
+    state = create_initial_state(seed=17, deck_a="siege_of_troy", deck_b="the_flood")
+    smart_id = state.player_ids[1]
+    rng = random.Random(99)
+    steps = 0
+    while not is_terminal(state) and steps < MAX_STEPS:
+        acting = state.player_ids[state.pending_choice.chooser_idx] if state.pending_choice else state.current_player_id
+        if acting == smart_id:
+            action = choose_minimax_action(state, acting, rng=rng)
+        else:
+            action = rng.choice([a for a in legal_actions(state) if a.player_id == acting])
+        state = apply_action(state, action)
+        steps += 1
+    assert returns(state)[1] > 0, "minimax AI lost to a random player"
+
+
+def test_ladder_tiers_follow_the_anchors():
+    rng = random.Random(0)
+    # At or below the weakest anchor the dial is pinned to the weakest agent,
+    # at or above the strongest anchor to the strongest.
+    assert all(_tier_for_elo(MIN_AI_ELO, rng) == TIER_ANCHORS[0][0] for _ in range(20))
+    assert all(_tier_for_elo(MAX_AI_ELO, rng) == TIER_ANCHORS[-1][0] for _ in range(20))
+    # Between two anchors only those two agents ever play.
+    (weak, weak_elo), (strong, strong_elo) = TIER_ANCHORS[2], TIER_ANCHORS[3]
+    mid = (weak_elo + strong_elo) / 2
+    picks = {_tier_for_elo(mid, rng) for _ in range(60)}
+    assert picks == {weak, strong}
+
+
+def test_ladder_actions_are_legal_at_any_rating():
+    for elo in (MIN_AI_ELO - 200, 1000, 1250, MAX_AI_ELO + 300):
+        state = create_initial_state(seed=23, deck_a="epic_of_gilgamesh", deck_b="inannas_descent")
+        rng = random.Random(elo)
+        for _ in range(30):
+            if is_terminal(state):
+                break
+            acting = state.player_ids[state.pending_choice.chooser_idx] if state.pending_choice else state.current_player_id
+            state = apply_action(state, choose_ladder_action(state, acting, elo, rng))
+
+
+def test_balance_search_overrides_swap_power_without_changing_ids():
+    from server.ai.balance_search import _base_stats, apply_overrides
+    from server.engine.catalog import CARD_LIBRARY
+
+    base = _base_stats(["epic_of_gilgamesh"])
+    power = base["Trapper"]
+    cost = next(d.cost for d in CARD_LIBRARY.values() if d.name == "Trapper")
+    ids = [cid for cid, d in CARD_LIBRARY.items() if d.name == "Trapper"]
+    assert ids
+    try:
+        apply_overrides({"Trapper": power + 1})
+        for cid in ids:
+            assert CARD_LIBRARY[cid].power == power + 1
+            assert CARD_LIBRARY[cid].cost == cost, "the search must never touch costs"
+            assert CARD_LIBRARY[cid].card_id == cid, "overrides must never touch card ids"
+    finally:
+        apply_overrides({"Trapper": power})
+    assert all(CARD_LIBRARY[cid].power == power for cid in ids)
+
+
+def test_balance_search_evaluate_smoke():
+    """A tiny single-process batch: sane win rates and a finite objective."""
+    from server.ai.balance_search import _base_stats, evaluate
+
+    decks = ["epic_of_gilgamesh", "siege_of_troy"]
+    base = _base_stats(decks)
+    res = evaluate({}, decks, games=6, agent="search", seed=3, workers=1, base=base)
+    assert len(res.records) == 6
+    assert set(res.rates) == set(decks)
+    assert all(0.0 <= r <= 1.0 for r in res.rates.values())
+    assert res.objective == res.deck_term + res.card_term  # card_weight defaults to 1.0
+    assert 0.0 <= res.objective <= 1.5
 
 
 def test_featurization_is_deterministic():

@@ -1,14 +1,17 @@
 """Offline AI opponents built on the rules engine.
 
-Two players are provided:
+Three players are provided:
 
 - `choose_heuristic_action` — greedy one-ply search: simulate every legal
   action and pick the one whose resulting state evaluates best. Pure Python,
   no dependencies; this is the default opponent on mobile.
+- `choose_minimax_action` — depth-limited alpha-beta over action steps (own
+  actions maximize, every rival's minimize). The strongest agent; used for
+  balancing runs and the top of the in-app Elo ladder.
 - `choose_neural_action` (in `policy.py`) — the trained network, if an
   exported weights file is bundled.
 
-Both see the full state (they "know" their own deck order when simulating
+All see the full state (they "know" their own deck order when simulating
 choices like Calchas), which is acceptable for a casual opponent.
 """
 from __future__ import annotations
@@ -113,4 +116,111 @@ def choose_heuristic_action(state: GameState, ai_player_id: int, rng: random.Ran
 
     if not best_actions:
         return rng.choice(candidates)
+    return rng.choice(best_actions)
+
+
+# ---------------------------------------------------------------------------
+# Minimax (the balancing / top-ladder agent)
+# ---------------------------------------------------------------------------
+
+# Prefer wins found earlier in the tree (and losses found later): the score
+# of a terminal state shrinks slightly with its depth so the agent closes out
+# games instead of shuffling around a guaranteed win forever.
+_DEPTH_DECAY = 1.0
+
+
+def _acting_idx(state: GameState) -> int:
+    if state.pending_choice is not None:
+        return state.pending_choice.chooser_idx
+    return state.current_player_idx
+
+
+def _expand(state: GameState, budget: list[int]) -> list[tuple[Action, GameState]]:
+    """All (action, resulting state) pairs for whoever acts in `state`."""
+    acting_id = state.player_ids[_acting_idx(state)]
+    children: list[tuple[Action, GameState]] = []
+    for action in legal_actions(state):
+        if action.player_id != acting_id:
+            continue
+        if budget[0] <= 0:
+            break
+        budget[0] -= 1
+        try:
+            children.append((action, apply_action(state, action)))
+        except ValueError:
+            continue
+    return children
+
+
+def _minimax(state: GameState, ai_idx: int, depth: int, alpha: float, beta: float, budget: list[int]) -> float:
+    if is_terminal(state) or depth <= 0 or budget[0] <= 0:
+        return evaluate_state(state, ai_idx)
+
+    children = _expand(state, budget)
+    if not children:
+        return evaluate_state(state, ai_idx)
+
+    maximizing = _acting_idx(state) == ai_idx
+    # Order children by their one-ply evaluation so alpha-beta prunes early.
+    children.sort(key=lambda pair: evaluate_state(pair[1], ai_idx), reverse=maximizing)
+
+    best = float("-inf") if maximizing else float("inf")
+    for _, child in children:
+        value = _minimax(child, ai_idx, depth - 1, alpha, beta, budget) - _DEPTH_DECAY
+        if maximizing:
+            best = max(best, value)
+            alpha = max(alpha, best)
+        else:
+            best = min(best, value)
+            beta = min(beta, best)
+        if beta <= alpha:
+            break
+    return best
+
+
+def choose_minimax_action(
+    state: GameState,
+    ai_player_id: int,
+    rng: random.Random | None = None,
+    depth: int = 3,
+    node_budget: int = 40_000,
+) -> Action:
+    """Depth-limited alpha-beta over action steps (not turns).
+
+    Each ply is one action by whoever acts next, so the search sees the rest
+    of its own turn AND the start of the opponents' replies — the two things
+    the greedy agent is blind to. With several opponents every rival
+    minimizes (paranoid assumption). `node_budget` caps total `apply_action`
+    calls per decision so a wide position degrades to shallower search
+    instead of stalling (relevant on mobile).
+    """
+    rng = rng or random.Random(0)
+    ai_idx = state.player_ids.index(ai_player_id)
+
+    pending = state.pending_choice
+    if pending is not None and pending.choice_kind == "opening_mulligan" and pending.chooser_idx == ai_idx:
+        return _choose_mulligan_action(state, ai_idx, ai_player_id)
+
+    budget = [node_budget]
+    children = _expand(state, budget)
+    if not children:
+        candidates = [a for a in legal_actions(state) if a.player_id == ai_player_id]
+        if not candidates:
+            raise ValueError("No legal actions available for AI")
+        return rng.choice(candidates)
+
+    # Root move ordering: best-looking lines first make the deep search cheap.
+    children.sort(key=lambda pair: evaluate_state(pair[1], ai_idx), reverse=True)
+
+    best_actions: list[Action] = []
+    best_score = float("-inf")
+    alpha = float("-inf")
+    for action, child in children:
+        score = _minimax(child, ai_idx, depth - 1, alpha, float("inf"), budget)
+        if score > best_score + 1e-9:
+            best_actions = [action]
+            best_score = score
+            alpha = max(alpha, score)
+        elif abs(score - best_score) <= 1e-9:
+            best_actions.append(action)
     return rng.choice(best_actions)

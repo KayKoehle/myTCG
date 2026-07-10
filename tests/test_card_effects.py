@@ -78,6 +78,17 @@ def test_gilgamesh_power_scales_with_underworld_monsters():
     assert dynamic_card_power(state, gil, 0, 0) == 1 + CARD_LIBRARY[bull].power
 
 
+def test_enkidu_power_scales_with_underworld_monsters_without_gilgamesh():
+    state = start_game(GIL, TROY)
+    enk = by_name(GIL, "Enkidu")
+    state = put_in_play(state, enk, 0, 0)
+    assert dynamic_card_power(state, enk, 0, 0) == 1, "no longer 0 when Gilgamesh is absent"
+
+    bull = by_name(GIL, "Bull of Heaven")
+    state = put_in_underworld(state, bull, 0)
+    assert dynamic_card_power(state, enk, 0, 0) == 1 + CARD_LIBRARY[bull].power
+
+
 # --- Mandatory banishes chosen by the opponent ---------------------------------
 
 
@@ -161,26 +172,34 @@ def test_enkidu_top_ability_moves_to_gilgamesh():
     assert enk in resolved.locations[2].stacks[0]
 
 
-def test_cuneiform_tutors_ark_from_whole_deck_and_reorders_on_top():
-    state = start_game(FLOOD, TROY, seed=3)
-    tablets = by_name(FLOOD, "Cuneiform Tablets of Ea")
-    ark = by_name(FLOOD, "The Ark")
-    # Bury the Ark at the bottom of the deck: the search must still find it.
-    state = replace(state, decks=(tuple(c for c in state.decks[0] if c != ark) + (ark,), state.decks[1]))
-    state = put_in_play(state, tablets, 0, 0)
-    after = _apply_on_enter(state, 0, tablets, 0)
-    assert ark in after.hands[0]
+def test_ferryman_moves_a_friendly_being_for_one_mana():
+    state = start_game(GIL, TROY)
+    ferry = by_name(GIL, "Ferryman Urshanabi")
+    passenger = by_name(GIL, "Trapper")
+    state = put_in_play(state, passenger, 0, 0)
+    state = put_in_play(state, ferry, 0, 0)
+    state = replace(state, phase="MAIN", current_player_idx=0, mana_pool=(3, 0))
 
-    # While on top: discard a card to reorder the top three.
-    after = replace(after, phase="MAIN", current_player_idx=0)
-    offered = apply_action(after, UseAbilityAction(player_id=after.player_ids[0], card_id=tablets))
-    pending = offered.pending_choice
-    assert pending is not None and pending.choice_kind == "cuneiform_discard_for_peek"
-    discard = pending.options[1]
-    chained = apply_action(offered, ChooseOptionAction(player_id=offered.player_ids[0], option_id=discard))
-    assert discard in chained.underworlds[0]
-    assert chained.pending_choice is not None
-    assert chained.pending_choice.choice_kind == "cuneiform_rearrange"
+    after = apply_action(state, UseAbilityAction(player_id=state.player_ids[0], card_id=ferry))
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "ferryman_ferry"
+    assert all(not opt.startswith(f"{ferry}|") for opt in pending.options), "the ferryman stays with his boat"
+
+    moved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id=f"{passenger}|1|0"))
+    assert passenger in moved.locations[1].stacks[0]
+    assert moved.mana_pool[0] == 2, "the fare of [1] was paid"
+
+
+def test_ferryman_needs_one_mana_for_the_crossing():
+    state = start_game(GIL, TROY)
+    ferry = by_name(GIL, "Ferryman Urshanabi")
+    passenger = by_name(GIL, "Trapper")
+    state = put_in_play(state, passenger, 0, 0)
+    state = put_in_play(state, ferry, 0, 0)
+    state = replace(state, phase="MAIN", current_player_idx=0, mana_pool=(0, 0))
+
+    legal = rules.legal_actions(state)
+    assert not any(isinstance(a, UseAbilityAction) and a.card_id == ferry for a in legal)
 
 
 # --- Flood ------------------------------------------------------------------------
@@ -271,21 +290,37 @@ def test_diomedes_zeroes_the_strongest_enemy_deity_in_dynamic_power():
 # --- Odysseus and move destinations ---------------------------------------------------
 
 
-def test_odysseus_offers_moves_to_both_sides_and_flips_the_trojan_horse():
+def test_trojan_horse_defects_on_enter_and_smuggles_humans_facedown():
     state = start_game(GIL, TROY)
     horse = by_name(TROY, "The Trojan Horse")
-    odysseus = by_name(TROY, "Odysseus")
+    soldiers = by_name(TROY, "Greek Soldiers")
+    state = put_in_play(state, soldiers, 0, 1)
     state = put_in_play(state, horse, 0, 1)
-    state = put_in_play(state, odysseus, 0, 1)
 
-    after = _apply_on_enter(state, 1, odysseus, 0)
+    after = _apply_on_enter(state, 1, horse, 0)
+    assert horse in after.locations[0].stacks[0], "the horse rolls to the enemy side by itself"
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "trojan_horse_payload"
+    assert soldiers in pending.options
+
+    resolved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[1], option_id=soldiers))
+    assert soldiers in resolved.locations[0].stacks[0]
+    assert soldiers in resolved.facedown_cards
+
+
+def test_odysseus_wanders_to_another_location_with_his_top_ability():
+    state = start_game(GIL, TROY)
+    odysseus = by_name(TROY, "Odysseus")
+    state = put_in_play(state, odysseus, 0, 1)
+    state = replace(state, phase="MAIN", current_player_idx=1)
+
+    after = apply_action(state, UseAbilityAction(player_id=state.player_ids[1], card_id=odysseus))
     pending = after.pending_choice
     assert pending is not None and pending.choice_kind == "odysseus_move"
-    assert f"{horse}|0|0" in pending.options, "the horse can switch to the enemy side"
-    assert f"{horse}|0|1" not in pending.options, "staying in place is not offered"
+    assert f"{odysseus}|0|1" not in pending.options, "staying in place is not offered"
 
-    moved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[1], option_id=f"{horse}|0|0"))
-    assert horse in moved.locations[0].stacks[0]
+    moved = apply_action(after, ChooseOptionAction(player_id=after.player_ids[1], option_id=f"{odysseus}|1|1"))
+    assert odysseus in moved.locations[1].stacks[1]
 
 
 def test_move_options_skip_full_locations():

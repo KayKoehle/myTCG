@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import random
+
 from ..engine.ai import choose_heuristic_action
+from ..engine.ladder import choose_ladder_action
 from ..engine.matchup_stats import MatchupStats
 from ..engine.openspiel_adapter import parse_action
 from ..engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
@@ -155,6 +158,7 @@ class GameService:
         viewer_player_id: int,
         checkpoint_path: str,
         device: str = "auto",
+        ai_elo: float | None = None,
         seed: int = 42,
         deck_a: str = "epic_of_gilgamesh",
         deck_b: str = "siege_of_troy",
@@ -183,6 +187,21 @@ class GameService:
             raise ValueError("No legal actions available for AI")
 
         chosen = None
+        if ai_elo is not None:
+            # Rated opponent: the Elo ladder picks the agent (mix) per move.
+            # Seeded per action so replays of the same match are stable.
+            rng = random.Random((seed << 20) ^ (len(state.action_history) * 2654435761) ^ ai_player_id)
+            chosen = choose_ladder_action(state, ai_player_id, ai_elo, rng)
+            match.state = apply_action(state, chosen)
+            self._record_if_finished(match, state)
+            action_payload = {
+                "kind": chosen.kind,
+                "player_id": chosen.player_id,
+                "card_id": getattr(chosen, "card_id", None),
+                "location_id": getattr(chosen, "location_id", None),
+                "option_id": getattr(chosen, "option_id", None),
+            }
+            return action_payload, self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
         try:
             policy = self._get_cached_policy(checkpoint_path=checkpoint_path, device=device)
             torch, _, _, _ = _load_torch()

@@ -18,6 +18,12 @@ export function createAppState() {
         deckNames: null,
         // Menu-started matches carry { deckId, cardIds } for stats/quests.
         statsMeta: null,
+        // Elo: the player's rating when the match started, one sampled
+        // rating per AI seat (player id -> elo), and the last game's change
+        // (for the game-over overlay). Set per match in newGame().
+        playerElo: null,
+        aiElos: {},
+        lastEloDelta: null,
         snapshot: null,
         selectedCardId: null,
         legalPlaySet: new Set(),
@@ -54,5 +60,7 @@ export function buildConfig(ui, app) {
         decks: app.deckNames && app.deckNames.length > 2 ? app.deckNames : null,
         checkpoint_path: ui.checkpointPath.value.trim(),
         device: 'auto',
+        // Rated AI opponents: player id -> the Elo the ladder plays at.
+        ai_elos: app.aiElos || {},
     };
 }

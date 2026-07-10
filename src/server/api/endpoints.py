@@ -133,6 +133,7 @@ def register_ws_routes(app: FastAPI):
             viewer_player_id=request.viewer_player_id,
             checkpoint_path=request.checkpoint_path,
             device=request.device,
+            ai_elo=request.ai_elo,
             seed=request.seed,
             deck_a=request.deck_a,
             deck_b=request.deck_b,

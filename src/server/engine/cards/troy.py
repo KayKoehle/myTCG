@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_being, is_deity, is_human, named
-from ..effects import CardBehavior, EffectResult, Halt, defect_to_enemy_side, partners_in_play, partners_in_underworld, register, register_choice, tutor_named
+from ..effects import CardBehavior, EffectResult, Halt, defect_to_enemy_side, next_opponent_at, partners_in_play, partners_in_underworld, register, register_choice, tutor_named
 from ..state import GameState, LocationState, PendingChoice
 
 TROJAN_HORSE = "The Trojan Horse"
@@ -134,6 +134,15 @@ register("Greek Soldiers", CardBehavior(on_self_moved=_greek_soldiers_moved))
 register_choice("greek_soldiers_destroy_weaklings", _handle_greek_soldiers_destroy)
 
 
+def _trojan_horse_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # The horse rolls to the enemy side on its own; the defection fires the
+    # on_self_moved payload below, which may open the smuggling choice.
+    state = rt.move_card(state, card_id, location_idx, next_opponent_at(state, player_idx, location_idx))
+    if state.pending_choice is not None:
+        return Halt(state)
+    return state
+
+
 def _trojan_horse_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
         source_humans = [
@@ -169,26 +178,22 @@ def _handle_trojan_horse_payload(rt: Any, state: GameState, chooser_idx: int, op
     return replace(state, facedown_cards=tuple(sorted(facedown)))
 
 
-register(TROJAN_HORSE, CardBehavior(on_self_moved=_trojan_horse_moved))
+register(TROJAN_HORSE, CardBehavior(on_enter=_trojan_horse_enter, on_self_moved=_trojan_horse_moved))
 register_choice("trojan_horse_payload", _handle_trojan_horse_payload)
 
 
 # --- Heroes of the Achaean camp ---------------------------------------------------
 
-def _odysseus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    # Odysseus only rallies his own side: he can send a friendly card to any
-    # location, optionally switching it to the enemy side there — never move
-    # an opponent's card.
-    movable = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
-    if movable:
-        return Halt(
-            prim.with_pending_choice(
-                state, player_idx, "odysseus_move", card_id, location_idx,
-                prim.build_move_options(state, movable, include_pass=True, allow_side_switch=True),
-                "Choose a card and destination to move",
-            )
-        )
-    return state
+def _odysseus_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
+    # "While on top: Once per turn, you may move Odysseus to another
+    # location." — the man of many turns never stays put for long.
+    options = prim.build_move_options(state, [card_id], include_pass=True)
+    if len(options) <= 1:
+        return None
+    return prim.with_pending_choice(
+        state, player_idx, "odysseus_move", card_id, location_idx,
+        options, "You may move Odysseus to another location",
+    )
 
 
 def _handle_odysseus_move(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
@@ -196,7 +201,7 @@ def _handle_odysseus_move(rt: Any, state: GameState, chooser_idx: int, option: s
     return rt.move_card(state, card_id, int(target_location), int(target_side), source_effect_owner_idx=chooser_idx)
 
 
-register("Odysseus", CardBehavior(on_enter=_odysseus_enter))
+register("Odysseus", CardBehavior(top_ability=_odysseus_top_ability))
 register_choice("odysseus_move", _handle_odysseus_move)
 
 

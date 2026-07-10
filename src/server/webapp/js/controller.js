@@ -1,6 +1,7 @@
 import { postJson } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
-import { activeEmotes, addCrowns, recordGameResult } from './profile.js';
+import { eloDelta, placementsFromVp, sampleAiElo } from './elo.js';
+import { activeEmotes, addCrowns, applyEloDelta, getElo, recordGameResult } from './profile.js';
 import {
     questOnCardBanished,
     questOnCardDrawn,
@@ -803,6 +804,18 @@ export function createGameController(ui, cardStack) {
             won,
         });
         questOnGameFinished({ won, flawless, deckId: app.statsMeta.deckId });
+
+        // One rating across all modes: score the game pairwise against every
+        // rated AI rival by final placement (VP order handles draws and
+        // surrenders alike) and move the player's Elo once.
+        const ranks = placementsFromVp(vp);
+        const rivals = aiIds().map((id) => ({
+            playerId: id,
+            elo: (app.aiElos || {})[id] ?? app.playerElo ?? getElo(),
+        }));
+        const delta = eloDelta(getElo(), rivals, ranks[cfg().player_id], ranks);
+        app.lastEloDelta = delta;
+        applyEloDelta(delta);
     }
 
     // A card back flies from the drawing player's deck pile into their hand.
@@ -873,6 +886,15 @@ export function createGameController(ui, cardStack) {
             ? 'The game ends with no winner'
             : (youWon ? 'You claimed the fourth crown' : 'Your opponent claimed the fourth crown');
         overlay.append(crowns, title, sub);
+        // Rated (menu-started) games show how the result moved the rating.
+        let eloLine = null;
+        if (app.statsMeta && app.lastEloDelta !== null) {
+            const delta = app.lastEloDelta;
+            eloLine = document.createElement('div');
+            eloLine.className = `game-result-elo ${delta >= 0 ? 'elo-up' : 'elo-down'}`;
+            eloLine.textContent = `${delta >= 0 ? '+' : ''}${delta} Elo → ${getElo()}`;
+            overlay.appendChild(eloLine);
+        }
         document.body.appendChild(overlay);
 
         overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, fill: 'forwards' });
@@ -908,6 +930,15 @@ export function createGameController(ui, cardStack) {
             { duration: 520, delay: 480, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1.15)', fill: 'both' }
         );
         sub.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: 900, fill: 'both' });
+        if (eloLine) {
+            eloLine.animate(
+                [
+                    { transform: 'translateY(8px)', opacity: 0 },
+                    { transform: 'translateY(0)', opacity: 1 },
+                ],
+                { duration: 400, delay: 1150, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1.1)', fill: 'both' }
+            );
+        }
 
         const fade = overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500, delay: 3600, fill: 'forwards' });
         const cleanup = () => overlay.remove();
@@ -1278,6 +1309,7 @@ export function createGameController(ui, cardStack) {
                 decks: c.decks,
                 checkpoint_path: c.checkpoint_path,
                 device: c.device,
+                ai_elo: (c.ai_elos || {})[actorId],
             });
             rerender(data.snapshot);
             if (data.action && data.action.kind === 'play_card' && data.action.card_id) {
@@ -1386,6 +1418,13 @@ export function createGameController(ui, cardStack) {
         app.seed = Math.floor(Math.random() * 1_000_000_000);
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
+        // Every match (menu, rematch, debug) is against rated rivals drawn
+        // near the player's current Elo; the server plays them at exactly
+        // that strength.
+        app.playerElo = getElo();
+        app.aiElos = {};
+        for (const id of aiIds()) app.aiElos[id] = sampleAiElo(app.playerElo);
+        app.lastEloDelta = null;
         await refresh();
     }
 

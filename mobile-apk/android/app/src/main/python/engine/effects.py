@@ -253,8 +253,8 @@ def send_hand_being_to_underworld(prompt: str, include_pass: bool = True) -> Ent
     """On enter: put a being from your hand into your underworld.
 
     Optional (`include_pass=True`) unless the card forces it — mandatory
-    effects (e.g. Underworld Courier, Gatekeeper Neti) pass `False` so no
-    PASS option is offered whenever a being is available to send down.
+    effects (e.g. Underworld Courier) pass `False` so no PASS option is
+    offered whenever a being is available to send down.
     """
 
     def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:

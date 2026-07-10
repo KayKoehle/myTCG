@@ -187,6 +187,14 @@ def create_initial_state(
         deck_piles.append(tuple(pile[4:]))
         deck_names.append(deck_name)
     starting_idx = rng.randrange(0, n)
+    # Going first is measurably a disadvantage (later seats always commit
+    # with more information, and a round scores right after the last seat's
+    # turn), so the starting seat opens with a fifth card as compensation.
+    # (+1 turn-one mana was arena-tested as an alternative and overshoots
+    # badly — an early tempo play snowballs much harder than a card.)
+    if deck_piles[starting_idx]:
+        hands[starting_idx] = hands[starting_idx] + (deck_piles[starting_idx][0],)
+        deck_piles[starting_idx] = deck_piles[starting_idx][1:]
 
     def per_seat(value):
         return tuple(value for _ in range(n))

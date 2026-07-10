@@ -71,6 +71,9 @@ class AiMoveRequest(BaseModel):
     decks: Optional[list[str]] = None
     checkpoint_path: str = "stats/checkpoints/ai_nn_distributed_latest.pt"
     device: str = "auto"
+    # Rated-opponent mode: when set, the move is chosen by the Elo ladder
+    # (engine/ladder.py) and checkpoint_path/device are ignored.
+    ai_elo: Optional[float] = None
 
 
 class AiMoveResponse(BaseModel):

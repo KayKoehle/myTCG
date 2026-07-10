@@ -463,6 +463,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         cls: seatClass(i),
         sideIdx: players.indexOf(pid),
     }]));
+    // Elo next to each name in the score panel: the player's rating and the
+    // rating each AI rival was matchmade at (see elo.js / controller.js).
+    const eloTag = (pid) => {
+        const elo = String(pid) === human ? app.playerElo : (app.aiElos || {})[Number(pid)];
+        return Number.isFinite(elo) ? `<span class="score-elo">${Math.round(elo)}</span>` : '';
+    };
     const mana = snapshot.mana_pool;
     const manaCap = snapshot.mana_cap || {};
     const deckSizes = snapshot.deck_sizes || {};
@@ -558,14 +564,14 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const name = isYou ? 'You' : info.name;
             const cls = isYou ? 'seat-you' : info.cls;
             return `<div class="score-side score-side-ffa ${cls}" data-player-id="${pid}">
-                <span class="score-name">${escapeHtml(name)}</span>${renderVpTrack(vp[pid] ?? 0)}
+                <span class="score-name">${escapeHtml(name)}${eloTag(pid)}</span>${renderVpTrack(vp[pid] ?? 0)}
             </div>`;
         }).join('');
     } else {
         ui.scorePanel.innerHTML = [
-            `<div class="score-side" data-player-id="${human}"><span class="score-name">You</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
+            `<div class="score-side" data-player-id="${human}"><span class="score-name">You${eloTag(human)}</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
             '<div class="score-divider"></div>',
-            `<div class="score-side" data-player-id="${ai}"><span class="score-name">Opp</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
+            `<div class="score-side" data-player-id="${ai}"><span class="score-name">Opp${eloTag(ai)}</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
         ].join('');
     }
 
@@ -580,7 +586,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                 <div class="opp-chip ${info.cls} ${isActive ? 'active-turn' : ''}" data-player-id="${pid}"
                     data-player-name="${escapeHtml(info.name)}" role="button" tabindex="0">
                     <div class="chip-head">
-                        <span class="chip-name">${escapeHtml(info.name)}</span>
+                        <span class="chip-name">${escapeHtml(info.name)}</span>${eloTag(pid)}
                         <span class="chip-vp">👑${vp[pid] ?? 0}</span>
                     </div>
                     <div class="chip-stats">

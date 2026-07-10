@@ -77,6 +77,12 @@
         repeating-linear-gradient(135deg, rgba(120, 20, 24, 0.92), rgba(120, 20, 24, 0.92) 6px, rgba(60, 8, 10, 0.94) 6px, rgba(60, 8, 10, 0.94) 12px);
 }
 
+[data-cardback="verdant"] {
+    --card-back:
+        radial-gradient(circle at 30% 25%, rgba(150, 255, 200, 0.5), transparent 45%),
+        repeating-linear-gradient(60deg, rgba(20, 90, 55, 0.92), rgba(20, 90, 55, 0.92) 6px, rgba(8, 46, 28, 0.94) 6px, rgba(8, 46, 28, 0.94) 12px);
+}
+
 :root,
 [data-board="classic"] {
     --board-glow-1: rgba(23, 182, 255, 0.28);
@@ -236,6 +242,26 @@ body {
     letter-spacing: 0.12em;
     color: var(--muted);
     font-weight: 700;
+}
+
+/* The small rating next to each name: "YOU 1200 | OPP 1213". Also used
+   inside the FFA rival chips, where the score panel truncates names. */
+.score-elo {
+    margin-left: 4px;
+    font-size: 8px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+}
+
+/* In the chip header the rating sits outside the ellipsized name so a long
+   name can never truncate it; margin-right pins it to the name's side. */
+.opp-chip .chip-head .score-elo {
+    font-size: 9px;
+    flex: none;
+    margin-left: 0;
+    margin-right: auto;
 }
 
 .score-divider {
@@ -2272,6 +2298,24 @@ select {
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 }
 
+/* Rating change of a rated game: "+12 Elo → 1213". */
+.game-result-elo {
+    margin-top: 6px;
+    font-size: clamp(12px, 3.2vw, 16px);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+.game-result-elo.elo-up {
+    color: #9fe6a8;
+}
+
+.game-result-elo.elo-down {
+    color: #ff9c8a;
+}
+
 /* --- Emotes --------------------------------------------------------------- */
 /* The emote button sits between "Your Deck" and "Your Underworld"; tapping it
    opens a small popover of canned messages. Picking one pops a speech bubble
@@ -2901,7 +2945,7 @@ select {
 }
 
 .shop-item-btn.owned:disabled,
-.shop-item-btn.equipped:disabled {
+.shop-item-btn.equipped {
     filter: none;
     background: rgba(14, 29, 44, 0.8);
     border: 1px solid rgba(45, 212, 169, 0.6);

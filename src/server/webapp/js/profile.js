@@ -3,6 +3,8 @@
 // purely client-side progression — the rules engine only ever sees deck names
 // and card id lists.
 
+import { DEFAULT_ELO, ELO_FLOOR } from './elo.js';
+
 export const DECK_META = {
     the_flood: { defaultName: 'The Deluge Deck', mainCard: 'The Ark' },
     siege_of_troy: { defaultName: 'The Trojan Siege Deck', mainCard: 'The Trojan Horse' },
@@ -42,6 +44,7 @@ export const CARD_BACKS = [
     { id: 'bronze', name: 'Bronze Aegis', cost: 3 },
     { id: 'starlit', name: 'Starlit Uruk', cost: 3 },
     { id: 'crimson', name: 'Crimson Ziggurat', cost: 4 },
+    { id: 'verdant', name: 'Verdant Eden', cost: 4 },
 ];
 
 export const BOARDS = [
@@ -63,12 +66,14 @@ export const EMOTES = [
     { id: 'thunder', text: '⚡ By the gods!', cost: 1 },
     { id: 'shield', text: '🛡️ Hold the line!', cost: 1 },
     { id: 'skull', text: '💀 To the underworld with you!', cost: 1 },
+    { id: 'phoenix', text: '🔥 Rise from the ashes!', cost: 1 },
 ];
 
 const STORAGE_KEY = 'mytcg_profile_v1';
 
 function defaultStats() {
     return {
+        elo: DEFAULT_ELO, // one rating across all game modes
         gamesPlayed: 0,
         gamesWon: 0,
         crownsEarned: 0, // lifetime total, never reduced by spending
@@ -185,6 +190,20 @@ export function setFavoriteMode(modeId) {
 
 export function getStats() {
     return profile.stats;
+}
+
+// --- Elo ---------------------------------------------------------------------
+
+export function getElo() {
+    const elo = Number(profile.stats.elo);
+    return Number.isFinite(elo) ? elo : DEFAULT_ELO;
+}
+
+// Applies a (possibly negative) rating change and returns the new rating.
+export function applyEloDelta(delta) {
+    profile.stats.elo = Math.max(ELO_FLOOR, getElo() + Math.round(Number(delta) || 0));
+    save();
+    return profile.stats.elo;
 }
 
 export function decksUnlocked() {

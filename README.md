@@ -100,29 +100,178 @@ resolve to player 1.
 
 The mobile app and the server share the same AI code in the engine:
 
-- **Search AI** (`engine/ai.py`, the default): greedy one-ply search — it
-  simulates every legal action and picks the best resulting position
-  (victory points, weighted lane control, power margins, card advantage).
-  Benchmarks: ~94% win rate vs a random player, 72% vs the current neural
-  checkpoint. Runs instantly, fully offline, no dependencies.
+- **Minimax AI** (`engine/ai.py`, the strongest): depth-limited alpha-beta
+  over action steps — it sees the rest of its own turn and the start of the
+  opponents' replies. Used for balance runs and the top of the Elo ladder.
+- **Search AI** (`engine/ai.py`): greedy one-ply search — it simulates every
+  legal action and picks the best resulting position (victory points,
+  weighted lane control, power margins, card advantage). Runs instantly,
+  fully offline, no dependencies.
 - **Neural policy**: trained with `training.py`, exported via
   `scripts/export_policy.py` to `src/server/model/policy_weights.json`, and
   evaluated without torch by `engine/policy.py` (works on Android).
-  Select it by sending `"ai_mode": "neural"` to `/api/ai-move`
-  (`"auto"` = search AI, `"random"` also available).
 
-**Note on the current checkpoint:** the old featurizer hashed tokens with
-Python's process-randomized `hash()`, so the network was effectively trained
-on partially-random features — it plays barely better than random (53%).
-This is fixed (crc32 in `engine/policy.py`, shared by training and inference).
-To get a strong neural opponent, retrain with the fixed featurizer, then:
+**Rated opponents (the Elo ladder).** In the app every opponent is a rated
+player: the client samples each AI's Elo near the player's own rating and
+sends it as `ai_elo` to `/api/ai-move`; `engine/ladder.py` then plays a
+per-move mixture of the agents above so strength is a continuous function of
+that number. Anchors (calibrated by arena cross-play, search fixed at 1200):
+random 575, neural 825, search 1200, minimax 1300. The player has ONE rating
+across all modes — a 1v1 counts like one Elo game, an N-player FFA as
+pairwise games against every rival by final placement, with the K factor
+split so both move the rating equally. The rating lives in the local profile
+(`webapp/js/elo.js`, `profile.js`) and is shown next to the crowns
+("YOU 1200 | OPP 1213") and on the game-over overlay ("+12 Elo → 1213").
+
+**Current benchmarks** (arena cross-play, 2026-07-10): minimax beats search
+69%, search beats neural 89%, neural beats random 67%. The neural policy is
+still the weakest trained tier — see "Training the AI & balancing the decks"
+below to improve it.
+
+## Training the AI & balancing the decks
+
+The four finished decks and their registry ids:
+
+| Deck                                 | Registry id         |
+| ------------------------------------ | ------------------- |
+| Epic of Gilgamesh                    | `epic_of_gilgamesh` |
+| Inanna's Descent to the Underworld   | `inannas_descent`   |
+| Siege of Troy                        | `siege_of_troy`     |
+| The Great Sumerian Deluge            | `the_flood`         |
+
+### 1. Train the AI
+
+Training needs PyTorch (CPU is fine). 2000 episodes take ~2–3 minutes:
 
 ```bash
-uv run --group ai python -m src.server.ai.train_distributed ...   # see above
-uv run --group ai python scripts/export_policy.py
-python scripts/sync_mobile.py
-# then rebuild the APK
+uv sync --group ai        # once — installs torch + training dependencies
+
+uv run python -m src.server.ai.train_distributed \
+    --episodes 2000 --num-actors 8 --episodes-per-update 32 \
+    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy \
+    --pipeline-mode shared_memory \
+    --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 \
+    --elo-csv stats/ai_training_elo_distributed.csv \
+    --checkpoint-path stats/checkpoints/ai_nn_distributed_latest.pt \
+    --device auto
 ```
+
+```powershell
+uv run python -m src.server.ai.train_distributed `
+    --episodes 2000 --num-actors 8 --episodes-per-update 32 `
+    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy `
+    --pipeline-mode shared_memory `
+    --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 `
+    --elo-csv stats/ai_training_elo_distributed.csv `
+    --checkpoint-path stats/checkpoints/ai_nn_distributed_latest.pt `
+    --device auto
+```
+
+Then export the checkpoint so the torch-free runtime (server + Android) can
+use it, and sync it into the mobile tree if you want it in the APK:
+
+```bash
+uv run python scripts/export_policy.py   # -> src/server/model/policy_weights.json
+python scripts/sync_mobile.py
+```
+
+### 2. Let the AIs battle: the balance arena
+
+`python -m src.server.ai.arena` plays a large batch of AI-vs-AI games across
+every pairing of the finished decks (seats alternate, starting player is
+randomized) and prints the statistics needed for card balance decisions:
+
+```bash
+# 1000 games over all pairings with the minimax AI (the strongest agent,
+# the default) — finishes in under a minute, no torch required
+uv run python -m src.server.ai.arena --games 1000
+
+# other agents: search (greedy one-ply), neural (reads the exported
+# policy_weights.json), random
+uv run python -m src.server.ai.arena --games 1000 --agent search
+
+# useful flags
+#   --mirrors               also play mirror matches (extra per-card data)
+#   --agent-b neural        asymmetric: seat A plays --agent, seat B --agent-b
+#                           (also prints the head-to-head score and Elo gap)
+#   --decks a,b             restrict to a subset of decks
+#   --weights path.json     alternative exported weights for --agent neural
+#   --workers 8             parallel processes (default: CPU count - 1)
+#   --seed 7                different game seeds
+#   --out stats/my.json     where raw per-game records are written
+```
+
+Agent strength, measured with exactly these asymmetric runs (1600 games,
+all six pairings, least-squares Elo fit with search anchored at 1200):
+random 575 < neural 825 < search 1200 < minimax 1300. These are the ladder
+anchors in `engine/ladder.py` / `webapp/js/elo.js` — re-run the pairings and
+update both files whenever an agent changes.
+
+The printed report contains:
+
+- **Deck win rates** (mirrors excluded, draws = 0.5) and the full
+  **matchup matrix** — who beats whom, by how much, per pairing.
+- **First-player advantage**, overall and per deck.
+- **Game length** (average rounds) per pairing plus step-cap draw counts.
+- **Card impact per deck**: plays per game, how often the card is played at
+  all, win rate when played vs when not played, and the delta between the
+  two. A big positive delta flags cards that may be too strong; a negative
+  delta or a very low play rate flags cards that need a buff or cost change.
+
+Raw per-game records (decks, winner, rounds, final VP, every card played)
+are also saved as JSON (default `stats/arena_results.json`) for deeper
+custom analysis.
+
+### 3. Automated stat tuning: the balance search
+
+`python -m src.server.ai.balance_search` automates the "±1 power" grind: it
+hill-climbs the printed power numbers toward a meta where every deck wins
+close to 50% **and** every card pulls its weight inside its own deck. The
+objective it minimizes is
+
+    sum((deck win rate − 0.5)²)  +  card_weight · mean(card impact delta²)
+
+so a deck cannot be "balanced" by one overpowered carry card — large
+per-card impact deltas (win rate when played vs not played, the same number
+the arena report prints) are penalized alongside uneven deck win rates.
+
+Each iteration it plays a screening batch, reads the card-impact table to
+propose a handful of targeted power tweaks (nerf the strongest deck's
+highest-delta cards, buff the weakest deck's dead weight, flatten the
+biggest delta outliers in any deck), replays the SAME game seeds for every
+candidate so they differ only by the tweak, and keeps the best one. Costs
+are deliberately never touched — cost changes interact with mana curves and
+free-play combos in degenerate ways (a 0-cost revive piece "balances" the
+numbers while ruining the game), so costs stay a human decision. Tweaks are
+applied in memory only — no CSV is modified and card ids stay stable — and
+the final card set is re-validated with the minimax agent.
+
+```bash
+# ~15 min with the defaults: 8 iterations, 1000 games per evaluation,
+# screening with the fast search agent, final 1000-game minimax validation
+uv run python -m src.server.ai.balance_search
+
+# useful flags
+#   --iterations 12         more hill-climbing steps (each accepts <=1 tweak)
+#   --games 2000            more games per screening batch (less noise)
+#   --agent minimax         screen with minimax too (much slower, most faithful)
+#   --validate-games 2000   bigger final validation batch (0 = skip)
+#   --breadth 4             candidates per angle (nerf/buff/outlier) per iteration
+#   --max-delta 2           never drift a power more than this from the CSV value
+#   --card-weight 1.0       weight of the per-card delta term in the objective
+#   --decks a,b             tune a subset of decks
+```
+
+It prints the accepted tweak per iteration (with the objective split into
+its deck and card components) and finishes with a list of suggested CSV
+edits (e.g. `Trapper  Power 2 -> 3`) plus a search log in
+`stats/balance_search.json`. Apply the edits to `tables/religion/**.csv` by
+hand, run the tests, and `python scripts/sync_mobile.py` — the tool
+deliberately never writes the CSVs itself. Two caveats to keep in mind: win
+rates from 1000-game batches carry ~±2pp of noise, so treat single accepted
+tweaks as suggestions rather than proof, and the search only optimizes win
+rates — it cannot tell whether a nerf makes a card boring, so review the
+suggestions before committing them.
 
 ## Setup with uv
 
@@ -332,12 +481,14 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
 [b]: ./templates/color/blue.svg
  
 
- ### Bugs
+## TODOs 
+### Future Features
 
 - Add some Sound Effects. We can include a ComfyUI Workflow that generates Sound Effects. We should have Sound Effects for getting a crown, getting a coin, start of turn, mulligan and shuffling, end of turn, winning, losing, and each card should have their own sound/ battlecry when they are getting played, being banished, being revived, and being discarded. If there are any sound effects that make sense also add them.
 - Add theme music
 
-# Long Term Roadmap
+
+### Long Term Roadmap
 - Draft Mode
 - Puzzle Challenges
 - Story Mode

@@ -41,19 +41,9 @@ def _gilgamesh_power(rt: Any, state: GameState, card_id: str, location_idx: int,
 
 
 def _enkidu_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
-    owner_idx = catalog.card_owner_idx(state, card_id)
-    gilgamesh_in_play = next(
-        (
-            (loc_idx, lane_side_idx, cid)
-            for loc_idx, lane_side_idx, cid in prim.find_cards_in_play(state, named("Gilgamesh"))
-            if catalog.card_owner_idx(state, cid) == owner_idx
-        ),
-        None,
-    )
-    if gilgamesh_in_play is None:
-        return base
-    gil_loc_idx, gil_side_idx, gil_card_id = gilgamesh_in_play
-    return rt.dynamic_power(state, gil_card_id, gil_loc_idx, gil_side_idx)
+    # Created to rival Gilgamesh's power: the same formula, so the two are
+    # always equals — but neither depends on the other being in play.
+    return _gilgamesh_power(rt, state, card_id, location_idx, side_idx, base)
 
 
 def _enkidu_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
@@ -107,25 +97,33 @@ def _alewife_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loc
     return state
 
 
-def _ferryman_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    # No room here: don't offer a move that would silently fail. Heroes that
-    # already stand here have nowhere to move to either.
-    location = state.locations[location_idx]
-    if prim.location_total_cards(location) >= location.capacity:
-        return state
-    hero_cards = [
+def _ferryman_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
+    # "While on top: Once per turn, you may pay [1] to move a friendly being
+    # to another location." The fare is paid when a destination is chosen.
+    if state.mana_pool[player_idx] < 1:
+        return None
+    passengers = [
         cid
-        for loc_idx, side_idx, cid in prim.find_cards_in_play(state, is_hero)
-        if side_idx == player_idx and loc_idx != location_idx
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == player_idx and cid != card_id
     ]
-    if hero_cards:
-        return Halt(
-            prim.with_pending_choice(
-                state, player_idx, "move_hero_to_here", card_id, location_idx,
-                prim.choose_options_for_cards(hero_cards, include_pass=True), "Choose a hero to move here",
-            )
-        )
-    return state
+    options = prim.build_move_options(state, passengers, include_pass=True)
+    if len(options) <= 1:
+        return None
+    return prim.with_pending_choice(
+        state, player_idx, "ferryman_ferry", card_id, location_idx,
+        options, "Pay [1] to move a friendly being to another location",
+    )
+
+
+def _handle_ferryman_ferry(rt: Any, state: GameState, chooser_idx: int, option: str, pending) -> GameState:
+    moved_card_id, target_location, target_side = option.split("|")
+    mana_pool = list(state.mana_pool)
+    if mana_pool[chooser_idx] < 1:
+        return state
+    mana_pool[chooser_idx] -= 1
+    state = replace(state, mana_pool=tuple(mana_pool))
+    return rt.move_card(state, moved_card_id, int(target_location), int(target_side), source_effect_owner_idx=chooser_idx)
 
 
 def _shamhat_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
@@ -135,7 +133,8 @@ def _shamhat_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loc
 register("Clay", CardBehavior(on_enter=_clay_enter, synergy_partners=partners_in_play(is_human)))
 register("Ninsun, Mother of Gilgamesh", CardBehavior(on_enter=_ninsun_enter, synergy_partners=partners_in_play(None, "Gilgamesh")))
 register("Alewife Siduri", CardBehavior(on_enter=_alewife_enter))
-register("Ferryman Urshanabi", CardBehavior(on_enter=_ferryman_enter))
+register("Ferryman Urshanabi", CardBehavior(top_ability=_ferryman_top_ability))
+register_choice("ferryman_ferry", _handle_ferryman_ferry)
 register("Trapper", CardBehavior(on_enter=tutor_named("Enkidu")))
 register("Shamhat", CardBehavior(on_enter=_shamhat_enter))
 register("Utnapishtim, Survivor of the Flood", CardBehavior(immortal=lambda rt, state, card_id, location_idx: True))
@@ -201,7 +200,7 @@ def _serpent_reward(rt: Any, state: GameState, player_idx: int, location_idx: in
 
 def _humbaba_reward(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState:
     free = list(state.next_free_play_max_cost)
-    free[player_idx] = max(free[player_idx], 5)
+    free[player_idx] = max(free[player_idx], 4)
     return replace(state, next_free_play_max_cost=tuple(free))
 
 
