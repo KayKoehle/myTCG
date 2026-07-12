@@ -43,11 +43,33 @@ jobs:
       - name: Verify mobile tree is in sync
         run: python scripts/sync_mobile.py --check
 
-      - name: Set up JDK 17
+      # Capacitor generates several files that are gitignored (see
+      # mobile-apk/android/.gitignore: the capacitor-cordova-android-plugins
+      # module, the copied www assets, and the capacitor config/plugins files).
+      # `cap sync` recreates them from the committed www/ and native project;
+      # without it Gradle fails on the missing cordova.variables.gradle.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mobile-apk/package-lock.json
+
+      - name: Install Capacitor CLI
+        working-directory: mobile-apk
+        run: npm ci
+
+      - name: Capacitor sync
+        working-directory: mobile-apk
+        run: npx cap sync android
+
+      # Capacitor 8 stamps sourceCompatibility/targetCompatibility 21 into the
+      # generated capacitor.build.gradle, so the build needs JDK 21.
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
