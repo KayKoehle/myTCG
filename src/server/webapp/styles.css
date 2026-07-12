@@ -3850,6 +3850,76 @@ details[open]>.cos-summary::before {
 
 .passplay-btn:active { transform: scale(0.98); }
 
+/* --- LAN play -------------------------------------------------------------- */
+
+.lan-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.lan-input { width: 100%; }
+.lan-section-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    margin: 16px 0 8px;
+    text-transform: uppercase;
+}
+.lan-peers { display: grid; gap: 8px; }
+.lan-peer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(16, 37, 59, 0.6);
+}
+.lan-peer-name { font-weight: 700; }
+.lan-seats { display: grid; gap: 8px; }
+.lan-seat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(16, 37, 59, 0.6);
+    font-weight: 700;
+}
+.lan-seat-empty { background: rgba(16, 37, 59, 0.3); font-weight: 400; }
+.btn.small { padding: 6px 14px; font-size: 13px; width: auto; }
+
+/* Trade sheet: two offer columns and the card pickers. */
+.trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.trade-col-title { font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+.trade-offer {
+    min-height: 60px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-content: flex-start;
+}
+.trade-chip {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(14, 90, 140, 0.35);
+    cursor: pointer;
+}
+.trade-chip.removable::after { content: ' ✕'; opacity: 0.7; }
+.trade-status { text-align: center; font-size: 13px; margin: 12px 0; color: var(--muted); }
+.trade-status.ready { color: var(--good); font-weight: 700; }
+.trade-picker { margin-top: 12px; }
+.trade-actions { display: flex; gap: 8px; margin-top: 12px; }
+.trade-actions .btn { flex: 1; }
+.trade-confirmed { color: var(--good); font-weight: 700; }
+
+/* In-game LAN trade launcher (only shown during a LAN match). */
+#btnTrade.hidden { display: none; }
+
 /* --- Seat colors ----------------------------------------------------------- */
 
 .seat-c1 { --seat-color: #ff7a5c; }

@@ -257,6 +257,10 @@ class LanService:
             seed=int(seed) if seed is not None else int(uuid.uuid4().int % 1_000_000_000),
         )
         with self._lock:
+            # A host runs one lobby at a time; drop any earlier unstarted one so
+            # the beacon never advertises a stale lobby instead of this new one.
+            for lid in [lid for lid, lb in self._lobbies.items() if not lb.started]:
+                del self._lobbies[lid]
             self._lobbies[lobby_id] = lobby
             self._add_seat(lobby, host_name or "Host", deck_name, deck_cards)
         return lobby.summary()

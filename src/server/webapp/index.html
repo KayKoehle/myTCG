@@ -33,6 +33,13 @@
                     <span class="menu-passplay-sub">2–5 players, one device</span>
                 </span>
             </button>
+            <button class="menu-passplay" id="btnLan">
+                <span class="menu-passplay-icon" aria-hidden="true">📶</span>
+                <span class="menu-passplay-text">
+                    <span class="menu-passplay-title">LAN Play</span>
+                    <span class="menu-passplay-sub">Find &amp; invite players on your network</span>
+                </span>
+            </button>
             <div class="menu-row">
                 <button class="menu-tile menu-decks-btn" id="btnMenuDecks">
                     <div class="menu-deck-art" id="menuDeckArt"></div>
@@ -238,6 +245,26 @@
             <div style="margin-top: 14px;">
                 <button class="btn" id="btnStartPassPlay" style="width:100%;">Start Game</button>
             </div>
+        </div>
+    </div>
+
+    <div id="lanModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lanTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="lanTitle">LAN Play</h2>
+                <button class="sheet-close" id="btnCloseLan" aria-label="Close LAN play">&times;</button>
+            </div>
+            <div id="lanBody"></div>
+        </div>
+    </div>
+
+    <div id="tradeModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tradeTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="tradeTitle">Trade</h2>
+                <button class="sheet-close" id="btnCloseTrade" aria-label="Close trade">&times;</button>
+            </div>
+            <div id="tradeBody"></div>
         </div>
     </div>
 

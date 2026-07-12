@@ -1,4 +1,4 @@
-import { postJson } from './api.js';
+import { postJson, setLanHostBase } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
 import { eloDelta, placementsFromVp, sampleAiElo } from './elo.js';
 import { activeEmotes, addCrowns, applyEloDelta, getElo, recordGameResult } from './profile.js';
@@ -85,6 +85,9 @@ export function createGameController(ui, cardStack) {
     }
     function isLocalGame() {
         return localSeats().length > 0;
+    }
+    function isLanGame() {
+        return Boolean(app.lanGame);
     }
 
     function laneIsFull(loc) {
@@ -1413,9 +1416,42 @@ export function createGameController(ui, cardStack) {
         });
     }
 
+    // LAN: no AI and no hand-off. When it is a remote player's turn we poll the
+    // host for their moves; on our own turn we stop polling and (like every
+    // mode) auto-draw so play flows straight into the main phase.
+    function clearLanPoll() {
+        if (app.lanPollTimer) { clearTimeout(app.lanPollTimer); app.lanPollTimer = null; }
+    }
+    function scheduleLanPoll() {
+        if (app.lanPollTimer) return;
+        app.lanPollTimer = setTimeout(async () => {
+            app.lanPollTimer = null;
+            if (!isLanGame()) return;
+            try { await refresh(); } catch (error) { scheduleLanPoll(); }
+        }, 1500);
+    }
+    async function lanTick() {
+        const snap = app.snapshot;
+        if (!snap || snap.phase === 'GAME_OVER') { clearLanPoll(); return; }
+        const you = cfg().player_id;
+        if (actorSeat(snap) === you) {
+            clearLanPoll();
+            if (!snap.pending_choice) {
+                const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
+                if (drawAction) await doAction(drawAction);
+            }
+            return;
+        }
+        scheduleLanPoll();
+    }
+
     async function maybeAutoAdvance() {
         // Local games are driven entirely by the humans present; never call the
         // AI, just orchestrate the pass-and-play hand-off.
+        if (isLanGame()) {
+            await lanTick();
+            return;
+        }
         if (isLocalGame()) {
             await maybePassAndPlay();
             return;
@@ -1558,6 +1594,45 @@ export function createGameController(ui, cardStack) {
         }
     }
 
+    // Enter a LAN match already created on the host. `hostBase` is null when we
+    // are the host (same-origin), or the host's URL when we are a guest. Our
+    // seat is `playerId`; every other seat is a remote human.
+    async function startLanGame({ hostBase = null, matchId, seed, playerId, decks = null }) {
+        endLanGame();
+        app.lanGame = true;
+        app.lanHostBase = hostBase || null;
+        setLanHostBase(hostBase || null);
+        app.localSeatIds = null;
+        app.aiPlayerIds = [];
+        app.humanPlayerId = Number(playerId);
+        app.matchId = matchId;
+        app.seed = Number(seed);
+        app.deckNames = Array.isArray(decks) && decks.length > 2 ? decks : null;
+        app.deckAName = decks ? decks[0] : null;
+        app.deckBName = decks && decks[1] ? decks[1] : null;
+        app.deckACards = null;
+        app.statsMeta = null;
+        app.mulliganSelected.clear();
+        app.opponentTurnActive = false;
+        app.passPending = false;
+        playedCardIds = new Set();
+        try {
+            await refresh();
+        } catch (error) {
+            flashStatus(error);
+        }
+    }
+
+    // Tear down LAN state (leaving the match / going home). Safe to call when
+    // no LAN game is active.
+    function endLanGame() {
+        clearLanPoll();
+        app.lanGame = false;
+        app.lanHostBase = null;
+        setLanHostBase(null);
+        app.humanPlayerId = 1;
+    }
+
     function openSheet(modal) {
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
@@ -1572,6 +1647,7 @@ export function createGameController(ui, cardStack) {
         onExitToMenu = options.onExitToMenu || null;
         if (ui.btnHome) {
             ui.btnHome.onclick = () => {
+                endLanGame();
                 if (onExitToMenu) onExitToMenu();
             };
         }
@@ -1695,8 +1771,18 @@ export function createGameController(ui, cardStack) {
     return {
         init,
         startGame,
+        startLanGame,
+        endLanGame,
+        isLanGame,
         isMatchLive,
         canQuitFree,
         promptSurrender,
+        // For the in-game trade UI: who we are and which match we're in.
+        lanContext: () => ({
+            hostBase: app.lanHostBase,
+            matchId: app.matchId,
+            playerId: cfg().player_id,
+            players: (app.snapshot && app.snapshot.players) || [],
+        }),
     };
 }

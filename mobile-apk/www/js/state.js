@@ -12,6 +12,13 @@ export function createAppState() {
         // viewer perspective, and swaps on a "pass the device" hand-off.
         localSeatIds: null,
         activeSeatId: 1,
+        // LAN multiplayer: when true, other seats are remote humans on the
+        // network. lanHostBase is the authoritative host's URL (null = we are
+        // the host). lanPollTimer polls the host while waiting for a remote turn.
+        lanGame: false,
+        lanHostBase: null,
+        lanPollTimer: null,
+        lanPlayerName: null,
         seed: Math.floor(Math.random() * 1_000_000_000),
         defaultDeckA: 'epic_of_gilgamesh',
         defaultDeckB: 'siege_of_troy',
@@ -57,7 +64,9 @@ export function buildConfig(ui, app) {
     // fixed at humanPlayerId and every other seat is AI-driven.
     const localSeats = app.localSeatIds && app.localSeatIds.length ? app.localSeatIds.map(Number) : null;
     const youId = localSeats ? Number(app.activeSeatId ?? localSeats[0]) : app.humanPlayerId;
-    const aiIds = localSeats
+    // Local hotseat and LAN games have no AI seats — every other seat is a human.
+    const noAi = Boolean(localSeats) || Boolean(app.lanGame);
+    const aiIds = noAi
         ? []
         : (app.aiPlayerIds && app.aiPlayerIds.length ? app.aiPlayerIds : [app.aiPlayerId]);
     return {
