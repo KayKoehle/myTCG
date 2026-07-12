@@ -6,6 +6,19 @@ export function createAppState() {
         // All AI seats (player ids). 1v1: [2]; FFA: [2..n]. The human is
         // always seat 0 / player id 1.
         aiPlayerIds: [2],
+        // Local pass-and-play: when non-null, every seat in this list is a
+        // human sharing one device (no AI). activeSeatId is the seat currently
+        // holding the device — it drives both the controller identity and the
+        // viewer perspective, and swaps on a "pass the device" hand-off.
+        localSeatIds: null,
+        activeSeatId: 1,
+        // LAN multiplayer: when true, other seats are remote humans on the
+        // network. lanHostBase is the authoritative host's URL (null = we are
+        // the host). lanPollTimer polls the host while waiting for a remote turn.
+        lanGame: false,
+        lanHostBase: null,
+        lanPollTimer: null,
+        lanPlayerName: null,
         seed: Math.floor(Math.random() * 1_000_000_000),
         defaultDeckA: 'epic_of_gilgamesh',
         defaultDeckB: 'siege_of_troy',
@@ -46,12 +59,23 @@ export function createAppState() {
 }
 
 export function buildConfig(ui, app) {
+    // In a local pass-and-play game the "you" seat follows whoever holds the
+    // device (activeSeatId) and there are no AI seats; otherwise the human is
+    // fixed at humanPlayerId and every other seat is AI-driven.
+    const localSeats = app.localSeatIds && app.localSeatIds.length ? app.localSeatIds.map(Number) : null;
+    const youId = localSeats ? Number(app.activeSeatId ?? localSeats[0]) : app.humanPlayerId;
+    // Local hotseat and LAN games have no AI seats — every other seat is a human.
+    const noAi = Boolean(localSeats) || Boolean(app.lanGame);
+    const aiIds = noAi
+        ? []
+        : (app.aiPlayerIds && app.aiPlayerIds.length ? app.aiPlayerIds : [app.aiPlayerId]);
     return {
         match_id: app.matchId,
-        player_id: app.humanPlayerId,
+        player_id: youId,
         ai_player_id: app.aiPlayerId,
-        ai_player_ids: app.aiPlayerIds && app.aiPlayerIds.length ? app.aiPlayerIds : [app.aiPlayerId],
-        viewer_player_id: app.humanPlayerId,
+        ai_player_ids: aiIds,
+        viewer_player_id: youId,
+        local_seat_ids: localSeats,
         seed: app.seed,
         deck_a: app.deckAName || ui.deckA.value.trim() || app.defaultDeckA,
         deck_b: app.deckBName || ui.deckB.value.trim() || app.defaultDeckB,

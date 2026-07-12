@@ -1,4 +1,4 @@
-import { postJson } from './api.js';
+import { postJson, lanPost } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -34,8 +34,10 @@ import {
     setFavoriteMode,
     isCustomDeck,
     MAX_ACTIVE_EMOTES,
+    ownedCount,
     ownedEmotes,
     ownsItem,
+    applyTradeResult,
     renameDeck,
     resetDeck,
     selectDeck,
@@ -82,6 +84,23 @@ export function createMenuController(ui, game, cardStack) {
     let costFilter = '';
     let powerFilter = '';
     let controlsBuilt = false;
+
+    // Pass & Play setup: chosen player count and the deck id picked per seat
+    // (index 0 = seat 1). Seat 1 may use any of the player's decks; seats 2+
+    // pick from stock decks so their card lists resolve from the catalog.
+    let passPlayCount = 2;
+    let passPlaySeatDecks = [];
+
+    // LAN multiplayer setup: discovery + lobby state while the LAN sheet is open.
+    let lanEnabled = false;
+    let lanPeers = [];
+    let lanPeersTimer = null;
+    let lanLobbyTimer = null;
+    // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
+    // my_pid, num_players, seats, started }.
+    let lanLobby = null;
+    let lanHostCount = 2;
+    let lanDeckId = null;
 
     // Embedding models, fitted once on the loaded collection.
     let cardSearch = null; // (query) -> [{card, score}] | null
@@ -391,6 +410,519 @@ export function createMenuController(ui, game, cardStack) {
             decks: mode.players > 2 ? [deckA.name, ...aiDecks] : null,
             statsMeta: { deckId, cardIds: ids },
         });
+    }
+
+    // --- Pass & Play (local hotseat) ----------------------------------------
+
+    const PASSPLAY_MIN = 2;
+    const PASSPLAY_MAX = 5;
+
+    // Default deck for a seat: seat 1 follows the player's current selection;
+    // later seats get distinct stock decks so a fresh table isn't a mirror.
+    function defaultSeatDeck(seatIdx) {
+        if (seatIdx === 0) return getSelectedDeckId();
+        return DECK_IDS[(seatIdx - 1) % DECK_IDS.length];
+    }
+
+    // Deck ids a seat may pick from: seat 1 can use custom decks too; seats 2+
+    // are limited to stock decks (their cards must resolve from the catalog).
+    function seatDeckChoices(seatIdx) {
+        return seatIdx === 0 ? allDeckIds() : DECK_IDS.slice();
+    }
+
+    async function openPassPlay() {
+        await ensureCollection();
+        // Seed/repair per-seat deck picks up to the current count.
+        for (let i = 0; i < PASSPLAY_MAX; i += 1) {
+            const choices = seatDeckChoices(i);
+            if (!passPlaySeatDecks[i] || !choices.includes(passPlaySeatDecks[i])) {
+                passPlaySeatDecks[i] = defaultSeatDeck(i);
+            }
+        }
+        ui.passPlayModal.classList.add('open');
+        ui.passPlayModal.setAttribute('aria-hidden', 'false');
+        renderPassPlay();
+    }
+
+    function closePassPlay() {
+        ui.passPlayModal.classList.remove('open');
+        ui.passPlayModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function renderPassPlay() {
+        ui.passPlayCount.innerHTML = '';
+        for (let n = PASSPLAY_MIN; n <= PASSPLAY_MAX; n += 1) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `passplay-count-chip ${n === passPlayCount ? 'active' : ''}`;
+            btn.setAttribute('role', 'radio');
+            btn.setAttribute('aria-checked', String(n === passPlayCount));
+            btn.textContent = `${n}P`;
+            btn.addEventListener('click', () => {
+                passPlayCount = n;
+                renderPassPlay();
+            });
+            ui.passPlayCount.appendChild(btn);
+        }
+
+        ui.passPlaySeats.innerHTML = '';
+        for (let i = 0; i < passPlayCount; i += 1) {
+            const row = document.createElement('div');
+            row.className = 'passplay-seat';
+            const label = document.createElement('span');
+            label.className = 'passplay-seat-label';
+            label.textContent = `Player ${i + 1}`;
+            const select = document.createElement('select');
+            select.className = 'passplay-deck';
+            for (const deckId of seatDeckChoices(i)) {
+                const opt = document.createElement('option');
+                opt.value = deckId;
+                opt.textContent = deckDisplayName(deckId);
+                if (deckId === passPlaySeatDecks[i]) opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.addEventListener('change', () => { passPlaySeatDecks[i] = select.value; });
+            row.appendChild(label);
+            row.appendChild(select);
+            ui.passPlaySeats.appendChild(row);
+        }
+    }
+
+    function startPassPlay() {
+        const count = passPlayCount;
+        const seatIds = passPlaySeatDecks.slice(0, count);
+        // Seat 1 may be a custom/edited deck (its cards ride along as deck_a_cards);
+        // seats 2+ are stock names the server resolves from the catalog.
+        const seat0 = deckMatchConfig(seatIds[0], stockIds(seatIds[0]));
+        const seat0Ids = deckCardIds(seatIds[0], stockIds(seatIds[0]));
+        if (seat0Ids.length !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(seatIds[0])}" needs exactly ${DECK_SIZE} cards (it has ${seat0Ids.length}).`);
+            return;
+        }
+        const names = [seat0.name, ...seatIds.slice(1)];
+        const localSeatIds = Array.from({ length: count }, (_, i) => i + 1);
+        applyCosmetics(seatIds[0]);
+        closePassPlay();
+        pushNav({ screen: 'game' });
+        showScreen('game');
+        game.startGame({
+            deckAName: seat0.name,
+            deckACards: seat0.cards,
+            deckBName: names[1],
+            decks: count > 2 ? names : null,
+            localSeatIds,
+        });
+    }
+
+    // --- LAN multiplayer -----------------------------------------------------
+
+    function lanSelfPort() {
+        return Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+    }
+    function lanPlayerName() {
+        return (localStorage.getItem('mytcg_lan_name') || '').trim() || 'Player';
+    }
+    // Deck config for whichever deck the player picked for LAN. Custom/edited
+    // decks ride along as an explicit card list so the host can register them.
+    function lanDeckConfig() {
+        const deckId = lanDeckId || getSelectedDeckId();
+        const cfg = deckMatchConfig(deckId, stockIds(deckId));
+        const ids = deckCardIds(deckId, stockIds(deckId));
+        return { deckId, name: cfg.name, cards: cfg.cards, size: ids.length };
+    }
+
+    async function openLan() {
+        await ensureCollection();
+        lanDeckId = getSelectedDeckId();
+        ui.lanModal.classList.add('open');
+        ui.lanModal.setAttribute('aria-hidden', 'false');
+        renderLan();
+        try {
+            await lanPost('', '/api/lan/enable', { name: lanPlayerName(), port: lanSelfPort() });
+            lanEnabled = true;
+        } catch (error) {
+            showToast(`Could not start LAN discovery: ${error}`);
+        }
+        renderLan();
+        startPeerPolling();
+    }
+
+    function closeLan({ keepDiscovery = false } = {}) {
+        stopPeerPolling();
+        stopLobbyPolling();
+        ui.lanModal.classList.remove('open');
+        ui.lanModal.setAttribute('aria-hidden', 'true');
+        if (!keepDiscovery && lanEnabled && !lanLobby) {
+            lanPost('', '/api/lan/disable', {}).catch(() => {});
+            lanEnabled = false;
+        }
+    }
+
+    function startPeerPolling() {
+        stopPeerPolling();
+        const tick = async () => {
+            try {
+                const data = await lanPost('', '/api/lan/peers', {});
+                lanPeers = data.peers || [];
+                if (!lanLobby) renderLan();
+            } catch (error) { /* transient; keep polling */ }
+            lanPeersTimer = setTimeout(tick, 2000);
+        };
+        tick();
+    }
+    function stopPeerPolling() {
+        if (lanPeersTimer) { clearTimeout(lanPeersTimer); lanPeersTimer = null; }
+    }
+
+    async function hostLan() {
+        const deck = lanDeckConfig();
+        if (deck.size !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(deck.deckId)}" needs exactly ${DECK_SIZE} cards.`);
+            return;
+        }
+        try {
+            const data = await lanPost('', '/api/lan/host', {
+                name: lanPlayerName(),
+                deck_name: deck.name,
+                deck_cards: deck.cards,
+                num_players: lanHostCount,
+            });
+            const lobby = data.lobby;
+            lanLobby = {
+                lobby_id: lobby.lobby_id, host_base: '', is_host: true, my_pid: 1,
+                num_players: lobby.num_players, seats: lobby.seats, started: false,
+            };
+            stopPeerPolling();
+            startLobbyPolling();
+            renderLan();
+        } catch (error) {
+            showToast(`Could not host: ${error}`);
+        }
+    }
+
+    async function joinLan(peer) {
+        const lobby = peer.lobby;
+        if (!lobby) return;
+        const deck = lanDeckConfig();
+        if (deck.size !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(deck.deckId)}" needs exactly ${DECK_SIZE} cards.`);
+            return;
+        }
+        try {
+            const data = await lanPost(peer.address, '/api/lan/join', {
+                lobby_id: lobby.lobby_id,
+                name: lanPlayerName(),
+                deck_name: deck.name,
+                deck_cards: deck.cards,
+            });
+            if (!data.ok) { showToast(data.error || 'Join failed'); return; }
+            lanLobby = {
+                lobby_id: lobby.lobby_id, host_base: peer.address, is_host: false,
+                my_pid: data.player_id, num_players: lobby.num_players,
+                seats: (data.lobby && data.lobby.seats) || [], started: false,
+            };
+            stopPeerPolling();
+            startLobbyPolling();
+            renderLan();
+        } catch (error) {
+            showToast(`Could not join: ${error}`);
+        }
+    }
+
+    function startLobbyPolling() {
+        stopLobbyPolling();
+        const tick = async () => {
+            try {
+                const data = await lanPost(lanLobby.host_base, '/api/lan/lobby', { lobby_id: lanLobby.lobby_id });
+                if (data.ok && data.lobby) {
+                    lanLobby.seats = data.lobby.seats;
+                    lanLobby.started = data.lobby.started;
+                    renderLan();
+                    // A guest jumps into the match as soon as the host starts it.
+                    if (data.lobby.started && !lanLobby.is_host) {
+                        beginLanMatch({
+                            hostBase: lanLobby.host_base,
+                            matchId: data.lobby.match_id,
+                            seed: 0,
+                            playerId: lanLobby.my_pid,
+                            decks: null,
+                        });
+                        return;
+                    }
+                }
+            } catch (error) { /* transient; keep polling */ }
+            lanLobbyTimer = setTimeout(tick, 1500);
+        };
+        tick();
+    }
+    function stopLobbyPolling() {
+        if (lanLobbyTimer) { clearTimeout(lanLobbyTimer); lanLobbyTimer = null; }
+    }
+
+    async function startLanAsHost() {
+        try {
+            const data = await lanPost('', '/api/lan/start', { lobby_id: lanLobby.lobby_id });
+            if (!data.ok) { showToast(data.error || 'Could not start'); return; }
+            beginLanMatch({
+                hostBase: null, matchId: data.match_id, seed: data.seed,
+                playerId: 1, decks: data.decks,
+            });
+        } catch (error) {
+            showToast(`Could not start: ${error}`);
+        }
+    }
+
+    function beginLanMatch({ hostBase, matchId, seed, playerId, decks }) {
+        const lobby = lanLobby;
+        closeLan({ keepDiscovery: true });
+        lanLobby = lobby; // keep for the in-game trade UI (rosters/host base)
+        applyCosmetics(lanDeckId || getSelectedDeckId());
+        pushNav({ screen: 'game' });
+        showScreen('game');
+        game.startLanGame({ hostBase, matchId, seed, playerId, decks });
+    }
+
+    function renderLan() {
+        if (!ui.lanBody) return;
+        const name = lanPlayerName();
+        // In a lobby: waiting room.
+        if (lanLobby) {
+            const seats = lanLobby.seats || [];
+            const rows = seats.map((s) => `
+                <div class="lan-seat"><span>${escapeHtml(s.name)}</span>
+                    <span class="tiny">seat ${s.player_id}</span></div>`).join('');
+            const empty = Math.max(0, lanLobby.num_players - seats.length);
+            const emptyRows = Array.from({ length: empty }, () =>
+                '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for a player…</span></div>').join('');
+            const canStart = lanLobby.is_host && seats.length >= 2;
+            ui.lanBody.innerHTML = `
+                <div class="lan-section-title">${lanLobby.is_host ? 'Your lobby' : 'Joined lobby'}
+                    (${seats.length}/${lanLobby.num_players})</div>
+                <div class="lan-seats">${rows}${emptyRows}</div>
+                ${lanLobby.is_host
+                    ? `<button class="btn" id="lanStartBtn" ${canStart ? '' : 'disabled'} style="width:100%;margin-top:12px;">
+                            ${canStart ? 'Start Game' : 'Need at least 2 players'}</button>`
+                    : '<p class="tiny" style="margin-top:12px;">Waiting for the host to start…</p>'}
+                <button class="btn ghost" id="lanLeaveBtn" style="width:100%;margin-top:8px;">Leave lobby</button>`;
+            const startBtn = document.getElementById('lanStartBtn');
+            if (startBtn) startBtn.addEventListener('click', startLanAsHost);
+            document.getElementById('lanLeaveBtn').addEventListener('click', leaveLanLobby);
+            return;
+        }
+        // Otherwise: name + deck + host/join browser.
+        const deckOptions = allDeckIds().map((id) =>
+            `<option value="${id}" ${id === (lanDeckId || getSelectedDeckId()) ? 'selected' : ''}>${escapeHtml(deckDisplayName(id))}</option>`).join('');
+        const openPeers = lanPeers.filter((p) => p.lobby);
+        const peerRows = openPeers.length
+            ? openPeers.map((p, i) => `
+                <div class="lan-peer" data-peer-idx="${i}">
+                    <div><div class="lan-peer-name">${escapeHtml(p.name)}</div>
+                        <div class="tiny">${escapeHtml(p.lobby.host_name)}'s game · ${p.lobby.joined}/${p.lobby.num_players}</div></div>
+                    <button class="btn small" data-join-idx="${i}">Join</button>
+                </div>`).join('')
+            : '<p class="tiny">No open games found yet. Make sure everyone is on the same Wi‑Fi.</p>';
+        ui.lanBody.innerHTML = `
+            <label class="lan-label">Your name</label>
+            <input id="lanNameInput" class="lan-input" value="${escapeHtml(name)}" maxlength="20" />
+            <label class="lan-label">Your deck</label>
+            <select id="lanDeckSelect" class="lan-input">${deckOptions}</select>
+            <div class="lan-section-title">Host a game</div>
+            <div class="passplay-count" id="lanHostCount"></div>
+            <button class="btn" id="lanHostBtn" style="width:100%;">Host game</button>
+            <div class="lan-section-title">Join a game ${lanEnabled ? '' : '(starting discovery…)'}</div>
+            <div class="lan-peers">${peerRows}</div>`;
+        const nameInput = document.getElementById('lanNameInput');
+        nameInput.addEventListener('change', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
+        document.getElementById('lanDeckSelect').addEventListener('change', (e) => { lanDeckId = e.target.value; });
+        const countRow = document.getElementById('lanHostCount');
+        for (let n = 2; n <= 5; n += 1) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `passplay-count-chip ${n === lanHostCount ? 'active' : ''}`;
+            btn.textContent = `${n}P`;
+            btn.addEventListener('click', () => { lanHostCount = n; renderLan(); });
+            countRow.appendChild(btn);
+        }
+        document.getElementById('lanHostBtn').addEventListener('click', hostLan);
+        openPeers.forEach((p, i) => {
+            const btn = ui.lanBody.querySelector(`[data-join-idx="${i}"]`);
+            if (btn) btn.addEventListener('click', () => joinLan(p));
+        });
+    }
+
+    async function leaveLanLobby() {
+        lanLobby = null;
+        startPeerPolling();
+        renderLan();
+    }
+
+    // --- LAN trading ---------------------------------------------------------
+    // A trade session in progress: { trade_id, host_base, match_id, my_pid,
+    // opp_pid, offers, confirmed, status }. tradeMine is my staged offer (card
+    // ids), tradeTimer polls the host for the other side.
+    let trade = null;
+    let tradeMine = [];
+    let tradeTimer = null;
+
+    async function openTrade() {
+        const ctx = game.lanContext();
+        if (!ctx || !ctx.matchId) return;
+        await ensureCollection();
+        const opp = (ctx.players || []).map(Number).find((pid) => pid !== Number(ctx.playerId));
+        if (opp == null) { showToast('No opponent to trade with.'); return; }
+        try {
+            const data = await lanPost(ctx.hostBase, '/api/lan/trade/propose', {
+                match_id: ctx.matchId, a_pid: Number(ctx.playerId), b_pid: Number(opp),
+            });
+            trade = {
+                ...data.trade, host_base: ctx.hostBase,
+                my_pid: Number(ctx.playerId), opp_pid: Number(opp),
+            };
+            // Resume any offer already recorded for me (e.g. reopening the sheet).
+            tradeMine = (data.trade.offers[String(ctx.playerId)] || []).slice();
+        } catch (error) {
+            showToast(`Could not open trade: ${error}`);
+            return;
+        }
+        ui.tradeModal.classList.add('open');
+        ui.tradeModal.setAttribute('aria-hidden', 'false');
+        renderTrade();
+        startTradePolling();
+    }
+
+    function closeTrade({ silentCancel = false } = {}) {
+        stopTradePolling();
+        if (trade && trade.status === 'open' && !silentCancel) {
+            lanPost(trade.host_base, '/api/lan/trade/cancel', { trade_id: trade.trade_id }).catch(() => {});
+        }
+        trade = null;
+        tradeMine = [];
+        ui.tradeModal.classList.remove('open');
+        ui.tradeModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function tradeSignature() {
+        return trade ? JSON.stringify([trade.offers, trade.confirmed, trade.status]) : '';
+    }
+
+    function startTradePolling() {
+        stopTradePolling();
+        const tick = async () => {
+            if (!trade) return;
+            try {
+                const data = await lanPost(trade.host_base, '/api/lan/trade/state', { trade_id: trade.trade_id });
+                if (data.ok && data.trade) {
+                    const before = tradeSignature();
+                    Object.assign(trade, data.trade);
+                    if (trade.status === 'completed') { finishTrade(); return; }
+                    if (trade.status === 'cancelled') { showToast('Trade cancelled.'); closeTrade({ silentCancel: true }); return; }
+                    // Only re-render when the other side actually changed something,
+                    // so a poll never detaches the card the user is about to tap.
+                    if (tradeSignature() !== before) renderTrade();
+                }
+            } catch (error) { /* transient */ }
+            tradeTimer = setTimeout(tick, 1200);
+        };
+        tradeTimer = setTimeout(tick, 1200);
+    }
+    function stopTradePolling() {
+        if (tradeTimer) { clearTimeout(tradeTimer); tradeTimer = null; }
+    }
+
+    async function pushMyOffer() {
+        try {
+            const data = await lanPost(trade.host_base, '/api/lan/trade/offer', {
+                trade_id: trade.trade_id, player_id: trade.my_pid, card_ids: tradeMine,
+            });
+            if (data.ok) Object.assign(trade, data.trade);
+        } catch (error) { showToast(`${error}`); }
+        renderTrade();
+    }
+
+    async function confirmTrade() {
+        try {
+            const data = await lanPost(trade.host_base, '/api/lan/trade/confirm', {
+                trade_id: trade.trade_id, player_id: trade.my_pid,
+            });
+            if (data.ok) {
+                Object.assign(trade, data.trade);
+                if (trade.status === 'completed') { finishTrade(); return; }
+            }
+        } catch (error) { showToast(`${error}`); }
+        renderTrade();
+    }
+
+    function finishTrade() {
+        const gained = (trade.offers[String(trade.opp_pid)] || []).slice();
+        const lost = (trade.offers[String(trade.my_pid)] || []).slice();
+        applyTradeResult({ gained, lost });
+        const summary = gained.length || lost.length
+            ? `Trade complete — gave ${lost.length}, received ${gained.length}.`
+            : 'Trade complete.';
+        showToast(summary);
+        closeTrade({ silentCancel: true });
+    }
+
+    function cardLabel(cardId) {
+        const card = cardById(cardId);
+        return card ? card.name : cardId;
+    }
+
+    function renderTrade() {
+        if (!trade || !ui.tradeBody) return;
+        const theirs = trade.offers[String(trade.opp_pid)] || [];
+        const iConfirmed = Boolean(trade.confirmed[String(trade.my_pid)]);
+        const theyConfirmed = Boolean(trade.confirmed[String(trade.opp_pid)]);
+
+        const mineChips = tradeMine.length
+            ? tradeMine.map((id) => `<span class="trade-chip removable" data-remove="${escapeHtml(id)}">${escapeHtml(cardLabel(id))}</span>`).join('')
+            : '<span class="tiny">Add cards below…</span>';
+        const theirChips = theirs.length
+            ? theirs.map((id) => `<span class="trade-chip">${escapeHtml(cardLabel(id))}</span>`).join('')
+            : '<span class="tiny">Nothing yet…</span>';
+
+        // Cards you can still offer: owned (>=1) and not already staged.
+        const staged = new Set(tradeMine);
+        const pickable = allCollectionCards()
+            .filter((c) => ownedCount(c.id) >= 1 && !staged.has(c.id))
+            // De-dupe cards shared across decks.
+            .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i);
+        const pickerChips = pickable.map((c) =>
+            `<span class="trade-chip" data-add="${escapeHtml(c.id)}">${escapeHtml(c.name)}</span>`).join('');
+
+        const statusText = iConfirmed && theyConfirmed ? 'Both confirmed!'
+            : iConfirmed ? 'You confirmed. Waiting for them…'
+            : theyConfirmed ? 'They confirmed. Your move.'
+            : 'Add cards, then confirm.';
+
+        ui.tradeBody.innerHTML = `
+            <div class="trade-cols">
+                <div><div class="trade-col-title">You give ${iConfirmed ? '<span class="trade-confirmed">✓</span>' : ''}</div>
+                    <div class="trade-offer" id="tradeMine">${mineChips}</div></div>
+                <div><div class="trade-col-title">They give ${theyConfirmed ? '<span class="trade-confirmed">✓</span>' : ''}</div>
+                    <div class="trade-offer">${theirChips}</div></div>
+            </div>
+            <div class="trade-status ${iConfirmed && theyConfirmed ? 'ready' : ''}">${statusText}</div>
+            <div class="trade-picker">
+                <div class="trade-col-title">Your cards</div>
+                <div class="trade-offer" style="max-height:180px;overflow:auto;">${pickerChips || '<span class="tiny">No cards left to trade.</span>'}</div>
+            </div>
+            <div class="trade-actions">
+                <button class="btn ghost" id="tradeCancelBtn">Cancel</button>
+                <button class="btn" id="tradeConfirmBtn" ${iConfirmed ? 'disabled' : ''}>${iConfirmed ? 'Confirmed' : 'Confirm trade'}</button>
+            </div>`;
+
+        ui.tradeBody.querySelectorAll('[data-add]').forEach((el) => {
+            el.addEventListener('click', () => { tradeMine.push(el.dataset.add); pushMyOffer(); });
+        });
+        ui.tradeBody.querySelectorAll('[data-remove]').forEach((el) => {
+            el.addEventListener('click', () => {
+                tradeMine = tradeMine.filter((id) => id !== el.dataset.remove);
+                pushMyOffer();
+            });
+        });
+        document.getElementById('tradeCancelBtn').addEventListener('click', () => closeTrade());
+        document.getElementById('tradeConfirmBtn').addEventListener('click', confirmTrade);
     }
 
     // --- Card grouping (companion stacks) ------------------------------------
@@ -1149,6 +1681,37 @@ export function createMenuController(ui, game, cardStack) {
         ui.btnMenuShop.addEventListener('click', () => {
             openShop();
         });
+        if (ui.btnPassPlay) {
+            ui.btnPassPlay.addEventListener('click', () => { openPassPlay(); });
+        }
+        if (ui.btnClosePassPlay) {
+            ui.btnClosePassPlay.addEventListener('click', () => { closePassPlay(); });
+        }
+        if (ui.btnStartPassPlay) {
+            ui.btnStartPassPlay.addEventListener('click', () => { startPassPlay(); });
+        }
+        if (ui.passPlayModal) {
+            ui.passPlayModal.addEventListener('click', (event) => {
+                if (event.target === ui.passPlayModal) closePassPlay();
+            });
+        }
+        if (ui.btnLan) {
+            ui.btnLan.addEventListener('click', () => { openLan(); });
+        }
+        if (ui.btnCloseLan) {
+            ui.btnCloseLan.addEventListener('click', () => { closeLan(); });
+        }
+        if (ui.lanModal) {
+            ui.lanModal.addEventListener('click', (event) => {
+                if (event.target === ui.lanModal) closeLan();
+            });
+        }
+        if (ui.btnTrade) {
+            ui.btnTrade.addEventListener('click', () => { openTrade(); });
+        }
+        if (ui.btnCloseTrade) {
+            ui.btnCloseTrade.addEventListener('click', () => { closeTrade(); });
+        }
         ui.btnDecksBack.addEventListener('click', () => {
             navBack();
         });

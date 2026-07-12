@@ -1,12 +1,23 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api.endpoints import register_ws_routes
 
 app = FastAPI()
+
+# LAN play means one instance (the host) is reached cross-origin by other
+# players' browsers on the network, so allow any origin. Nothing here is
+# authenticated or sensitive — it's a peer-to-peer game on a trusted LAN.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CARD_SVG_DIR = REPO_ROOT / "output_svgs"
