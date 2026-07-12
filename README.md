@@ -491,7 +491,7 @@ Give a reward after a condition is fulfilled, like move one of your creatures 5 
 
 - Add some Sound Effects. We can include a ComfyUI Workflow that generates Sound Effects. We should have Sound Effects for getting a crown, getting a coin, start of turn, mulligan and shuffling, end of turn, winning, losing, and each card should have their own sound/ battlecry when they are getting played, being banished, being revived, and being discarded. If there are any sound effects that make sense also add them.
 - Add theme music
-
+- Add local multiplayer, for 1v1 and the FFA modes
 
 ### Long Term Roadmap
 - Draft Mode

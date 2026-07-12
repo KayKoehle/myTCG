@@ -1,16 +1,16 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
-Tidal Glimmer,Creature,Aquarius,On Return: Move any creature.,0,1,0,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bDrWuKIxWDo
+Tidal Glimmer,Creature,Aquarius,On Return: Move any creature.,0,1,0,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bDrWuKIxWDo
 Abyssal Oracle,Creature,Mythic,On Return: Draw two cards.,0,1,0,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,b-R4RXDt-Yr
 Murmuring Aegis,Creature,Elemental Guardian,You may return this creature to your hand anytime.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,shgDBEgPbcg
 Whispering Sprite,Creature,Air Elemental,On Play: You may return any friendly creature with a mana cost of two or less to your hand.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,RHWYeGOkFOs
 Luminari,Creature,Spirit,Additional cost: Return any friendly creature to your hand.,0,2,0,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,4kouxXdTX7a
 Whispering Reliqua,Creature,Spirit,On Draw: You may return a friendly creature to your hand.,0,1,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,g3uRzly-vgU
 Aquaspect Sentinel,Creature,Insect/Beast,On Return: Return any enemy creature to their hand.,0,1,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,voYMK8-xlIn
-Sentinel of Azure Waters,Creature,Aquatic,On Play: Return an enemy creature here to their hand.,0,2,0,1,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,aHFNmqqEV-u
+Sentinel of Azure Waters,Creature,Aquatic,On Play: Return an enemy creature here to their hand.,0,2,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,aHFNmqqEV-u
 Auroral Keeper,Creature,Storm Elemental,On Play: Return all friendly creatures here to your hand.,0,2,0,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ktUEBuQfaTO
 Moonlit Revenant,Creature,Ghost,On Play: Return a friendly creature here to your hand. You may play it for 1 blue mana next turn.,0,1,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RD-d9sIOUGP
-Echokeeper,Creature,Mechanical,On Return: Gain control of an enemy creature here.,0,2,0,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,JinDb3_QGqt
-Maelstrom's Vessel,Creature,Shipwreck,On Play: Return any enemy creature to their hand.,0,2,0,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M-XB5xnP8W8
+Echokeeper,Creature,Mechanical,On Return: Gain control of an enemy creature here.,0,2,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,JinDb3_QGqt
+Maelstrom's Vessel,Creature,Shipwreck,On Play: Return any enemy creature to their hand.,0,2,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M-XB5xnP8W8
 Aquariess of Elysium,Creature,Beast,On Play: Return a friendly creature here to your hand. You may play it for free next turn.,0,2,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,K2NjiFKtU1G
 Airstorm Avenger,Creature,Elemental Beast,On Play: Return all friendly creatures here to your hand. You may play them for free next turn.,0,3,0,3,8,LeChat,Sana:0.6b,Alpha 0.1.0,NCB0RAp_qTP
-Maelstrom Keeper,Creature,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,3,0,4,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0jm6IbhIiqS
+Maelstrom Keeper,Creature,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,3,0,4,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0jm6IbhIiqS

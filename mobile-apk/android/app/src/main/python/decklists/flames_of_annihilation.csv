@@ -1,16 +1,16 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
-Pyropeon,Creature,Orc,On Destruction: Destroy an enemy creature here.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RY8ZrevaPwP
+Pyropeon,Creature,Orc,On Destruction: Destroy an enemy creature here.,1,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RY8ZrevaPwP
 Kage Shinobi,Creature,Yokai Golem,On Play: Destroy an enemy creature here with a mana cost of two or less.,1,0,0,0,-1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,E_MizcljROk
 Scorchheart Fanatic,Creature,Demon Berserker,Additional cost: The opponent on your left must destroy one of your other creatures.,1,0,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,eLFwxHCgsTF
 on destruction: draw 2
 Pyrebound Harbinger,Creature,Demon Fiend,As an additional cost to play this creature: Destroy all other friendly creatures here (must destroy at least one).,2,0,0,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,a1a_tX5NfMz
 Pyroclasm Lord,Creature,Fire Elemental,On Destruction: Destroy any enemy creature.,1,0,0,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,V6F20nmZoQc
-"Khromak, Devourer of Shadows",Creature,Tariaksuq,On Play: All enemies must destroy one of their creatures.,1,0,0,1,-1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,TMotVDN__Hu
-Scarlet Scourge,Creature,Insectoid,On Play: All enemies must destroy one of their creatures here.,2,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,8F8fw-f9Rdr
+"Khromak, Devourer of Shadows",Creature,Tariaksuq,On Play: All enemies must destroy one of their creatures.,1,0,0,1,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,TMotVDN__Hu
+Scarlet Scourge,Creature,Insectoid,On Play: All enemies must destroy one of their creatures here.,2,0,0,1,0,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,8F8fw-f9Rdr
 Hell Worm,Creature,Worm,"Whenever a friendly creature is played here, you may destroy it. Only triggers once each turn.",3,0,0,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Cmr2euvZjpZ
 Infernox,Creature,Dragon,"On Play: For each opponent, destroy on of their creatures here.",3,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Lli5_3VQSkP
 Shadowbound Reaper,Creature,Specter Assassin,"On Play: For each opponent, destroy one of their creatures at another location.",3,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,G51ezNMwx7t
-Scarlet Requiem,Creature,Spirit,On Play: Destroy all creatures here with less power than this creature.,3,0,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,CKCSV7h-8m3
+Scarlet Requiem,Creature,Spirit,On Play: Destroy all creatures here with less power than this creature.,3,0,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,CKCSV7h-8m3
 Inferno Scourge,Creature,Wyvern Rider,"On Play: For each opponent, destroy one of their creatures.",3,0,0,2,-1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,5uXPBKdiBnD
-Inferno Wrecker,Creature,Baku,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents discard a card.",3,0,0,3,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,21N9G9PFPHO
+Inferno Wrecker,Creature,Baku,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents discard a card.",3,0,0,3,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,21N9G9PFPHO
 Razorwing Huntress,Creature,Fire Dragon,Destroy all creatures here with a cost of X or less.,2,0,0,X,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,vGq_9p1ZnjW

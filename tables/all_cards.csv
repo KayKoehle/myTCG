@@ -1,7 +1,7 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
 Abyssal Oracle,Creature,Mythic,On Return: Draw two cards.,0,1,0,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,b-R4RXDt-Yr
 Aeropex,Creature,Aviator,On Play: You may play your next card for free and face down. Turn it face up at the end of the game and activate its effect as usual.,0,2,1,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,5fbQ9vxsepj
-Aeropex,Creature,Aviator,,0,0,0,6,12,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,SiYwZamjIuL
+Aeropex,Creature,Aviator,,0,0,0,6,13,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,SiYwZamjIuL
 Aetherborn Scourge of the Deep,Creature,Mythical Wyrmkin,While on top: Sacrifice this creature to draw two cards.,1,1,0,0,4,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,tR94XaJAANG
 Aetherflame Archmage,Creature,Archmage,On Play: Draw a card and discard a card.,1,1,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,6gp8YTdzqwp
 Aetherial Mire Dweller,Creature,Insect,On Play: Move one of your other creatures to this location.,0,1,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,1UwOCkRAPbC
@@ -10,7 +10,7 @@ Aethersteppe Seraph,Creature,Mythril Wyrm,On Play: You may change the stack orde
 Aetherwave Sprite,Creature,Spirit,Additional cost: Sacrifice one of your mana crystals. Cannot be played on your last turn.,2,0,0,0,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,IeiZUsl6CVM
 Aethonix Wraith,Creature,Incorporeality,"While on top: Whenever you destroy a friendly creature, draw a card.",1,1,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,cO3ts_p3uRF
 Airstorm Avenger,Creature,Elemental Beast,On Play: Return all other friendly creatures here to your hand. You may play them for free next turn.,0,3,0,3,8,LeChat,Sana:0.6b,Alpha 0.1.1,WessrXL5xUb
-Apex Sentinel,Creature,Sentinel,,0,0,0,7,14,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1mXmj79ZVEm
+Apex Sentinel,Creature,Sentinel,,0,0,0,7,15,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1mXmj79ZVEm
 Aquari Empress,Creature,Aquatic Elemental,On Revive: Draw three cards.,0,1,1,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9jRBEweykH1
 Aquari Guardian,Creature,Aquari,On Return: Get a mana crystal.,0,1,1,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,lBmC8G2cHhN
 Aquari Oracle,Creature,Sea Serpent,On Play: Draw three cards. Put one card from your hand on top of your deck.,0,1,0,3,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9qvzX4QTBXh
@@ -34,16 +34,16 @@ Chaotic Mindshaper,Creature,Illusionist,On Play: Draw two cards and discard a ca
 Chronicler of Fates,Creature,Mythical Wyrmkin,On Play: You may change the stack order of all enemy creatures here.,0,2,0,1,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,y0qtgV491Pd
 Chrono Guardian,Creature,Temporal,,0,0,0,5,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,7_V_SyTfHxU
 Chronocide,Creature,Basilisk,On Play: Swap the top three cards of your deck with three cards from your graveyard.,0,1,1,1,7,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,L1lfvP_vXsE
-Colossus of the Ancients,Creature,Golem,On Play: Get an extra mana crystal.,0,0,1,3,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,wKtnkXV4Xhl
+Colossus of the Ancients,Creature,Golem,On Play: Get an extra mana crystal.,0,0,1,3,7,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,wKtnkXV4Xhl
 Coral Reef Guardian,Creature,Sea Monster,On Play: Move an enemy creature to this location.,0,1,0,2,5,LeChat,Sana:0.6b,Alpha 0.1.0,iUc7xr4jF8q
 Corpse Larva,Creature,Insect,On Play: Put the top three cards of a player's deck in their graveyard.,1,0,1,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,t4WZf0X9_9y
 Crystalbane Sprout,Creature,Elemental Beast,On Destruction: Get a mana crystal.,1,0,1,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RBdgav2k5xs
 Crystalbane Sprout,Creature,Elemental Beast,On Destruction: Get a mana crystal. On Revive: Get a mana crystal.,1,0,1,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Jmcl1x0IvOU
 Curious Explorer,Creature,Squirrel,On Play: Change the colors of up to two of your mana crystals.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,GcCUdJK0jjY
-Devourer of Shadows,Creature,Tariaksuq,On Play: All enemies must destroy one of their creatures.,1,0,0,1,-1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,TMotVDN__Hu
+Devourer of Shadows,Creature,Tariaksuq,On Play: All enemies must destroy one of their creatures.,1,0,0,1,0,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,TMotVDN__Hu
 Dreamstalker of Eternity,Creature,"Ky'rennei, Devourer of Dreams",While on top: Only one creature can be played each turn.,3,0,0,3,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,YGXQ9RV3GUy
-Driftwood Seraphim,Creature,Woodland Spirit,On Move: Return an enemy creature at the new location with mana cost of one or lower to their owner's hand.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,m6uvOgD2u1H
-Echokeeper,Creature,Mechanical,On Return: Gain control of an enemy creature here.,0,2,0,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,JinDb3_QGqt
+Driftwood Seraphim,Creature,Woodland Spirit,On Move: Return an enemy creature at the new location with mana cost of one or lower to their owner's hand.,0,1,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,m6uvOgD2u1H
+Echokeeper,Creature,Mechanical,On Return: Gain control of an enemy creature here.,0,2,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,JinDb3_QGqt
 Echokeeper of the Abyssal Depths,Creature,Trickster,On Play: Trigger the 'On Play' Effect of a creature in your graveyard.,0,1,1,3,9,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,SuYMGkvRUhB
 Elder Bramble,Creature,Dryad,"While on top: Whenever you revive a creature, get a mana crystal.",0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,2X5WzJsR4eE
 Elder Whisperer,Creature,Sage,On Play: Swap one of your other creatures here with a creature in your graveyard.,0,1,2,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,P-3MUr4daGP
@@ -53,13 +53,13 @@ Ember Requiem,Creature,Fire Elemental,At the end of the game: Get 3 power for ev
 Ember Revenant,Creature,Infernal,On Discard: Revive this creature.,1,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,oV24fJItuzC
 Ember Scourge,Creature,Insect,On Discard: All enemies must discard a card.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,5VmDTVdPG7C
 Ember Scout,Creature,Beast,You may destroy this in your turn.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,4W_jzBMeGV8
-Ember Spark,Creature,Fiend,On Discard: Draw a card.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,B5pBtjWyu7N
+Ember Spark,Creature,Fiend,On Discard: Draw a card.,1,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,B5pBtjWyu7N
 Ember Steed,Creature,Drake,"While in your graveyard: When a card enters your graveyard, you may put it on top of your deck instead. Only triggers once each turn.",1,0,1,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,w4_TpZMhJAA
 Ember Talonkeeper,Creature,Tanuki,Additional cost: Destroy a friendly creature. Revive a different creature than the one destroyed.,1,0,1,1,5,Llama3.2:3b,Sana:1.6b,Alpha 0.1.1,HgD0tySO6Or
 Ember Wraith,Creature,Fiend,While on top: Whenever you have no cards in your hand. You may return one card from your graveyard to your hand,1,0,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,4rbod64jSpQ
 Ember Wrecker,Creature,Inferno Beast,On Play: Destroy all your other creatures here.,2,0,0,1,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,wvYQXDu7etD
 Emberborn Scourge of the Throne,Creature,Kitsune Oni,While on top: You cannot play any creatures here.,2,0,0,0,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,07_nU90mPGh
-Emberkin,Creature,Insect,"On Play: For every card you have discarded this turn, each opponent must destroy one of their creatures.",2,0,0,0,-5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ftXfZFcoKxf
+Emberkin,Creature,Insect,"On Play: For every card you have discarded this turn, each opponent must destroy one of their creatures.",2,0,0,0,-4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ftXfZFcoKxf
 Embermaw,Creature,Beast,On Discard: Pay [R] to play this instead.,1,0,0,1,4,Llama3.2:3b,Sana:1.6b,Alpha 0.1.2,6SrzwKGfwyJ
 Embervine Ravager,Creature,Elemental Raider,On Play: Destroy a green mana crystal of an enemy.,2,0,0,2,-4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,y8oj0wE56Wu
 Emerald Ascendant,Creature,Faerie,While on top: Your power here is doubled.,0,0,2,2,0,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,OfBCWKXH5Yg
@@ -80,19 +80,19 @@ Hell Worm,Creature,Worm,"While on top: Whenever you play a creature here, you ma
 Infernal Anchor,Creature,Mechanical Entity,"On Play: Choose a location. Next turn, your enemies cannot play cards there.",2,0,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,We4DcuI6qAb
 Infernal Bloom,Creature,Naiad Golem,On Destruction: Draw two cards.,1,0,0,0,2,Llama3.2:3b,Sana:1.6b,Alpha 0.1.0,XHqMUr8LPP3
 Infernal Emberscale,Creature,Gnarlwraithe,On Play: Gift this creature to an opponent.,2,0,0,0,-4,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,DUN96Bu1-WX
-Infernal Flicker,Creature,Wyrmkin,On Play: All players must discard a card.,1,0,0,1,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Zd1o4DnXh2n
+Infernal Flicker,Creature,Wyrmkin,On Play: All players must discard a card.,1,0,0,1,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Zd1o4DnXh2n
 Infernal Guardian,Creature,Dhampir,While on top: The maximum amount of mana crystals your opponents can have is six.,2,0,0,2,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,fuWA-5QqhK5
 Infernal Harbinger,Creature,Demon,"On Play: If you have discarded one or more cards this turn, return one of them to your hand.",1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,0bqUHzQzo2o
 Infernal Incitement,Creature,Mythical Karkoth,While on top: Every player must play their first creature each turn here if possible.,2,0,0,2,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,SYXF-11o2fS
-Infernal Overlord,Creature,Evil,On Play: Discard all your cards.,3,0,0,3,16,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0wDrgspflOx
+Infernal Overlord,Creature,Evil,On Play: Discard all your cards.,3,0,0,3,17,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0wDrgspflOx
 Infernal Scourge,Creature,Infernal,On Play: Destroy all your other creatures here. For each destroyed gain a mana crystal.,2,0,2,0,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,6fCbkK63Kty
 Inferno Reaver,Creature,Beast/Monstrosity,On Play: Destroy the next card you play here this turn.,2,0,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,S7DA7B4O6kP
-Inferno Reckoner,Creature,Infernal,On Play: Discard X cards. Destroy X creatures with a mana value of one or less.,2,0,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1l-3uBnCJk1
+Inferno Reckoner,Creature,Infernal,On Play: Discard X cards. Destroy X creatures with a mana value of one or less.,2,0,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1l-3uBnCJk1
 Inferno Scourge,Creature,Wyvern Rider,"On Play: For each opponent, destroy one of their creatures.",3,0,0,2,-1,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,ZCq4RH7nJCt
-Inferno Spark,Creature,Fire,On Play: All players must discard a card.,2,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,yhtTn1lD36N
+Inferno Spark,Creature,Fire,On Play: All players must discard a card.,2,0,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,yhtTn1lD36N
 Inferno Titan,Creature,Elemental,On Play: Enemy cards cannot be played here next turn.,2,0,0,2,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,LOsWabZ9Tk7
 Inferno Wisp,Creature,Dragonkin,On Destruction: All opponents must discard two cards.,1,0,0,2,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,9OCqaO2ugik
-Inferno Wrecker,Creature,Baku,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents discard a card.",3,0,0,3,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,21N9G9PFPHO
+Inferno Wrecker,Creature,Baku,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents discard a card.",3,0,0,3,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,21N9G9PFPHO
 Inferno's Requiem,Creature,Inferno Beast,On Play: Destroy all other creatures here.,3,0,0,4,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Xr2i-RPSYwS
 Infernoheart,Creature,Infernal Beast,"While on top: Whenever you discard a card, draw a card.",1,1,0,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,hFsmRb_cv9y
 Infernox,Creature,Dragon,"On Play: For each opponent, destroy one of their creatures here.",3,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,hA9gaz41KdJ
@@ -106,10 +106,10 @@ Khaos Avatar,Creature,Mythical,On Play: Repeat all of your 'On Play' effects her
 Khaos Keeper,Creature,Cerberian,On Play: Swap your deck and graveyard.,0,2,2,0,7,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,KPhkXOlYX7X
 Khaos Reaver,Creature,Mythic,On Play: Repeat one of your 'On Play' effects here.,1,1,1,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,_KDTY1P53DX
 Khaos Scourge,Creature,Undead Fiend,On Destruction: Return all enemy creatures here to their owners' hand.,1,2,0,0,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,0nHUiRkgaHc
-Khaosborn Stalwart,Creature,Basilisk Minotaur,On Play: The next creature you play this turn costs two green mana less.,0,0,1,0,1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,C-VCcdNCG3f
-Khaosflux,Creature,Mythical,On Return: Destroy an enemy creature here.,1,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,uQEPfVP7Um0
+Khaosborn Stalwart,Creature,Basilisk Minotaur,On Play: The next creature you play this turn costs two green mana less.,0,0,1,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,C-VCcdNCG3f
+Khaosflux,Creature,Mythical,On Return: Destroy an enemy creature here.,1,1,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,uQEPfVP7Um0
 Khaosian Chosen One,Creature,Angel,On Play: Play the top card of your deck for free.,0,0,2,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,03g67NiRXu0
-Khaosurge,Creature,Monstrosity,As an additional cost to play this card: Discard two cards.,2,0,0,1,8,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,vW4BaRCMDWr
+Khaosurge,Creature,Monstrosity,As an additional cost to play this card: Discard two cards.,2,0,0,1,9,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,vW4BaRCMDWr
 Khronokeeper,Creature,Chronomancer,On Draw: You may discard a card. On Play: Draw a card.,1,1,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,fzqBsb70o1V
 Khronos Whisperer,Creature,Mythic Beast,On Destruction: Draw three cards.,1,1,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,XAap98w3j4l
 Khthonic Resurgent,Creature,Dhampir Minotaur,On Return: Revive a creature.,0,1,1,1,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,oyUfIHeDz1R
@@ -118,26 +118,26 @@ Labyrinthine Colossus,Creature,Minotaur,At the end of the game: Get 7 power for 
 Leafcaller's Vigilance,Creature,Mythical Beast,On Play: Put the top two cards of your deck into your graveyard.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,-WdAKBX0X-9
 Luminari,Creature,Spirit,Additional cost: Return any other friendly creature to your hand.,0,2,0,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,EHYjEggml9I
 Maelstrom Behemoth,Creature,Dragonkin Wyrmlord,On Play: Destroy all other creatures here with a power of X * 2 or less.,3,0,0,X,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.2,pKczrDURKP8
-Maelstrom Guardian,Creature,Beast,On Play: Move all enemy creatures here to other locations.,0,3,0,3,8,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bXYMNKdiK36
-Maelstrom Keeper,Creature,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,3,0,4,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0jm6IbhIiqS
-Maelstrom Oracle,Creature,Illusion,On Play: Move enemy creatures to this location.,0,3,0,2,7,Llama3.2:3b,Flux1Schnell,Alpha 0.1.0,rIKo8QmkTVT
+Maelstrom Guardian,Creature,Beast,On Play: Move all enemy creatures here to other locations.,0,3,0,3,9,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bXYMNKdiK36
+Maelstrom Keeper,Creature,Storm Elemental,On Play: Return all other creatures here to their owners' hand.,0,3,0,4,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,0jm6IbhIiqS
+Maelstrom Oracle,Creature,Illusion,On Play: Move enemy creatures to this location.,0,3,0,2,8,Llama3.2:3b,Flux1Schnell,Alpha 0.1.0,rIKo8QmkTVT
 Maelstrom Sentinel,Creature,Wyvernborn,While on top: 'On Play' effects don't trigger here.,0,2,0,1,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,S6KmcnNJ9Zd
 Maelstrom Sprite,Creature,Air Elemental,On Destruction: Return any enemy creature to their hand.,1,1,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,6sEFbf-KdfH
 Maelstrom Whisper,Creature,Aquatic Fae,"While on top: Whenever you draw a card, draw an additional card.",0,3,0,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,vp8Y6DJ3iIv
 Maelstrom Wraith,Creature,Sea Spirit,On Revive: Return all enemy creatures here to their owners' hand.,0,1,1,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,ld1LhMqdTG_
-Maelstrom of the Abyssal Veil,Creature,Aquatic Undead,On Play: Move all your other creatures to any location.,0,4,0,3,9,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,AgRXnaSV3tk
+Maelstrom of the Abyssal Veil,Creature,Aquatic Undead,On Play: Move all your other creatures to any location.,0,4,0,3,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,AgRXnaSV3tk
 Maelstrom's Unseen Hand,Creature,Draugr Khaoswalker,While on top: Pay [B] to put this creature on the bottom of the stack and move another friendly creature.,0,2,0,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,9qQVEMS8PbF
-Maelstrom's Vessel,Creature,Shipwreck,On Play: Return any enemy creature to their hand.,0,2,0,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M-XB5xnP8W8
+Maelstrom's Vessel,Creature,Shipwreck,On Play: Return any enemy creature to their hand.,0,2,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M-XB5xnP8W8
 Mana Multiplier,Creature,Kitsune Yurei,"While on top: Whenever a card effect gives you an extra mana crystal, get an additional mana crystal.",0,0,3,0,5,llama3.2:3b,Sana:0.6b,Alpha 0.1.2,6RtTJqXgVOv
-Mana Weaver,Creature,Spider,"While on top: At the start of your turn, you may get an extra mana crystal instead of drawing a card.",0,0,2,1,5,Llama3.2:3b,Sana:1.6b,Alpha 0.1.0,kmleaM-JJjP
-Manaspore,Creature,Mushroom Spirit,On Play: Get an extra green mana crystal.,0,0,2,1,5,LeChat,Sana:0.6b,Alpha 0.1.0,dY2ixORFqdl
+Mana Weaver,Creature,Spider,"While on top: At the start of your turn, you may get an extra mana crystal instead of drawing a card.",0,0,2,1,6,Llama3.2:3b,Sana:1.6b,Alpha 0.1.0,kmleaM-JJjP
+Manaspore,Creature,Mushroom Spirit,On Play: Get an extra green mana crystal.,0,0,2,1,6,LeChat,Sana:0.6b,Alpha 0.1.0,dY2ixORFqdl
 Master of Stealthy Reappearance,Creature,Shadow Beast,"Ambush (play it face down, you may reveal it when the following condition is fulfilled) if another creature is played here. Move that creature.",0,1,0,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,tDZj0HBKQsO
-Matriarch of the Ancient Horde,Creature,Monstrosity,,0,0,0,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,VkBKxLyDzGI
+Matriarch of the Ancient Horde,Creature,Monstrosity,,0,0,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,VkBKxLyDzGI
 Megalithic Sentinel,Creature,Lithokrator,"On Play: Search your deck for up to creatures without an effect, reveal them and put them into your hand, then shuffle your deck.",0,0,0,3,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,aqE0maf1Bdx
 Mighty Dreamer of the Void Abyssal,Creature,Baku,Ward 2 (Enemy effects targeting this costs 2 mana more).,0,1,0,5,12,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,qod4c_Yd0JH
 Mighty Sentinel of Verdant Ascent,Creature,Monstrosity,On Play: Create a new creature stack for you at this location and play this creature at that new stack.,0,0,2,2,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,4ME6WmUUSq1
 Mindshaper Siren,Creature,Siren,On Play: Gain control of an enemy creature.,0,3,0,4,1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,G6P7CKvnbgX
-Mistress of the Tideshroud,Creature,Sea Witch,On Play: Move an enemy creature here to another location.,0,1,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,5Gxc2RWLawp
+Mistress of the Tideshroud,Creature,Sea Witch,On Play: Move an enemy creature here to another location.,0,1,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,5Gxc2RWLawp
 Mnemosyne's Suggestion,Creature,Illusion,On Play: Look at the top three cards of your deck.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,amL65Vblsue
 Mnemosyne's Whisper,Creature,Gwyllgi,While on top: Pay [B][B] to draw a card.,0,2,0,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,_RCE0vuz0BS
 Moonlit Ephemera,Creature,Spirit,While in your graveyard: You may return this creature to your hand anytime.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RFUjXRqIoIz
@@ -152,51 +152,51 @@ Mossborn Sprite,Creature,Fey Sprite,,0,0,0,0,1,llama3.2:3b,Sana:0.6b,Alpha 0.1.0
 Murmur of the Abyssal Depths,Creature,Void,On Draw: You may discard a card.,1,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,tIO0oiimoF-
 Murmuring Aegis,Creature,Elemental Guardian,While on top: You may return this creature to your hand anytime.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,iuZ3as2uJMY
 Mysterious Egg,Creature,Egg,On Destruction: Revive a creature.,1,0,1,0,0,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,cAvRsSRTbj8
-Necrotide Revenant,Creature,Spirit,On Play: Revive a creature.,0,0,3,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,HZG1SnCcVbQ
+Necrotide Revenant,Creature,Spirit,On Play: Revive a creature.,0,0,3,1,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,HZG1SnCcVbQ
 Nimbus Patron,Creature,Mythical,Costs [1] less for every friendly creature in play.,0,0,3,6,8,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,ps5b29_s3jA
-Nimbus Specter,Creature,Soul,On Play: Draw a card.,0,2,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,xuSdARDAHAA
+Nimbus Specter,Creature,Soul,On Play: Draw a card.,0,2,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,xuSdARDAHAA
 Nullstone Warden,Creature,Mystic Guardian,On Play: The next on play effect you play this turn not trigger.,0,1,0,1,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ImLsdxj2hn-
-Pyreborn Acolyte,Creature,Spirit,As an additional cost to play this card: Discard three cards.,2,0,0,3,12,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,sMoibncntco
+Pyreborn Acolyte,Creature,Spirit,As an additional cost to play this card: Discard three cards.,2,0,0,3,13,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,sMoibncntco
 Pyrebound Harbinger,Creature,Demon Fiend,As an additional cost to play this creature: Destroy all your other creatures here (must destroy at least one).,2,0,0,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,GERtzzxbUcT
 Pyrebrand,Creature,Fiend,On Discard: Destroy a creature with a mana cost of three or less.,2,0,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,bh6KkxDH6w5
 Pyroclasm Lord,Creature,Fire Elemental,On Destruction: Destroy any enemy creature.,1,0,0,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,V6F20nmZoQc
 Pyroclast,Creature,Fire Elemental,"On Play: Destroy all other friendly creatures here. For each destroyed, all opponents have to destroy one of their creatures.",3,0,0,4,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,boPPTkDB0fq
 Pyrope Emperor,Creature,Dragon,On Destruction: Return all other creatures here to their owners' hand.,1,1,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,jbvwtm7vi3i
-Pyropeon,Creature,Orc,On Destruction: Destroy an enemy creature here.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RY8ZrevaPwP
+Pyropeon,Creature,Orc,On Destruction: Destroy an enemy creature here.,1,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,RY8ZrevaPwP
 Pyropex,Creature,Fire Elemental,"When this is in your graveyard, you may pay one mana and discard a card to return this to your hand.",1,0,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,weu3UFNyWd2
 Razorwing Huntress,Creature,Fire Dragon,On Play: Destroy all other creatures here with a cost of X or less.,2,0,0,X,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.3,a5UaGiJe6IN
 Reckoning of the Wastes#Pyroclastic Oblivion,Creature#Creature,Demon#Demon,On Play: Destroy all your creatures here. Transform if you have destroyed three or more creatures this way.#No Effect.,2,0,0,1,4#8,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,x-OrgMk37TT
 Riftbringer,Creature,Elemental Sage,While on top: You may play one more creature here even when this location is full.,0,0,1,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,4aTPSHTBvyg
 Sapling Guardian,Creature,Plant,Costs [1] less for every creature you have played this turn.,0,0,2,4,10,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,x6LuAN4k5vB
 Sapling Sentinel,Creature,Dryad,On Play: Draw up to two cards from your graveyard.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,fE-L58Q24Jz
-Scarlet Requiem,Creature,Spirit,On Play: Destroy all creatures here with less power than this creature.,3,0,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,CKCSV7h-8m3
-Scarlet Scourge,Creature,Insect,On Play: All enemies must destroy one of their creatures here.,2,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,8F8fw-f9Rdr
+Scarlet Requiem,Creature,Spirit,On Play: Destroy all creatures here with less power than this creature.,3,0,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,CKCSV7h-8m3
+Scarlet Scourge,Creature,Insect,On Play: All enemies must destroy one of their creatures here.,2,0,0,1,0,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,8F8fw-f9Rdr
 Scourge of Ephemeral Shadows,Creature,Gargantuan Karkothian Stalker,While on top: Your negative power creatures here become positive.,0,1,1,1,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,MyVd1VotCKE
 Seedling Sage,Creature,Fungal,"On Play: For every other friendly creature here, draw a card.",0,0,2,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,P7PXlMl_ZAN
-Sentinel of Azure Waters,Creature,Aquatic,On Play: Return an enemy creature here to their hand.,0,2,0,1,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,aHFNmqqEV-u
+Sentinel of Azure Waters,Creature,Aquatic,On Play: Return an enemy creature here to their hand.,0,2,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,aHFNmqqEV-u
 Shadowbound Reaper,Creature,Specter Assassin,"On Play: For each opponent, destroy one of their creatures at another location.",3,0,0,1,-1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,_CkLi0dLvlB
 Shapeshifter Fox,Creature,Kitsune,On Play: Change the color of an enemy's mana.,0,0,1,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,WJiwSnZlEyp
-Sky Sentinel,Creature,Avian,On Play: Move an enemy creature with less power than this creature to this location.,0,1,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M_zDTz8XKGa
-Skydancer Ascendant,Creature,Dragonkin Harpy,On Revive: Get two mana crystals.,0,0,1,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,163T7hyVpu3
-Soulforged Revenant,Creature,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,0,1,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9sVIAjqSYAB
+Sky Sentinel,Creature,Avian,On Play: Move an enemy creature with less power than this creature to this location.,0,1,0,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,M_zDTz8XKGa
+Skydancer Ascendant,Creature,Dragonkin Harpy,On Revive: Get two mana crystals.,0,0,1,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,163T7hyVpu3
+Soulforged Revenant,Creature,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,0,1,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9sVIAjqSYAB
 Supreme Ascendant,Creature,Wyrm,While on top: Play with the top card of your deck face up. You may play cards from the top of your deck.,0,0,3,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,gTZyJZaLDTA
 Sylvan Harmonizer,Creature,Elf Druid,On Play: Other creatures you play on this location this turn cost one colorless mana less.,0,0,3,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,6hM0mixCPEn
 Temporal Sentinel,Creature,Khronokeeper,,0,0,0,3,6,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,QIx9ScgVA8F
 Ten Thousand Year Sentinel,Creature,Kitsune Guardian,At the end of the game: Get 3 power for every card in your graveyard.,0,0,3,4,*,llama3.2:3b,Sana:0.6b,Alpha 0.1.2,udEwyum51JQ
 Terragrim Behemoth,Creature,Basilisk Hydra,While this is on your graveyard: Pay two green mana to revive this creature.,0,0,0,4,7,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,r4EYAr-lOA8
-Terraguardian,Creature,Earth Elemental,,0,0,0,1,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,eWJifBNQn-m
+Terraguardian,Creature,Earth Elemental,,0,0,0,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,eWJifBNQn-m
 Terraguardian Sentinel,Creature,Plant/Beast,"Can only be played on a location, where you have at least two one cost creatures.",0,0,1,3,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,CyoHC8HmDaF
 Terraka Prime,Creature,Planar Monster,At the end of the game: Copy the power of your highest power creature here.,0,0,2,2,*,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,ERDTrSk2Ckg
 Terrakaegis,Creature,Mechanical,On Play: Revive a creature without an effect.,0,0,2,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,j93uiLTeD13
 Terraverdant Ascendant,Creature,Khthonikos,On Play: Draw X cards.,0,0,2,X,4,llama3.2:3b,Sana:0.6b,Alpha 0.1.2,nkf7T5DzjW2
 Terraverde,Creature,Forest Beast,May be played on a full location.,0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,cz1K1hS3w3F
-The Devourer,Creature,Storm Dragon,On Return: Destroy any enemy creature.,1,1,0,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,_N0gP2qAwDl
+The Devourer,Creature,Storm Dragon,On Return: Destroy any enemy creature.,1,1,0,1,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,_N0gP2qAwDl
 The Devouring Twin Suns,Creature,Gashadokuro,On Play: Switch two location cards with each other.,0,0,1,1,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ztjwBXuY1xm
 The Last Breath Before Eternity,Creature,Mythical Construct,While on top: This game ends after one more round.,1,1,1,4,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.2,rPWl2lSEtdL
 The Whispering Leaf#The Eternal Bramble,Creature#Creature,Plant#Plant,[G]: Transform.#No effect.,0,0,0,0,0#2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,vt2ASdUJLQr
-Tidal Glimmer,Creature,Aquarius,On Return: Move any creature.,0,1,0,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bDrWuKIxWDo
+Tidal Glimmer,Creature,Aquarius,On Return: Move any creature.,0,1,0,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,bDrWuKIxWDo
 Treelord Sentinel,Creature,Treefolk,Costs [1] less for every card in your graveyard.,0,0,2,6,10,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,Zdw00tg83Yp
-Treelord Sprout,Creature,Leshy,"On Play: Reveal the top card of your deck. If it costs one or less, play it for free.",0,0,1,0,1,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,k2bHzVFpeUz
+Treelord Sprout,Creature,Leshy,"On Play: Reveal the top card of your deck. If it costs one or less, play it for free.",0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,k2bHzVFpeUz
 Ultramarine Titan,Creature,Mythical,On Play: Move any creature.,0,2,0,1,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,Eos33bTlt04
 Umbra Sprite,Creature,Shadowborn,While on top: Pay [B][B] to return a friendly creature to their owner's hand.,0,1,0,3,7,llama3.2:3b,Sana:0.6b,Alpha 0.1.1,1thGPStyXnw
 Verdant Requiem,Creature,Monstrosity,On Play: Put the top two cards of all decks into their respective graveyard.,0,0,1,1,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,gp6svEQhMPN
@@ -208,9 +208,9 @@ Whispering Reliqua,Creature,Spirit,On Draw: You may return one of your creatures
 Whispering Sentinel of Verdant Heights,Creature,Sylvan,While on top: Play with the top card of your deck face up.,0,0,1,2,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,YdD831V8pWK
 Whispering Sprite,Creature,Air Elemental,On Play: You may return any other friendly creature with a mana cost of two or less to your hand.,0,1,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.3,BVXJRvskWly
 Whisperwind Spirit,Creature,Sylph,"While on top: Whenever a creature with lower power than this is played here, you may return it to its owners hand. Only triggers once each turn.",0,2,0,1,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,qSIACK8roL8
-Young Necromancer,Creature,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,0,0,2,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ayVKT1Cutj8
+Young Necromancer,Creature,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,0,0,2,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ayVKT1Cutj8
 Zephyrine,Creature,Water Elemental,On Draw: You may move one of your creatures.,0,1,0,1,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.1,AmM53ik2C2Z
-Zephyrine Sentinel,Creature,Wind Elemental,On Move: Move an enemy creature.,0,1,0,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,lMWmckLcCKV
+Zephyrine Sentinel,Creature,Wind Elemental,On Move: Move an enemy creature.,0,1,0,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,lMWmckLcCKV
 "Aethonoxar, Son of Elyrian",Hero,Demigod,[R][B]:Additional cost: Destroy a friendly creature. Draw a card,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,0Msbs6QtCk1
 "Kaelarathys, Stormbringer of Elyria",Hero,Chronokeeper,[B]:Move a creature.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,9DBeFWD_Up6
 "Kaelin'zorvath, Born from Fire",Hero,Cosmic Entity,[R]:Destroy a friendly creature.,0,0,0,0,0,llama3.2:3b,Sana1.5:1.6b,Alpha 0.1.1,MbTdMMhVj91

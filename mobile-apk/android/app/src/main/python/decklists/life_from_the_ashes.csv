@@ -1,16 +1,16 @@
 Name,Type,Subtype,Effect,Red,Blue,Green,Colorless,Power,Writer,Artist,Edition,ID
 Elder Bramble,Creature,Dryad,"Whenever you revive a creature, get a mana crystal.",0,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,pwuKiX4w0wD
 Kairos Ignis,Creature,Qilin,Additional cost: Discard a card.,1,0,0,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,U8jTL7wx8B3
-Ember Spark,Creature,Fiend,On Discard: Draw a card.,1,0,0,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,B5pBtjWyu7N
-Skydancer Ascendant,Creature,Dragonkin Harpy,On Revive: Get two mana crystals.,0,0,1,0,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,163T7hyVpu3
-Inferno Spark,Creature,Fire,On Play: All players must discard a card.,2,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,yhtTn1lD36N
-Soulforged Revenant,Creature,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,0,1,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9sVIAjqSYAB
-Infernal Flicker,Creature,Wyrmkin,On Play: All players must discard a card.,1,0,0,1,2,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Zd1o4DnXh2n
-Khaosurge,Creature,Monstrosity,As an additional cost to play this card: Discard two cards.,2,0,0,1,8,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,vW4BaRCMDWr
+Ember Spark,Creature,Fiend,On Discard: Draw a card.,1,0,0,0,3,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,B5pBtjWyu7N
+Skydancer Ascendant,Creature,Dragonkin Harpy,On Revive: Get two mana crystals.,0,0,1,0,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,163T7hyVpu3
+Inferno Spark,Creature,Fire,On Play: All players must discard a card.,2,0,0,0,4,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,yhtTn1lD36N
+Soulforged Revenant,Creature,Undead Sorcerer,Additional cost: Sacrifice a mana crystal. Revive a creature.,1,0,1,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,9sVIAjqSYAB
+Infernal Flicker,Creature,Wyrmkin,On Play: All players must discard a card.,1,0,0,1,3,llama3.2:3b,Sana:0.6b,Alpha 0.1.0,Zd1o4DnXh2n
+Khaosurge,Creature,Monstrosity,As an additional cost to play this card: Discard two cards.,2,0,0,1,9,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,vW4BaRCMDWr
 Ember Revenant,Creature,Infernal,On Discard: Revive this creature.,1,0,1,0,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,KG04lPcPdw5
-Necrotide Revenant,Creature,Spirit,On Play: Revive a creature.,0,0,3,1,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,HZG1SnCcVbQ
-Young Necromancer,Creature,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,0,0,2,2,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ayVKT1Cutj8
+Necrotide Revenant,Creature,Spirit,On Play: Revive a creature.,0,0,3,1,7,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,HZG1SnCcVbQ
+Young Necromancer,Creature,Wizard,On Play: Trigger an 'On Revive' effect in your graveyard.,0,0,2,2,6,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,ayVKT1Cutj8
 Flamewyrm,Creature,Inferno Dragon,On Revive: Destroy all other creatures here.,2,0,2,0,5,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,jKBwz8fcjld
 Kraelion Scourge,Creature,Insectoid Fungus,On Revive: Destroy an enemy mana crystal.,1,0,1,2,2,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,sWMmpV58bDK
 destroy to revive
-"Kaleekos, Apex Sentinel",Creature,Sentinel,,0,0,0,7,14,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1mXmj79ZVEm
+"Kaleekos, Apex Sentinel",Creature,Sentinel,,0,0,0,7,15,Llama3.2:3b,Sana:0.6b,Alpha 0.1.0,1mXmj79ZVEm
