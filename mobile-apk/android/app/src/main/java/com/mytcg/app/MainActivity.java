@@ -19,6 +19,9 @@ public class MainActivity extends BridgeActivity {
 		}
 
 		getBridge().getWebView().addJavascriptInterface(new LocalApiBridge(), "MyTCGLocalApi");
+		// Backs the optional in-app update check (js/update.js). Absent in the
+		// browser build, which updates itself normally.
+		getBridge().getWebView().addJavascriptInterface(new UpdateBridge(this), "MyTCGUpdate");
 
 		// Capacitor core has no back-button handling (it lives in the
 		// @capacitor/app plugin, which we don't ship), so without this the

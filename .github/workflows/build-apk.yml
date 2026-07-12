@@ -1,8 +1,10 @@
 name: Build Android APK
 
 # Builds the MyTCG Android APK (Capacitor + Chaquopy) on every push to main,
-# and on demand via the "Run workflow" button. The built debug APK is uploaded
-# as a workflow artifact you can download from the run summary.
+# and on demand via the "Run workflow" button. Each main build is stamped with
+# a monotonic version and published as the "latest" GitHub Release; installed
+# apps poll that release (js/update.js) and prompt the user to download the new
+# APK. The APK is also uploaded as a workflow artifact.
 on:
   push:
     branches: [main]
@@ -17,6 +19,10 @@ on:
       - "scripts/sync_mobile.py"
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
+
+# Needed to publish the GitHub Release the update check reads from.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -56,13 +62,40 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      # run_number increases with every run of this workflow, so it makes a
+      # monotonic versionCode the installed app can compare against the release
+      # tag (v<run_number>). versionName is human-facing.
       - name: Build debug APK
         working-directory: mobile-apk/android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: >-
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          -PappVersionCode=${{ github.run_number }}
+          -PappVersionName=1.0.${{ github.run_number }}
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp mobile-apk/android/app/build/outputs/apk/debug/app-debug.apk \
+            "dist/mytcg-v${{ github.run_number }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: mytcg-debug-apk
-          path: mobile-apk/android/app/build/outputs/apk/debug/*.apk
+          path: dist/*.apk
           if-no-files-found: error
+
+      # Publish the release the in-app update check polls. Only on real main
+      # builds (and manual dispatch) — not needed for other events. Marked
+      # --latest so the /releases/latest API returns it.
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "v${{ github.run_number }}"
+          "dist/mytcg-v${{ github.run_number }}.apk"
+          --repo "${{ github.repository }}"
+          --title "MyTCG v1.0.${{ github.run_number }}"
+          --notes "Automated build from ${{ github.sha }}."
+          --latest

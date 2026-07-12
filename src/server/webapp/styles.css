@@ -4346,3 +4346,52 @@ details[open]>.cos-summary::before {
         padding-bottom: 44px;
     }
 }
+
+/* --- In-app update banner (Android APK OTA-notify, js/update.js) ------------ */
+.update-banner {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    color: var(--ink);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+}
+
+.update-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.update-banner-download {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 14px;
+}
+
+.update-banner-close {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.update-banner-close:hover {
+    color: var(--ink);
+}

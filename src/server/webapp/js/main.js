@@ -3,6 +3,7 @@ import { createGameController } from './controller.js';
 import { createMenuController } from './menu.js';
 import { getUiElements } from './dom.js';
 import { initPeek } from './peek.js';
+import { initUpdateCheck } from './update.js';
 
 const ui = getUiElements();
 // Wire the "👁 Board" peek buttons on the decision popups (choice + card stack).
@@ -16,3 +17,6 @@ const menu = createMenuController(ui, controller, cardStack);
 // hardware back stack stays consistent with what is on screen.
 controller.init({ onExitToMenu: () => menu.navBack() });
 menu.init();
+// Best-effort: inside the Android app, notify if a newer APK has been released.
+// No-op in the browser and offline.
+initUpdateCheck();
