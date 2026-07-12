@@ -156,6 +156,37 @@ export function persistProfile() {
     save();
 }
 
+// --- Card collection (for LAN trading) --------------------------------------
+// A lightweight owned-card ledger kept separate from the localStorage profile.
+// Everyone starts owning one of each card, so this only diverges once players
+// trade. Deckbuilding still uses the full catalog; this ledger just gives
+// trades something real to move. Absent key == the default one owned.
+
+const COLLECTION_KEY = 'mytcg_collection_v1';
+
+function loadCollection() {
+    try {
+        return JSON.parse(localStorage.getItem(COLLECTION_KEY)) || {};
+    } catch (error) {
+        return {};
+    }
+}
+
+export function ownedCount(cardId) {
+    const c = loadCollection();
+    return Object.prototype.hasOwnProperty.call(c, cardId) ? c[cardId] : 1;
+}
+
+// Apply a completed trade to the local collection: cards you gave away leave,
+// cards you received are added.
+export function applyTradeResult({ gained = [], lost = [] }) {
+    const c = loadCollection();
+    const get = (id) => (Object.prototype.hasOwnProperty.call(c, id) ? c[id] : 1);
+    for (const id of lost) c[id] = Math.max(0, get(id) - 1);
+    for (const id of gained) c[id] = get(id) + 1;
+    localStorage.setItem(COLLECTION_KEY, JSON.stringify(c));
+}
+
 // --- Crowns ----------------------------------------------------------------
 
 export function getCrowns() {

@@ -331,6 +331,15 @@ class LanService:
     # --- Trading ------------------------------------------------------------
 
     def propose_trade(self, match_id: str, a_pid: int, b_pid: int) -> dict[str, Any]:
+        a_pid, b_pid = int(a_pid), int(b_pid)
+        with self._lock:
+            # Idempotent per match + player pair: if either player already opened
+            # a trade between the two of them, both converge on that one session
+            # rather than creating rival trades.
+            pair = {a_pid, b_pid}
+            for tr in self._trades.values():
+                if tr.status == "open" and tr.match_id == match_id and {tr.a_pid, tr.b_pid} == pair:
+                    return tr.summary()
         trade_id = f"trade-{uuid.uuid4().hex[:10]}"
         trade = Trade(
             trade_id=trade_id,

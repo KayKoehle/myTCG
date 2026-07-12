@@ -34,8 +34,10 @@ import {
     setFavoriteMode,
     isCustomDeck,
     MAX_ACTIVE_EMOTES,
+    ownedCount,
     ownedEmotes,
     ownsItem,
+    applyTradeResult,
     renameDeck,
     resetDeck,
     selectDeck,
@@ -752,6 +754,175 @@ export function createMenuController(ui, game, cardStack) {
         lanLobby = null;
         startPeerPolling();
         renderLan();
+    }
+
+    // --- LAN trading ---------------------------------------------------------
+    // A trade session in progress: { trade_id, host_base, match_id, my_pid,
+    // opp_pid, offers, confirmed, status }. tradeMine is my staged offer (card
+    // ids), tradeTimer polls the host for the other side.
+    let trade = null;
+    let tradeMine = [];
+    let tradeTimer = null;
+
+    async function openTrade() {
+        const ctx = game.lanContext();
+        if (!ctx || !ctx.matchId) return;
+        await ensureCollection();
+        const opp = (ctx.players || []).map(Number).find((pid) => pid !== Number(ctx.playerId));
+        if (opp == null) { showToast('No opponent to trade with.'); return; }
+        try {
+            const data = await lanPost(ctx.hostBase, '/api/lan/trade/propose', {
+                match_id: ctx.matchId, a_pid: Number(ctx.playerId), b_pid: Number(opp),
+            });
+            trade = {
+                ...data.trade, host_base: ctx.hostBase,
+                my_pid: Number(ctx.playerId), opp_pid: Number(opp),
+            };
+            // Resume any offer already recorded for me (e.g. reopening the sheet).
+            tradeMine = (data.trade.offers[String(ctx.playerId)] || []).slice();
+        } catch (error) {
+            showToast(`Could not open trade: ${error}`);
+            return;
+        }
+        ui.tradeModal.classList.add('open');
+        ui.tradeModal.setAttribute('aria-hidden', 'false');
+        renderTrade();
+        startTradePolling();
+    }
+
+    function closeTrade({ silentCancel = false } = {}) {
+        stopTradePolling();
+        if (trade && trade.status === 'open' && !silentCancel) {
+            lanPost(trade.host_base, '/api/lan/trade/cancel', { trade_id: trade.trade_id }).catch(() => {});
+        }
+        trade = null;
+        tradeMine = [];
+        ui.tradeModal.classList.remove('open');
+        ui.tradeModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function tradeSignature() {
+        return trade ? JSON.stringify([trade.offers, trade.confirmed, trade.status]) : '';
+    }
+
+    function startTradePolling() {
+        stopTradePolling();
+        const tick = async () => {
+            if (!trade) return;
+            try {
+                const data = await lanPost(trade.host_base, '/api/lan/trade/state', { trade_id: trade.trade_id });
+                if (data.ok && data.trade) {
+                    const before = tradeSignature();
+                    Object.assign(trade, data.trade);
+                    if (trade.status === 'completed') { finishTrade(); return; }
+                    if (trade.status === 'cancelled') { showToast('Trade cancelled.'); closeTrade({ silentCancel: true }); return; }
+                    // Only re-render when the other side actually changed something,
+                    // so a poll never detaches the card the user is about to tap.
+                    if (tradeSignature() !== before) renderTrade();
+                }
+            } catch (error) { /* transient */ }
+            tradeTimer = setTimeout(tick, 1200);
+        };
+        tradeTimer = setTimeout(tick, 1200);
+    }
+    function stopTradePolling() {
+        if (tradeTimer) { clearTimeout(tradeTimer); tradeTimer = null; }
+    }
+
+    async function pushMyOffer() {
+        try {
+            const data = await lanPost(trade.host_base, '/api/lan/trade/offer', {
+                trade_id: trade.trade_id, player_id: trade.my_pid, card_ids: tradeMine,
+            });
+            if (data.ok) Object.assign(trade, data.trade);
+        } catch (error) { showToast(`${error}`); }
+        renderTrade();
+    }
+
+    async function confirmTrade() {
+        try {
+            const data = await lanPost(trade.host_base, '/api/lan/trade/confirm', {
+                trade_id: trade.trade_id, player_id: trade.my_pid,
+            });
+            if (data.ok) {
+                Object.assign(trade, data.trade);
+                if (trade.status === 'completed') { finishTrade(); return; }
+            }
+        } catch (error) { showToast(`${error}`); }
+        renderTrade();
+    }
+
+    function finishTrade() {
+        const gained = (trade.offers[String(trade.opp_pid)] || []).slice();
+        const lost = (trade.offers[String(trade.my_pid)] || []).slice();
+        applyTradeResult({ gained, lost });
+        const summary = gained.length || lost.length
+            ? `Trade complete — gave ${lost.length}, received ${gained.length}.`
+            : 'Trade complete.';
+        showToast(summary);
+        closeTrade({ silentCancel: true });
+    }
+
+    function cardLabel(cardId) {
+        const card = cardById(cardId);
+        return card ? card.name : cardId;
+    }
+
+    function renderTrade() {
+        if (!trade || !ui.tradeBody) return;
+        const theirs = trade.offers[String(trade.opp_pid)] || [];
+        const iConfirmed = Boolean(trade.confirmed[String(trade.my_pid)]);
+        const theyConfirmed = Boolean(trade.confirmed[String(trade.opp_pid)]);
+
+        const mineChips = tradeMine.length
+            ? tradeMine.map((id) => `<span class="trade-chip removable" data-remove="${escapeHtml(id)}">${escapeHtml(cardLabel(id))}</span>`).join('')
+            : '<span class="tiny">Add cards below…</span>';
+        const theirChips = theirs.length
+            ? theirs.map((id) => `<span class="trade-chip">${escapeHtml(cardLabel(id))}</span>`).join('')
+            : '<span class="tiny">Nothing yet…</span>';
+
+        // Cards you can still offer: owned (>=1) and not already staged.
+        const staged = new Set(tradeMine);
+        const pickable = allCollectionCards()
+            .filter((c) => ownedCount(c.id) >= 1 && !staged.has(c.id))
+            // De-dupe cards shared across decks.
+            .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i);
+        const pickerChips = pickable.map((c) =>
+            `<span class="trade-chip" data-add="${escapeHtml(c.id)}">${escapeHtml(c.name)}</span>`).join('');
+
+        const statusText = iConfirmed && theyConfirmed ? 'Both confirmed!'
+            : iConfirmed ? 'You confirmed. Waiting for them…'
+            : theyConfirmed ? 'They confirmed. Your move.'
+            : 'Add cards, then confirm.';
+
+        ui.tradeBody.innerHTML = `
+            <div class="trade-cols">
+                <div><div class="trade-col-title">You give ${iConfirmed ? '<span class="trade-confirmed">✓</span>' : ''}</div>
+                    <div class="trade-offer" id="tradeMine">${mineChips}</div></div>
+                <div><div class="trade-col-title">They give ${theyConfirmed ? '<span class="trade-confirmed">✓</span>' : ''}</div>
+                    <div class="trade-offer">${theirChips}</div></div>
+            </div>
+            <div class="trade-status ${iConfirmed && theyConfirmed ? 'ready' : ''}">${statusText}</div>
+            <div class="trade-picker">
+                <div class="trade-col-title">Your cards</div>
+                <div class="trade-offer" style="max-height:180px;overflow:auto;">${pickerChips || '<span class="tiny">No cards left to trade.</span>'}</div>
+            </div>
+            <div class="trade-actions">
+                <button class="btn ghost" id="tradeCancelBtn">Cancel</button>
+                <button class="btn" id="tradeConfirmBtn" ${iConfirmed ? 'disabled' : ''}>${iConfirmed ? 'Confirmed' : 'Confirm trade'}</button>
+            </div>`;
+
+        ui.tradeBody.querySelectorAll('[data-add]').forEach((el) => {
+            el.addEventListener('click', () => { tradeMine.push(el.dataset.add); pushMyOffer(); });
+        });
+        ui.tradeBody.querySelectorAll('[data-remove]').forEach((el) => {
+            el.addEventListener('click', () => {
+                tradeMine = tradeMine.filter((id) => id !== el.dataset.remove);
+                pushMyOffer();
+            });
+        });
+        document.getElementById('tradeCancelBtn').addEventListener('click', () => closeTrade());
+        document.getElementById('tradeConfirmBtn').addEventListener('click', confirmTrade);
     }
 
     // --- Card grouping (companion stacks) ------------------------------------
@@ -1534,6 +1705,12 @@ export function createMenuController(ui, game, cardStack) {
             ui.lanModal.addEventListener('click', (event) => {
                 if (event.target === ui.lanModal) closeLan();
             });
+        }
+        if (ui.btnTrade) {
+            ui.btnTrade.addEventListener('click', () => { openTrade(); });
+        }
+        if (ui.btnCloseTrade) {
+            ui.btnCloseTrade.addEventListener('click', () => { closeTrade(); });
         }
         ui.btnDecksBack.addEventListener('click', () => {
             navBack();

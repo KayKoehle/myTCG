@@ -33,6 +33,7 @@ export function getUiElements() {
         lanModal: document.getElementById('lanModal'),
         btnCloseLan: document.getElementById('btnCloseLan'),
         lanBody: document.getElementById('lanBody'),
+        btnTrade: document.getElementById('btnTrade'),
         tradeModal: document.getElementById('tradeModal'),
         btnCloseTrade: document.getElementById('btnCloseTrade'),
         tradeBody: document.getElementById('tradeBody'),

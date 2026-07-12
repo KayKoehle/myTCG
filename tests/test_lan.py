@@ -102,6 +102,17 @@ def test_cancelled_trade_rejects_further_offers():
         svc.set_offer(tid, 1, ["Gilgamesh"])
 
 
+def test_propose_is_idempotent_per_match_and_pair():
+    svc, _ = make_service()
+    first = svc.propose_trade(match_id="m1", a_pid=1, b_pid=2)
+    # Either player re-proposing (in any order) converges on the same session.
+    same = svc.propose_trade(match_id="m1", a_pid=2, b_pid=1)
+    assert same["trade_id"] == first["trade_id"]
+    # A different match gets its own trade.
+    other = svc.propose_trade(match_id="m2", a_pid=1, b_pid=2)
+    assert other["trade_id"] != first["trade_id"]
+
+
 def test_non_participant_cannot_offer():
     svc, _ = make_service()
     trade = svc.propose_trade(match_id="m1", a_pid=1, b_pid=2)

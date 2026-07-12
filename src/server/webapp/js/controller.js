@@ -56,6 +56,10 @@ export function createGameController(ui, cardStack) {
         if (ui.btnHome) {
             ui.btnHome.classList.toggle('hidden', !showHome);
         }
+        // Trading is a LAN-only affordance, and only while the match is live.
+        if (ui.btnTrade) {
+            ui.btnTrade.classList.toggle('hidden', !(isLanGame() && !gameOver));
+        }
     }
 
     async function onSurrender() {
