@@ -26,6 +26,13 @@
                 <span class="menu-play-sub" id="menuPlaySub">Battle the AI on a random deck</span>
             </button>
             <div class="menu-mode-row" id="menuModeRow" role="radiogroup" aria-label="Favorite game mode"></div>
+            <button class="menu-passplay" id="btnPassPlay">
+                <span class="menu-passplay-icon" aria-hidden="true">👥</span>
+                <span class="menu-passplay-text">
+                    <span class="menu-passplay-title">Pass &amp; Play</span>
+                    <span class="menu-passplay-sub">2–5 players, one device</span>
+                </span>
+            </button>
             <div class="menu-row">
                 <button class="menu-tile menu-decks-btn" id="btnMenuDecks">
                     <div class="menu-deck-art" id="menuDeckArt"></div>
@@ -214,6 +221,22 @@
                 <div class="stats-list" id="matchupStats">
                     <div class="tiny">No finished games yet.</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="passPlayModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="passPlayTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="passPlayTitle">Pass &amp; Play</h2>
+                <button class="sheet-close" id="btnClosePassPlay" aria-label="Close pass and play">&times;</button>
+            </div>
+            <p class="tiny">Everyone plays on this one device, taking turns. Choose how many
+                players and a deck for each seat.</p>
+            <div class="passplay-count" id="passPlayCount" role="radiogroup" aria-label="Number of players"></div>
+            <div class="passplay-seats" id="passPlaySeats"></div>
+            <div style="margin-top: 14px;">
+                <button class="btn" id="btnStartPassPlay" style="width:100%;">Start Game</button>
             </div>
         </div>
     </div>

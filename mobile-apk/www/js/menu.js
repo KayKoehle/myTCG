@@ -83,6 +83,12 @@ export function createMenuController(ui, game, cardStack) {
     let powerFilter = '';
     let controlsBuilt = false;
 
+    // Pass & Play setup: chosen player count and the deck id picked per seat
+    // (index 0 = seat 1). Seat 1 may use any of the player's decks; seats 2+
+    // pick from stock decks so their card lists resolve from the catalog.
+    let passPlayCount = 2;
+    let passPlaySeatDecks = [];
+
     // Embedding models, fitted once on the loaded collection.
     let cardSearch = null; // (query) -> [{card, score}] | null
     let recommender = null; // (deckCards, candidates, limit) -> [{card, score}]
@@ -390,6 +396,108 @@ export function createMenuController(ui, game, cardStack) {
             deckBName: aiDecks[0],
             decks: mode.players > 2 ? [deckA.name, ...aiDecks] : null,
             statsMeta: { deckId, cardIds: ids },
+        });
+    }
+
+    // --- Pass & Play (local hotseat) ----------------------------------------
+
+    const PASSPLAY_MIN = 2;
+    const PASSPLAY_MAX = 5;
+
+    // Default deck for a seat: seat 1 follows the player's current selection;
+    // later seats get distinct stock decks so a fresh table isn't a mirror.
+    function defaultSeatDeck(seatIdx) {
+        if (seatIdx === 0) return getSelectedDeckId();
+        return DECK_IDS[(seatIdx - 1) % DECK_IDS.length];
+    }
+
+    // Deck ids a seat may pick from: seat 1 can use custom decks too; seats 2+
+    // are limited to stock decks (their cards must resolve from the catalog).
+    function seatDeckChoices(seatIdx) {
+        return seatIdx === 0 ? allDeckIds() : DECK_IDS.slice();
+    }
+
+    async function openPassPlay() {
+        await ensureCollection();
+        // Seed/repair per-seat deck picks up to the current count.
+        for (let i = 0; i < PASSPLAY_MAX; i += 1) {
+            const choices = seatDeckChoices(i);
+            if (!passPlaySeatDecks[i] || !choices.includes(passPlaySeatDecks[i])) {
+                passPlaySeatDecks[i] = defaultSeatDeck(i);
+            }
+        }
+        ui.passPlayModal.classList.add('open');
+        ui.passPlayModal.setAttribute('aria-hidden', 'false');
+        renderPassPlay();
+    }
+
+    function closePassPlay() {
+        ui.passPlayModal.classList.remove('open');
+        ui.passPlayModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function renderPassPlay() {
+        ui.passPlayCount.innerHTML = '';
+        for (let n = PASSPLAY_MIN; n <= PASSPLAY_MAX; n += 1) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `passplay-count-chip ${n === passPlayCount ? 'active' : ''}`;
+            btn.setAttribute('role', 'radio');
+            btn.setAttribute('aria-checked', String(n === passPlayCount));
+            btn.textContent = `${n}P`;
+            btn.addEventListener('click', () => {
+                passPlayCount = n;
+                renderPassPlay();
+            });
+            ui.passPlayCount.appendChild(btn);
+        }
+
+        ui.passPlaySeats.innerHTML = '';
+        for (let i = 0; i < passPlayCount; i += 1) {
+            const row = document.createElement('div');
+            row.className = 'passplay-seat';
+            const label = document.createElement('span');
+            label.className = 'passplay-seat-label';
+            label.textContent = `Player ${i + 1}`;
+            const select = document.createElement('select');
+            select.className = 'passplay-deck';
+            for (const deckId of seatDeckChoices(i)) {
+                const opt = document.createElement('option');
+                opt.value = deckId;
+                opt.textContent = deckDisplayName(deckId);
+                if (deckId === passPlaySeatDecks[i]) opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.addEventListener('change', () => { passPlaySeatDecks[i] = select.value; });
+            row.appendChild(label);
+            row.appendChild(select);
+            ui.passPlaySeats.appendChild(row);
+        }
+    }
+
+    function startPassPlay() {
+        const count = passPlayCount;
+        const seatIds = passPlaySeatDecks.slice(0, count);
+        // Seat 1 may be a custom/edited deck (its cards ride along as deck_a_cards);
+        // seats 2+ are stock names the server resolves from the catalog.
+        const seat0 = deckMatchConfig(seatIds[0], stockIds(seatIds[0]));
+        const seat0Ids = deckCardIds(seatIds[0], stockIds(seatIds[0]));
+        if (seat0Ids.length !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(seatIds[0])}" needs exactly ${DECK_SIZE} cards (it has ${seat0Ids.length}).`);
+            return;
+        }
+        const names = [seat0.name, ...seatIds.slice(1)];
+        const localSeatIds = Array.from({ length: count }, (_, i) => i + 1);
+        applyCosmetics(seatIds[0]);
+        closePassPlay();
+        pushNav({ screen: 'game' });
+        showScreen('game');
+        game.startGame({
+            deckAName: seat0.name,
+            deckACards: seat0.cards,
+            deckBName: names[1],
+            decks: count > 2 ? names : null,
+            localSeatIds,
         });
     }
 
@@ -1149,6 +1257,20 @@ export function createMenuController(ui, game, cardStack) {
         ui.btnMenuShop.addEventListener('click', () => {
             openShop();
         });
+        if (ui.btnPassPlay) {
+            ui.btnPassPlay.addEventListener('click', () => { openPassPlay(); });
+        }
+        if (ui.btnClosePassPlay) {
+            ui.btnClosePassPlay.addEventListener('click', () => { closePassPlay(); });
+        }
+        if (ui.btnStartPassPlay) {
+            ui.btnStartPassPlay.addEventListener('click', () => { startPassPlay(); });
+        }
+        if (ui.passPlayModal) {
+            ui.passPlayModal.addEventListener('click', (event) => {
+                if (event.target === ui.passPlayModal) closePassPlay();
+            });
+        }
         ui.btnDecksBack.addEventListener('click', () => {
             navBack();
         });

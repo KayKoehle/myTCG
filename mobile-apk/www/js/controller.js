@@ -79,6 +79,14 @@ export function createGameController(ui, cardStack) {
         return (cfg().ai_player_ids || [cfg().ai_player_id]).map(Number);
     }
 
+    // Local pass-and-play: every seat is a human sharing this device.
+    function localSeats() {
+        return (cfg().local_seat_ids || []).map(Number);
+    }
+    function isLocalGame() {
+        return localSeats().length > 0;
+    }
+
     function laneIsFull(loc) {
         const snap = app.snapshot;
         if (!snap) return false;
@@ -1347,7 +1355,71 @@ export function createGameController(ui, cardStack) {
         app.mulliganSelected.clear();
     }
 
+    // Which seat is being asked to act right now: the pending chooser if there
+    // is one, otherwise whoever's turn it is.
+    function actorSeat(snap) {
+        return snap.pending_choice ? Number(snap.pending_choice.player_id) : Number(snap.current_player_id);
+    }
+
+    // Local pass-and-play has no AI to auto-advance; instead, when the seat that
+    // must act is a *different* human sharing the device, we cover the board and
+    // ask players to physically hand it over before revealing the new hand.
+    async function maybePassAndPlay() {
+        const snap = app.snapshot;
+        if (!snap || snap.phase === 'GAME_OVER') return;
+        const you = cfg().player_id;
+        const actor = actorSeat(snap);
+        if (actor !== you && localSeats().includes(actor) && !app.passPending) {
+            await promptPassAndPlay(actor);
+            return;
+        }
+        // Start of your own turn: auto-draw, mirroring the AI-game path so the
+        // active player doesn't get stuck in the DRAW phase with no affordance.
+        if (actor === you && !snap.pending_choice) {
+            const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
+            if (drawAction) await doAction(drawAction);
+        }
+    }
+
+    function seatLabel(seatId) {
+        const order = seatOrder();
+        const idx = order.indexOf(String(seatId));
+        return `Player ${idx >= 0 ? idx + 1 : seatId}`;
+    }
+
+    // Full-screen opaque hand-off: hides the outgoing player's board until the
+    // incoming player taps, then swaps the active seat and re-renders their view.
+    function promptPassAndPlay(seatId) {
+        return new Promise((resolve) => {
+            app.passPending = true;
+            const overlay = document.createElement('div');
+            overlay.className = 'passplay-overlay';
+            overlay.innerHTML = `
+                <div class="passplay-card">
+                    <div class="passplay-icon" aria-hidden="true">🔄</div>
+                    <div class="passplay-title">Pass the device</div>
+                    <div class="passplay-sub">Hand it to <strong>${escapeHtml(seatLabel(seatId))}</strong>.</div>
+                    <button class="passplay-btn" type="button">I'm ${escapeHtml(seatLabel(seatId))} — ready</button>
+                </div>`;
+            const finish = async () => {
+                overlay.remove();
+                app.passPending = false;
+                app.activeSeatId = Number(seatId);
+                await refresh();
+                resolve();
+            };
+            overlay.querySelector('.passplay-btn').addEventListener('click', finish);
+            document.body.appendChild(overlay);
+        });
+    }
+
     async function maybeAutoAdvance() {
+        // Local games are driven entirely by the humans present; never call the
+        // AI, just orchestrate the pass-and-play hand-off.
+        if (isLocalGame()) {
+            await maybePassAndPlay();
+            return;
+        }
         if (app.autoRunning) return;
         app.autoRunning = true;
         try {
@@ -1446,6 +1518,9 @@ export function createGameController(ui, cardStack) {
         app.seed = Math.floor(Math.random() * 1_000_000_000);
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
+        app.passPending = false;
+        // Rematch starts back at the first local seat holding the device.
+        if (app.localSeatIds && app.localSeatIds.length) app.activeSeatId = Number(app.localSeatIds[0]);
         // Every match (menu, rematch, debug) is against rated rivals drawn
         // near the player's current Elo; the server plays them at exactly
         // that strength.
@@ -1460,14 +1535,20 @@ export function createGameController(ui, cardStack) {
     // edited) deck against the given AI deck(s), in a fresh match. statsMeta
     // identifies the profile deck so the result can be recorded. `decks`
     // (one deck name per seat, human first) switches the match to FFA.
-    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null }) {
+    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null }) {
         app.deckAName = deckAName || null;
         app.deckACards = deckACards || null;
         app.deckBName = deckBName || null;
         app.deckNames = Array.isArray(decks) && decks.length > 2 ? decks : null;
-        app.aiPlayerIds = app.deckNames
-            ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
-            : [app.aiPlayerId];
+        // Local pass-and-play: all seats are human, no AI to drive. Otherwise
+        // seats 2..n are AI rivals.
+        app.localSeatIds = Array.isArray(localSeatIds) && localSeatIds.length ? localSeatIds.map(Number) : null;
+        app.activeSeatId = app.localSeatIds ? Number(app.localSeatIds[0]) : app.humanPlayerId;
+        app.aiPlayerIds = app.localSeatIds
+            ? []
+            : (app.deckNames
+                ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
+                : [app.aiPlayerId]);
         app.statsMeta = statsMeta;
         playedCardIds = new Set();
         try {
