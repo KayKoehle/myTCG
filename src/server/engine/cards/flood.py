@@ -124,6 +124,8 @@ def _handle_enlil_unleash(rt: Any, state: GameState, chooser_idx: int, option: s
         for card_id in list(state.locations[location_idx].stacks[side_idx]):
             if not is_human(card_id):
                 continue
+            if catalog.is_hero(card_id):
+                continue
             owner_idx = catalog.card_owner_idx(state, card_id)
             if state.protected_locations[owner_idx] == location_idx:
                 continue

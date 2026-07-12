@@ -584,6 +584,8 @@ def _resolve_flood(state: GameState) -> GameState:
             for card_id in list(location.stacks[side_idx]):
                 if not catalog.is_human(card_id):
                     continue
+                if catalog.is_hero(card_id):
+                    continue
                 owner_idx = _card_owner_idx(state, card_id)
                 if state.protected_locations[owner_idx] == location_idx:
                     continue

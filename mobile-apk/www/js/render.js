@@ -18,6 +18,7 @@ import {
     typeLabel,
 } from './helpers.js';
 import { DECK_META } from './profile.js';
+import { unpeekAll } from './peek.js';
 
 // Short display name for a rival, derived from the deck they play
 // ("The Trojan Siege Deck" -> "Trojan Siege"); falls back to "Rival N".
@@ -433,9 +434,20 @@ export function updateEndTurnButton(ui, app, config) {
     ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
     ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
     ui.btnEndTurn.classList.toggle('new-game', isGameOver && !opponentTurn);
+    // On your own turn, glow the button once you've run out of plays (only
+    // end_turn remains) so it reads as the obvious, safe next tap.
+    const canEndTurn = legal.some((a) => a.kind === 'end_turn');
+    const hasPlay = legal.some((a) => a.kind === 'play_card' || a.kind === 'use_ability');
+    ui.btnEndTurn.classList.toggle(
+        'ready-endturn',
+        !opponentTurn && !isGameOver && !isOpeningMulligan && canEndTurn && !hasPlay,
+    );
 }
 
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, cardStack }) {
+    // A new game state means any previously peeked decision popup is resolved;
+    // start every render with the popups fully visible again.
+    unpeekAll();
     app.snapshot = snapshot;
     app.cardNameById = buildCardNameMap(snapshot);
 

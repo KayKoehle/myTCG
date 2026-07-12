@@ -1,4 +1,5 @@
 import { anecdoteText, cardArtTag, effectLabel, escapeHtml, typeLabel } from './helpers.js';
+import { unpeekAll } from './peek.js';
 
 // A reusable card-stack popup. Three modes:
 //   'select'      - pick one card from a stack, then press a confirm button
@@ -116,6 +117,7 @@ export function createCardStackPopup(ui) {
     }
 
     function open(opts) {
+        unpeekAll(); // a fresh popup always starts visible
         mode = opts.mode || 'view';
         confirmVerb = opts.confirmVerb || 'Confirm';
         onConfirm = opts.onConfirm || null;
@@ -165,6 +167,7 @@ export function createCardStackPopup(ui) {
 
     function close() {
         if (!ui.stackModal.classList.contains('open')) return;
+        unpeekAll();
         ui.stackModal.classList.remove('open');
         ui.stackModal.setAttribute('aria-hidden', 'true');
         const cb = onClose;

@@ -259,6 +259,9 @@ uv run python -m src.server.ai.balance_search
 #   --breadth 4             candidates per angle (nerf/buff/outlier) per iteration
 #   --max-delta 2           never drift a power more than this from the CSV value
 #   --card-weight 1.0       weight of the per-card delta term in the objective
+#   --vanilla-weight 0.01   penalize pushing a card ABOVE the vanilla line (see below)
+#   --vanilla-slope 2.0     vanilla line slope (power per unit cost)
+#   --vanilla-intercept 0   vanilla line intercept (power at cost 0)
 #   --decks a,b             tune a subset of decks
 ```
 
@@ -272,6 +275,80 @@ rates from 1000-game batches carry ~±2pp of noise, so treat single accepted
 tweaks as suggestions rather than proof, and the search only optimizes win
 rates — it cannot tell whether a nerf makes a card boring, so review the
 suggestions before committing them.
+
+**The vanilla guardrail (`--vanilla-weight`).** By default the search moves
+power freely, which risks "fixing" a deck that is actually mis-built by
+inflating its cards past what their cost should buy. Turning on
+`--vanilla-weight` (start around `0.01`) adds an **asymmetric** penalty for
+pushing a card's printed power *above* the vanilla line
+(`power = slope*cost + intercept`, defaulting to the game's `2*cost`
+baseline). Sitting *below* the line stays free — that is exactly what pays
+for a card's effect — so the search can still nerf and buff toward 50%, but
+it can no longer quietly turn a 4-cost/7 into a 4-cost/10 to rescue a badly
+constructed deck. Use it together with the deck diagnostics below.
+
+### 4. Deck diagnostics: construction vs. card power
+
+`python -m src.server.ai.deck_diagnostics` answers a question the arena and
+the balance search cannot: **is a deck losing because its cards are
+mis-costed, or because of how it is built** (bad curve, dead cards, effects
+that need setup)? Buffing power numbers fixes the first and only *hides* the
+second, so separate them before you tune.
+
+```bash
+# read each deck against the 2*cost vanilla line, merging the latest arena
+# play/win data from stats/arena_results.json
+uv run python -m src.server.ai.deck_diagnostics
+
+# fit the vanilla line your existing cards already imply, instead of 2*cost
+uv run python -m src.server.ai.deck_diagnostics --fit
+
+# useful flags
+#   --slope 2 --intercept 1   set the vanilla line by hand (power = slope*cost + intercept)
+#   --arena stats/my.json     a different arena results file (omit/missing = skip play data)
+#   --decks a,b               a subset of decks
+```
+
+For every deck it prints:
+
+- the **cost curve** and a **curve check** that flags real problems — cost
+  holes, a lopsided pile at one cost, and bodies with `<=0` power that make
+  the curve "play thinner than it looks";
+- a **curve-out tempo** line: the vanilla power a perfect draw could put on
+  the board by each turn (mana `= min(7, turn)`, no carryover). This is the
+  pure construction metric — it ignores every effect, so it is a floor and a
+  fair cross-deck comparison;
+- every card's **effect budget** (`power - vanilla(cost)`): cards *above* the
+  line are over-statted (real nerf targets); cards far *below* are paying
+  stats for an effect that then has to earn them back;
+- merged **play rate + win delta** from the arena, ending in a **verdict**
+  split into CONSTRUCTION vs CARD POWER buckets.
+
+One statistical caveat the report repeats: the arena win-delta is confounded
+by game length (winning games run longer and play more cards, so almost every
+card shows a positive delta). Trust play rate and *negative* deltas; a
+positive delta is close to meaningless on its own.
+
+**The vanilla power line.** A no-effect being's printed power should follow a
+line in its cost. The game's one true vanilla card, Craftsmen of the Ark
+(cost 3, power 6), pins the designer baseline at `2*cost`; effects then buy
+power *down* from that line. Because this is a board-control game (win by the
+highest power at capacity-limited locations, mana ramping 1/turn with no
+carryover, a short 7-round game), card economy and slot concentration already
+favor big bodies — so the balanced line is roughly linear with a small
+positive intercept, **not** convex. A cost-5 vanilla should sit around 8–10,
+not 12. Reference lines:
+
+| cost                    | 1 | 2 | 3 | 4 | 5 | 6  | 7  |
+| ----------------------- | - | - | - | - | - | -- | -- |
+| `2*cost` (baseline)     | 2 | 4 | 6 | 8 | 10| 12 | 14 |
+| `2*cost + 1` (favors small, recommended) | 3 | 5 | 7 | 9 | 11| 13 | 15 |
+| fitted from these decks (`~1.6*cost + 0.4`) | 2 | 4 | 5 | 7 | 9 | 10 | 12 |
+
+The `+1` intercept is the one correction pure `2*cost` misses: it is the
+fixed "cost of being a card" (each body spends a card and a lane slot
+regardless of size), which is why cheap cards deserve slightly more power per
+mana than the naive line gives them.
 
 ## Setup with uv
 
@@ -379,46 +456,12 @@ Manu Vaivasvata Flood - Build boat, sail to himalaya
 - Quest cards that give a bonus if you complete them
 - Extra Drafting Rule cards (Time Periods) like Edo, Heian, High Middle ages, Sumerian, Pax Romana. Rules like: 
 
-### Digital Game
-- Implement Ai agents to play the game 
-- Implement online multiplayer client in Godot
-
-### World Building
-- Gather name ideas for the game
-- Start world building and write lore
-
 `src/box_generator.py` generates boxes for starter decks. Do not print these boxes directly, first you must export them to `.png`.
 
-## Colors
-There are three mana colors in this game. Each is associated with certain game mechanics.
-
-### Red
-- Destruction: Destroy cards.
-- Discard: Discard your hand cards.
-- Restrict: Adding restrictions to playing cards.
-- Curses: Give your opponents curses which negatively impact them.
-- Mana Destruction: Destroy mana crystals.
-
-### Green
-- Ramp: Gain additional mana to play big, expensive creatures.
-- Swarm: Play lots of small creatures.
-- Top of the deck: Bring creatures from the top of your deck into play.
-- Mill: Put cards from your deck into the graveyard.
-- Revive: Returning cards from your graveyard to the battlefield.
-- Graveyard: Permanent bonus effects when in your graveyard.
-- No effect: Play big creatures which don't have an effect.
-
-### Blue
-- Move: Move creatures between locations.
-- Return: Return creatures to their owners hand.
-- Stack Control: Control the position of your 'While on top' creatures.
-- Draw: Draw lots of cards.
-- Silence: Remove negative effects of your creatures or good effects of enemy creatures.
-- Mind Bend: Gain control over enemy creatures.
 
 ## Card types
 
-### Creatures
+### Beings
 Creatures are the core card type of this game. They cost mana and give power. They are played on a location.
 
 ### Locations
@@ -437,51 +480,13 @@ To use the hero's ability, you must pay one victory point and the mana cost on t
 ## Quests
 Give a reward after a condition is fulfilled, like move one of your creatures 5 times.
 
-## Starter Decks
-
-### Mono-color Decks
-
-Flames of Annihilation (![r]): Destroy cards.
-
-Raging Fires (![r]): Discard cards.
-
-Unstoppable Growth (![g]): Ramp and play big creatures.
-
-Swarming Nature (![g]): Play many creatures.
-
-Flow of the Currents (![b]): Move cards.
-
-Echoes of the Storm (![b]): Return cards.
-
-### Dual-color Decks 
-
-From the Ashes (![r]![g]): Discard cards and revive them.
-
-Awaken the Beast (![g]![b]): Control your deck, play the top card for free and trigger 'On Draw' Effects.
-
-Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to destroy enemy cards.
-
-(![r]![g]): Lane control swarm.
-
-(![g]![b]): Ramp early to repeatedly play your cards.
-
-(![b]![r]): Silence Discard.
-
-(![b]![r]): Move Lane Control.
-
-(![b]![r]): Draw Discard.
-
-(![b]![r]): Gift creatures.
-
-### Tri-color Decks
-
-
-[r]: ./templates/color/red.svg
-[g]: ./templates/color/green.svg
-[b]: ./templates/color/blue.svg
- 
 
 ## TODOs 
+
+### Gameplay
+
+- How to make sure that The Flood Decks actually play humans?
+
 ### Future Features
 
 - Add some Sound Effects. We can include a ComfyUI Workflow that generates Sound Effects. We should have Sound Effects for getting a crown, getting a coin, start of turn, mulligan and shuffling, end of turn, winning, losing, and each card should have their own sound/ battlecry when they are getting played, being banished, being revived, and being discarded. If there are any sound effects that make sense also add them.
@@ -496,3 +501,5 @@ Tempest of Flames (![b]![r]): Repeat the effects of your strongest cards to dest
 
 - LAN Multiplayer
 - LAN Card Trading
+
+### Bugs

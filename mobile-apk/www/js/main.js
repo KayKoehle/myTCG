@@ -2,8 +2,11 @@ import { createCardStackPopup } from './cardstack.js';
 import { createGameController } from './controller.js';
 import { createMenuController } from './menu.js';
 import { getUiElements } from './dom.js';
+import { initPeek } from './peek.js';
 
 const ui = getUiElements();
+// Wire the "👁 Board" peek buttons on the decision popups (choice + card stack).
+initPeek();
 // One shared card-stack popup: in-game choices and the collection's card
 // reader both use it (its DOM listeners must only be bound once).
 const cardStack = createCardStackPopup(ui);

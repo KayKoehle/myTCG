@@ -788,6 +788,7 @@ select {
 }
 
 .choice-dialog {
+    position: relative;
     width: min(720px, 96vw);
     max-height: 82vh;
     overflow: auto;
@@ -802,6 +803,7 @@ select {
 
 .choice-title {
     margin: 0 0 6px;
+    padding-right: 80px; /* clear the pinned peek button */
     font-size: 16px;
     letter-spacing: 0.02em;
 }
@@ -844,6 +846,73 @@ select {
     transform: translateY(-1px);
 }
 
+/* --- Peek: temporarily hide a decision popup to study the board ------------- */
+
+/* Both decision popups (choice + card stack) fade out entirely while peeking,
+   pointer events off, so the board behind is fully visible and legible. */
+.choice-modal,
+.stack-modal {
+    transition: opacity 130ms ease;
+}
+
+.choice-modal.peeking,
+.stack-modal.peeking {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.peek-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    background: rgba(8, 20, 32, 0.7);
+    color: var(--ink);
+    font-size: 12px;
+    padding: 5px 11px;
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease;
+}
+
+.peek-btn:hover {
+    border-color: rgba(255, 160, 94, 0.9);
+    background: rgba(20, 40, 58, 0.85);
+}
+
+/* The choice modal has no header bar, so the peek button pins to its corner. */
+.choice-peek {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 1;
+}
+
+/* Floating pill that brings a peeked popup back; only shown while peeking. */
+.peek-restore {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    z-index: 320;
+    display: none;
+    border: none;
+    border-radius: 999px;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #08131f;
+    background: linear-gradient(135deg, #ffcf8a, #ff9f4d);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.peek-restore.show {
+    display: block;
+}
+
 /* --- Card-stack popup (selection + underworld view) ----------------------- */
 
 .stack-modal {
@@ -884,6 +953,7 @@ select {
 
 .stack-title {
     margin: 0;
+    flex: 1 1 auto;
     font-size: 15px;
     line-height: 1.25;
     color: #f5fbff;
@@ -2010,6 +2080,20 @@ select {
 .btn.turn.new-game {
     background: linear-gradient(135deg, #17b6ff, #0e7ac2);
     box-shadow: 0 10px 24px rgba(14, 122, 194, 0.35);
+}
+
+/* Out of plays: pulse the End Turn button so it reads as the obvious next tap. */
+.btn.turn.ready-endturn {
+    animation: endturn-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes endturn-pulse {
+    0%, 100% {
+        box-shadow: 0 10px 24px rgba(222, 106, 42, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 0 3px rgba(255, 200, 120, 0.55), 0 12px 30px rgba(255, 159, 77, 0.6);
+    }
 }
 
 /* --- Full location feedback -------------------------------------------------- */

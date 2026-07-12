@@ -1391,6 +1391,31 @@ export function createGameController(ui, cardStack) {
         }
     }
 
+    // When ending the turn would waste a move (a card still playable, a hero
+    // ability still up, or unspent mana on the table), return a short reason to
+    // confirm; otherwise null and the turn ends straight away. Guards misclicks
+    // without nagging when there is genuinely nothing left to do.
+    function endTurnMisclickReason(snap) {
+        const legal = humanLegalActions(snap, cfg().player_id);
+        const plays = legal.filter((a) => a.kind === 'play_card' || a.kind === 'use_ability');
+        if (plays.length === 0) return null;
+        const human = String(cfg().player_id);
+        const manaLeft = Number((snap.mana_pool || {})[human]) || 0;
+        const playableCards = new Set(plays.filter((a) => a.card_id != null).map((a) => a.card_id)).size;
+        let msg = playableCards > 1
+            ? `You still have ${playableCards} cards you can play`
+            : 'You still have a move you can make';
+        if (manaLeft > 0) msg += ` and ${manaLeft} unspent mana`;
+        return `${msg}. End your turn anyway?`;
+    }
+
+    async function endTurnNow(snap) {
+        const action = humanLegalActions(snap, cfg().player_id).find((a) => a.kind === 'end_turn');
+        if (action) {
+            await doAction(action);
+        }
+    }
+
     async function onEndTurn() {
         const snap = app.snapshot;
         if (!snap) return;
@@ -1407,10 +1432,13 @@ export function createGameController(ui, cardStack) {
             return;
         }
 
-        const action = humanLegalActions(snap, cfg().player_id).find((a) => a.kind === 'end_turn');
-        if (action) {
-            await doAction(action);
+        const reason = endTurnMisclickReason(snap);
+        if (reason) {
+            ui.endTurnCopy.textContent = reason;
+            openSheet(ui.endTurnModal);
+            return;
         }
+        await endTurnNow(snap);
     }
 
     async function newGame() {
@@ -1487,7 +1515,17 @@ export function createGameController(ui, cardStack) {
         ui.btnSurrenderConfirm.onclick = () => {
             onSurrender();
         };
-        [ui.settingsModal, ui.historyModal, ui.surrenderModal].forEach((modal) => {
+        ui.btnCloseEndTurn.onclick = () => {
+            closeSheet(ui.endTurnModal);
+        };
+        ui.btnEndTurnCancel.onclick = () => {
+            closeSheet(ui.endTurnModal);
+        };
+        ui.btnEndTurnConfirm.onclick = async () => {
+            closeSheet(ui.endTurnModal);
+            if (app.snapshot) await endTurnNow(app.snapshot);
+        };
+        [ui.settingsModal, ui.historyModal, ui.surrenderModal, ui.endTurnModal].forEach((modal) => {
             modal.addEventListener('click', (event) => {
                 if (event.target === modal) closeSheet(modal);
             });

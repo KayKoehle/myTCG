@@ -259,6 +259,7 @@
 
     <div id="choiceModal" class="choice-modal" aria-hidden="true">
         <div class="choice-dialog" role="dialog" aria-modal="true" aria-labelledby="choiceTitle">
+            <button class="peek-btn choice-peek" id="choicePeek" type="button" aria-label="Peek at the board">👁 Board</button>
             <h2 id="choiceTitle" class="choice-title">Choose an option</h2>
             <p class="choice-prompt" id="choicePrompt"></p>
             <div class="choice-sub" id="choiceSub"></div>
@@ -270,6 +271,7 @@
         <div class="stack-dialog" role="dialog" aria-modal="true" aria-labelledby="stackTitle">
             <div class="stack-head">
                 <h2 class="stack-title" id="stackTitle"></h2>
+                <button class="peek-btn stack-peek" id="stackPeek" type="button" aria-label="Peek at the board">👁 Board</button>
                 <button class="sheet-close" id="stackClose" aria-label="Close">&times;</button>
             </div>
             <div class="stack-list" id="stackList"></div>
@@ -279,6 +281,22 @@
             </div>
         </div>
     </div>
+
+    <div id="endTurnModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="endTurnTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="endTurnTitle">End your turn?</h2>
+                <button class="sheet-close" id="btnCloseEndTurn" aria-label="Keep playing">&times;</button>
+            </div>
+            <p class="surrender-copy" id="endTurnCopy">You still have plays available.</p>
+            <div class="surrender-actions">
+                <button class="btn ghost" id="btnEndTurnCancel">Keep playing</button>
+                <button class="btn" id="btnEndTurnConfirm">End Turn</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="peekRestore" class="peek-restore" type="button">Tap to resume choice</button>
 
     <script type="module" src="js/main.js"></script>
     <script src="pwa.js"></script>

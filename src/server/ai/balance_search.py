@@ -82,8 +82,24 @@ class EvalResult(NamedTuple):
     objective: float
     deck_term: float  # sum of squared deck win-rate deviations from 50%
     card_term: float  # mean squared per-card impact delta
+    vanilla_term: float  # mean squared power ABOVE the vanilla line (guardrail)
     rates: dict[str, float]
     records: list[GameRecord]
+
+
+def _vanilla_penalty(overrides: Overrides, base: dict[str, int], costs: dict[str, int],
+                     slope: float, intercept: float) -> float:
+    """Mean squared power a card sits ABOVE its vanilla line (slope*cost +
+    intercept). Asymmetric on purpose: a card may sit below the line freely
+    (that is what pays for its effect), but the optimizer must pay to push a
+    card's raw stats above vanilla. This stops the search from 'fixing' a
+    construction/curve weakness by inflating numbers into over-costed bodies."""
+    excesses = []
+    for name, cost in costs.items():
+        power = overrides.get(name, base.get(name, 0))
+        excess = power - (slope * cost + intercept)
+        excesses.append(max(0.0, excess) ** 2)
+    return sum(excesses) / len(excesses) if excesses else 0.0
 
 
 def _build_specs(decks: list[str], games: int, agent: str, seed: int) -> list[GameSpec]:
@@ -115,7 +131,9 @@ def _card_deltas(records: list[GameRecord], base: dict[str, int]) -> dict[tuple[
 
 def evaluate(overrides: Overrides, decks: list[str], games: int, agent: str,
              seed: int, workers: int, base: dict[str, int],
-             card_weight: float = 1.0) -> EvalResult:
+             card_weight: float = 1.0, costs: dict[str, int] | None = None,
+             vanilla_weight: float = 0.0, vanilla_slope: float = 2.0,
+             vanilla_intercept: float = 0.0) -> EvalResult:
     """Play a batch under `overrides` and score it (lower is better)."""
     specs = _build_specs(decks, games, agent, seed)
     if workers > 1:
@@ -137,7 +155,12 @@ def evaluate(overrides: Overrides, decks: list[str], games: int, agent: str,
     deltas = _card_deltas(records, base)
     card_term = sum(d * d for d in deltas.values()) / len(deltas) if deltas else 0.0
 
-    return EvalResult(deck_term + card_weight * card_term, deck_term, card_term, rates, records)
+    vanilla_term = 0.0
+    if vanilla_weight and costs:
+        vanilla_term = _vanilla_penalty(overrides, base, costs, vanilla_slope, vanilla_intercept)
+
+    objective = deck_term + card_weight * card_term + vanilla_weight * vanilla_term
+    return EvalResult(objective, deck_term, card_term, vanilla_term, rates, records)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +175,21 @@ def _base_stats(decks: list[str]) -> dict[str, int]:
             defn = catalog.CARD_LIBRARY[cid]
             stats[defn.name] = defn.power
     return stats
+
+
+def _costs(decks: list[str]) -> dict[str, int]:
+    """name -> printed cost, only for cards whose printed power is the stat the
+    board sees (dynamic-power and dynamic-cost cards are excluded — their
+    numbers are meaningless against the vanilla line)."""
+    load_data_if_needed()
+    out: dict[str, int] = {}
+    for deck in decks:
+        for cid in catalog.DECK_LIBRARY[deck]:
+            defn = catalog.CARD_LIBRARY[cid]
+            behavior = behavior_named(defn.name)
+            if behavior.power is None and behavior.base_cost is None and defn.cost > 0:
+                out[defn.name] = defn.cost
+    return out
 
 
 def _power_tweakable(name: str) -> bool:
@@ -226,7 +264,8 @@ def propose(records: list[GameRecord], rates: dict[str, float], overrides: Overr
 
 def _fmt(res: EvalResult) -> str:
     rates = "  ".join(f"{d} {100 * r:.1f}%" for d, r in sorted(res.rates.items(), key=lambda kv: -kv[1]))
-    return f"objective {res.objective:.4f} (decks {res.deck_term:.4f} + cards {res.card_term:.4f})   {rates}"
+    vanilla = f" + vanilla {res.vanilla_term:.4f}" if res.vanilla_term else ""
+    return f"objective {res.objective:.4f} (decks {res.deck_term:.4f} + cards {res.card_term:.4f}{vanilla})   {rates}"
 
 
 def main() -> None:
@@ -244,6 +283,11 @@ def main() -> None:
     parser.add_argument("--max-delta", type=int, default=2, help="max total power change from the CSV value per card")
     parser.add_argument("--card-weight", type=float, default=1.0,
                         help="weight of the per-card impact-delta term in the objective")
+    parser.add_argument("--vanilla-weight", type=float, default=0.0,
+                        help="penalty on pushing a card's raw power ABOVE the vanilla line "
+                             "(0 = off; ~0.01 keeps the search from over-statting past the curve)")
+    parser.add_argument("--vanilla-slope", type=float, default=2.0, help="vanilla line: power per unit cost")
+    parser.add_argument("--vanilla-intercept", type=float, default=0.0, help="vanilla line: power at cost 0")
     parser.add_argument("--decks", default=",".join(DEFAULT_DECKS))
     parser.add_argument("--workers", type=int, default=max(1, (mp.cpu_count() or 2) - 1))
     parser.add_argument("--seed", type=int, default=0)
@@ -252,12 +296,17 @@ def main() -> None:
 
     decks = [d.strip() for d in args.decks.split(",") if d.strip()]
     base = _base_stats(decks)
+    vkw = dict(costs=_costs(decks), vanilla_weight=args.vanilla_weight,
+               vanilla_slope=args.vanilla_slope, vanilla_intercept=args.vanilla_intercept)
     overrides: Overrides = {}
     history: list[dict] = []
 
     started = time.time()
     current = evaluate(overrides, decks, args.games, args.agent, args.seed, args.workers,
-                       base, args.card_weight)
+                       base, args.card_weight, **vkw)
+    if args.vanilla_weight:
+        print(f"vanilla guardrail on: power = {args.vanilla_slope}*cost + {args.vanilla_intercept}, "
+              f"weight {args.vanilla_weight}")
     print(f"baseline   {_fmt(current)}")
 
     for iteration in range(1, args.iterations + 1):
@@ -270,14 +319,15 @@ def main() -> None:
         # Re-measure the incumbent on this iteration's seeds so the comparison
         # is apples-to-apples (common random numbers across all evaluations).
         current = evaluate(overrides, decks, args.games, args.agent, seed, args.workers,
-                           base, args.card_weight)
+                           base, args.card_weight, **vkw)
         best_label, best = None, current
         for label, cand in candidates:
             result = evaluate(cand, decks, args.games, args.agent, seed, args.workers,
-                              base, args.card_weight)
+                              base, args.card_weight, **vkw)
             marker = " <-- improves" if result.objective < best.objective else ""
+            van = f" + vanilla {result.vanilla_term:.4f}" if result.vanilla_term else ""
             print(f"  iter {iteration}  {label:<52} objective {result.objective:.4f}"
-                  f" (decks {result.deck_term:.4f} + cards {result.card_term:.4f}){marker}")
+                  f" (decks {result.deck_term:.4f} + cards {result.card_term:.4f}{van}){marker}")
             if result.objective < best.objective:
                 best_label, best, best_overrides = label, result, cand
 
@@ -295,7 +345,7 @@ def main() -> None:
     validation = None
     if args.validate_games and overrides:
         v = evaluate(overrides, decks, args.validate_games, "minimax",
-                     args.seed + 999_983, args.workers, base, args.card_weight)
+                     args.seed + 999_983, args.workers, base, args.card_weight, **vkw)
         validation = {"objective": v.objective, "deck_term": v.deck_term,
                       "card_term": v.card_term, "win_rates": v.rates}
         print(f"minimax validation ({args.validate_games} games): {_fmt(v)}")
