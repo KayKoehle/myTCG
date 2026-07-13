@@ -1368,6 +1368,26 @@ export function createGameController(ui, cardStack) {
         return snap.pending_choice ? Number(snap.pending_choice.player_id) : Number(snap.current_player_id);
     }
 
+    // Auto-draw at the start of the active seat's own turn (local + LAN), so it
+    // doesn't get stranded in the DRAW phase with a disabled End Turn button.
+    //
+    // This can run synchronously inside the rerender of the action that just
+    // ended the previous turn (rerender fires maybeAutoAdvance without awaiting
+    // it). At a round boundary the same seat can lead the new round, so the draw
+    // would fire while that ending action is still in flight — and doAction's
+    // actionPending guard would silently swallow it, freezing the board. When an
+    // action is still settling we defer and retry once it clears.
+    function autoDrawActiveSeat(snap, you) {
+        if (!snap || snap.pending_choice) return;
+        const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
+        if (!drawAction) return;
+        if (app.actionPending) {
+            setTimeout(() => autoDrawActiveSeat(app.snapshot, cfg().player_id), 50);
+            return;
+        }
+        doAction(drawAction);
+    }
+
     // Local pass-and-play has no AI to auto-advance; instead, when the seat that
     // must act is a *different* human sharing the device, we cover the board and
     // ask players to physically hand it over before revealing the new hand.
@@ -1382,9 +1402,8 @@ export function createGameController(ui, cardStack) {
         }
         // Start of your own turn: auto-draw, mirroring the AI-game path so the
         // active player doesn't get stuck in the DRAW phase with no affordance.
-        if (actor === you && !snap.pending_choice) {
-            const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
-            if (drawAction) await doAction(drawAction);
+        if (actor === you) {
+            autoDrawActiveSeat(snap, you);
         }
     }
 
@@ -1440,10 +1459,7 @@ export function createGameController(ui, cardStack) {
         const you = cfg().player_id;
         if (actorSeat(snap) === you) {
             clearLanPoll();
-            if (!snap.pending_choice) {
-                const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
-                if (drawAction) await doAction(drawAction);
-            }
+            autoDrawActiveSeat(snap, you);
             return;
         }
         scheduleLanPoll();
