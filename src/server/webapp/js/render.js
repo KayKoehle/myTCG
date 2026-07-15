@@ -251,15 +251,17 @@ function renderActionHistory(snapshot, ui, config) {
         : (Array.isArray(snapshot.action_history) ? snapshot.action_history : []);
     const rawHistory = Array.isArray(snapshot.action_history) ? snapshot.action_history : [];
     const human = String(config.player_id);
-    const ai = String(config.ai_player_id);
     const players = Array.isArray(snapshot.players) && snapshot.players.length
         ? snapshot.players
-        : Object.keys(snapshot.victory_points || { [human]: 0, [ai]: 0 });
+        : Object.keys(snapshot.victory_points || { [human]: 0, '2': 0 });
     const isFfa = players.length > 2;
+    // Local pass-and-play: "You" would mean whoever holds the device right
+    // now, so the shared history names every seat instead.
+    const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
 
     const nameByPid = new Map(players.map((pid, i) => [
         pid,
-        pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent'),
+        isLocal ? `Player ${i + 1}` : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
     ]));
     const relabelPlayers = (text) => {
         let out = String(text);
@@ -456,7 +458,6 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     preloadCardArt(Object.values(snapshot.card_name_by_id || {}));
 
     const human = String(config.player_id);
-    const ai = String(config.ai_player_id);
     const current = String(snapshot.current_player_id);
     const vp = snapshot.victory_points;
     // Engine-internal side indexes (options like "card|loc|side" use them):
@@ -469,15 +470,23 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     const humanSideIdx = Math.max(0, players.indexOf(human));
     const opponents = players.filter((p) => p !== human);
     const isFfa = opponents.length > 1;
+    // The single rival in a 2P game is whichever seat isn't the viewer — never
+    // assume it is player 2 (a hotseat pass or a LAN guest makes *us* seat 2).
+    const opp = opponents[0] || (human === '1' ? '2' : '1');
+    // Local pass-and-play: several humans share the screen, so sides are named
+    // by seat ("Player 2") instead of You/Opp, and no one carries an Elo tag.
+    const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
+    const seatName = (pid) => `Player ${players.indexOf(String(pid)) + 1}`;
     // Per-rival display info: short name, seat color class, engine side index.
     const rivalInfo = new Map(opponents.map((pid, i) => [pid, {
-        name: isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp',
+        name: isLocal ? seatName(pid) : (isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp'),
         cls: seatClass(i),
         sideIdx: players.indexOf(pid),
     }]));
     // Elo next to each name in the score panel: the player's rating and the
     // rating each AI rival was matchmade at (see elo.js / controller.js).
     const eloTag = (pid) => {
+        if (isLocal) return '';
         const elo = String(pid) === human ? app.playerElo : (app.aiElos || {})[Number(pid)];
         return Number.isFinite(elo) ? `<span class="score-elo">${Math.round(elo)}</span>` : '';
     };
@@ -541,7 +550,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const isYou = pid === human;
         const info = rivalInfo.get(pid);
         const ownerCls = isYou ? 'seat-you' : ((info && info.cls) || 'seat-opp');
-        const ownerName = isYou ? 'You' : ((info && isFfa) ? info.name : 'Opponent');
+        const ownerName = isLocal ? seatName(pid) : (isYou ? 'You' : ((info && isFfa) ? info.name : 'Opponent'));
         return cards.map((card, cardIdx) => {
             let clock = '';
             if (flood && flood.used) {
@@ -573,7 +582,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         ui.scorePanel.innerHTML = players.map((pid) => {
             const isYou = pid === human;
             const info = rivalInfo.get(pid);
-            const name = isYou ? 'You' : info.name;
+            const name = isLocal ? seatName(pid) : (isYou ? 'You' : info.name);
             const cls = isYou ? 'seat-you' : info.cls;
             return `<div class="score-side score-side-ffa ${cls}" data-player-id="${pid}">
                 <span class="score-name">${escapeHtml(name)}${eloTag(pid)}</span>${renderVpTrack(vp[pid] ?? 0)}
@@ -581,9 +590,9 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         }).join('');
     } else {
         ui.scorePanel.innerHTML = [
-            `<div class="score-side" data-player-id="${human}"><span class="score-name">You${eloTag(human)}</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
+            `<div class="score-side" data-player-id="${human}"><span class="score-name">${escapeHtml(isLocal ? seatName(human) : 'You')}${eloTag(human)}</span>${renderVpTrack(vp[human] ?? 0)}</div>`,
             '<div class="score-divider"></div>',
-            `<div class="score-side" data-player-id="${ai}"><span class="score-name">Opp${eloTag(ai)}</span>${renderVpTrack(vp[ai] ?? 0)}</div>`,
+            `<div class="score-side" data-player-id="${opp}"><span class="score-name">${escapeHtml(isLocal ? seatName(opp) : 'Opp')}${eloTag(opp)}</span>${renderVpTrack(vp[opp] ?? 0)}</div>`,
         ].join('');
     }
 
@@ -612,7 +621,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         }).join('') : '';
     }
 
-    ui.oppMana.innerHTML = renderManaTrack(manaCap[ai] ?? 0, mana[ai] ?? 0);
+    ui.oppMana.innerHTML = renderManaTrack(manaCap[opp] ?? 0, mana[opp] ?? 0);
     ui.yourMana.innerHTML = renderManaTrack(manaCap[human] ?? 0, mana[human] ?? 0);
     ui.oppHand.innerHTML = renderOpponentHand(snapshot.opponent_hand_size, snapshot.opponent_hand_revealed ? snapshot.opponent_hand : null);
     if (ui.oppHandCount) {
@@ -629,14 +638,14 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     }
 
     const underworld = snapshot.underworld || {};
-    ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[ai] || [], true);
+    ui.oppUnderworld.innerHTML = renderUnderworldStack(underworld[opp] || [], true);
     ui.yourUnderworld.innerHTML = renderUnderworldStack(underworld[human] || []);
     const underworldSynergy = (underworld[human] || []).some((card) => card && synergyRefSet.has(card.id));
     ui.yourUnderworld.classList.toggle('synergy-glow', underworldSynergy);
-    ui.oppUnderworldCount.textContent = String((underworld[ai] || []).length);
+    ui.oppUnderworldCount.textContent = String((underworld[opp] || []).length);
     ui.yourUnderworldCount.textContent = String((underworld[human] || []).length);
 
-    ui.oppDeckCount.textContent = String(deckSizes[ai] ?? 0);
+    ui.oppDeckCount.textContent = String(deckSizes[opp] ?? 0);
     ui.yourDeckCount.textContent = String(deckSizes[human] ?? 0);
 
     // A simple "pick one card" choice for the human is presented in the card
@@ -717,8 +726,6 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         ui.choiceModal.setAttribute('aria-hidden', 'true');
         ui.choiceOptions.innerHTML = '';
     }
-
-    const opp = opponents[0] || (human === '1' ? '2' : '1');
 
     // FFA lanes render in an egocentric ring order: your left outpost, the
     // shared center, your right outpost, then the far lanes clockwise.

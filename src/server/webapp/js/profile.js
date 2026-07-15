@@ -16,11 +16,13 @@ export const DECK_IDS = Object.keys(DECK_META);
 
 // Playable game modes. The menu's Play button always starts the favorite
 // mode directly; the chips under it change (and persist) the favorite.
+// FFA tables unlock in order: each mode opens by winning the one before it
+// (requiresWinIn), so 3P needs a 1v1 win, 4P a 3P win, 5P a 4P win.
 export const GAME_MODES = [
-    { id: '1v1', label: '1v1', name: 'Duel', players: 2, sub: 'Classic duel vs the AI' },
-    { id: 'ffa3', label: '3P', name: '3-Player FFA', players: 3, sub: 'Free-for-all vs 2 AI rivals' },
-    { id: 'ffa4', label: '4P', name: '4-Player FFA', players: 4, sub: 'Free-for-all vs 3 AI rivals' },
-    { id: 'ffa5', label: '5P', name: '5-Player FFA', players: 5, sub: 'Free-for-all vs 4 AI rivals' },
+    { id: '1v1', label: '1v1', name: 'Duel', players: 2, sub: 'Classic duel vs the AI', requiresWinIn: null },
+    { id: 'ffa3', label: '3P', name: '3-Player FFA', players: 3, sub: 'Free-for-all vs 2 AI rivals', requiresWinIn: '1v1' },
+    { id: 'ffa4', label: '4P', name: '4-Player FFA', players: 4, sub: 'Free-for-all vs 3 AI rivals', requiresWinIn: 'ffa3' },
+    { id: 'ffa5', label: '5P', name: '5-Player FFA', players: 5, sub: 'Free-for-all vs 4 AI rivals', requiresWinIn: 'ffa4' },
 ];
 
 export function gameModeById(modeId) {
@@ -79,6 +81,7 @@ function defaultStats() {
         winStreak: 0, // consecutive rated wins; any rated non-win resets it
         bestWinStreak: 0,
         crownsEarned: 0, // lifetime total, never reduced by spending
+        modeWins: {}, // GAME_MODES id -> rated wins in that mode (FFA unlock chain)
         decks: {}, // deckId -> { games, wins }
         cards: {}, // legacy global card stats (no longer written or read)
         deckCards: {}, // deckId -> cardId -> { games, wins, played, playedWins }
@@ -128,6 +131,12 @@ function loadProfile() {
         if (!stored.stats && (stored.crowns || 0) > 0) {
             merged.stats.gamesPlayed = 3;
             merged.stats.crownsEarned = stored.crowns;
+        }
+        // Profiles from before per-mode win tracking can't attribute their old
+        // wins to a mode; credit them as duel wins so a player who has already
+        // won games doesn't find 3P suddenly locked.
+        if (!(stored.stats || {}).modeWins && merged.stats.gamesWon > 0) {
+            merged.stats.modeWins = { '1v1': merged.stats.gamesWon };
         }
         return merged;
     } catch (error) {
@@ -211,12 +220,38 @@ export function spendCrowns(count) {
 
 // --- Progression unlocks -----------------------------------------------------
 
+// Rated (solo) wins per game mode. Pass-and-play and LAN games are unrated
+// and shared between several humans, so they never feed this.
+export function modeWins(modeId) {
+    return Math.max(0, Number((profile.stats.modeWins || {})[modeId]) || 0);
+}
+
+// FFA tables unlock procedurally: winning a mode opens the next bigger one
+// (1v1 -> 3P -> 4P -> 5P). The duel is always open.
+export function modeUnlocked(modeId) {
+    const mode = gameModeById(modeId);
+    return !mode.requiresWinIn || modeWins(mode.requiresWinIn) > 0;
+}
+
+// What the player still has to do to open this mode, e.g. "Win a Duel to
+// unlock 3-Player FFA". Null once it is unlocked.
+export function modeUnlockHint(modeId) {
+    const mode = gameModeById(modeId);
+    if (modeUnlocked(modeId)) return null;
+    const required = gameModeById(mode.requiresWinIn);
+    return `Win a ${required.name} to unlock ${mode.name}.`;
+}
+
 export function getFavoriteMode() {
-    return GAME_MODES.some((m) => m.id === profile.favoriteMode) ? profile.favoriteMode : '1v1';
+    const valid = GAME_MODES.some((m) => m.id === profile.favoriteMode) ? profile.favoriteMode : '1v1';
+    // A stored favorite the player hasn't unlocked (fresh unlock rules, reset
+    // stats) falls back to the duel rather than launching a locked table.
+    return modeUnlocked(valid) ? valid : '1v1';
 }
 
 export function setFavoriteMode(modeId) {
     if (!GAME_MODES.some((m) => m.id === modeId)) return;
+    if (!modeUnlocked(modeId)) return;
     profile.favoriteMode = modeId;
     save();
 }
@@ -259,9 +294,15 @@ export function questsUnlocked() {
 // Called once per finished game (win, loss, draw, surrender) with the deck
 // the player brought. Card stats are kept per deck: a card counts a game when
 // it was in that deck's list, and a play when it actually hit the board.
-export function recordGameResult({ deckId, cardIds, playedCardIds, won }) {
+// `mode` is the GAME_MODES id the match was played in; wins per mode drive
+// the FFA unlock chain.
+export function recordGameResult({ deckId, cardIds, playedCardIds, won, mode = null }) {
     profile.stats.gamesPlayed += 1;
     if (won) profile.stats.gamesWon += 1;
+    if (won && mode && GAME_MODES.some((m) => m.id === mode)) {
+        if (!profile.stats.modeWins) profile.stats.modeWins = {};
+        profile.stats.modeWins[mode] = (profile.stats.modeWins[mode] || 0) + 1;
+    }
     profile.stats.winStreak = won ? (profile.stats.winStreak || 0) + 1 : 0;
     profile.stats.bestWinStreak = Math.max(profile.stats.bestWinStreak || 0, profile.stats.winStreak);
     if (deckId) {
