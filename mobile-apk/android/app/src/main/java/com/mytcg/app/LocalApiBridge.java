@@ -11,11 +11,13 @@ public class LocalApiBridge {
     private final Context appContext;
     // Held only while peer discovery is active (the LAN browse/lobby screen): a
     // MulticastLock is what lets Android deliver the UDP broadcast beacons
-    // discovery relies on. It is released the moment a match starts or the LAN
-    // screen closes — the radio drain of holding it (and of a full Wi-Fi lock,
-    // which we deliberately don't take) isn't worth paying once discovery is
-    // done, and a hosted match stays reachable over ordinary TCP without it.
+    // discovery relies on. Released the moment a match starts or the LAN screen
+    // closes, since discovery is done by then.
     private WifiManager.MulticastLock multicastLock;
+    // Held only while *hosting* a live match: an ordinary WIFI_MODE_FULL lock
+    // (not HIGH_PERF) keeps the radio from dozing if the host's screen sleeps,
+    // so guests stay able to reach its server. Released when the match ends.
+    private WifiManager.WifiLock hostWifiLock;
 
     public LocalApiBridge(Context context) {
         this.appContext = context.getApplicationContext();
@@ -61,10 +63,40 @@ public class LocalApiBridge {
         return "{\"ok\":true}";
     }
 
+    // Acquired when a match this device hosts begins, released when it ends, so
+    // guests keep reaching the host even if its screen sleeps mid-game.
+    @JavascriptInterface
+    public String acquireHostLock() {
+        WifiManager wifi = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
+        if (wifi != null) {
+            synchronized (this) {
+                if (hostWifiLock == null) {
+                    hostWifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL, "mytcg-lan-host");
+                    hostWifiLock.setReferenceCounted(false);
+                }
+                if (!hostWifiLock.isHeld()) {
+                    hostWifiLock.acquire();
+                }
+            }
+        }
+        return "{\"ok\":true}";
+    }
+
+    @JavascriptInterface
+    public String releaseHostLock() {
+        synchronized (this) {
+            if (hostWifiLock != null && hostWifiLock.isHeld()) {
+                hostWifiLock.release();
+            }
+        }
+        return "{\"ok\":true}";
+    }
+
     @JavascriptInterface
     public String stopLanServer() {
         try {
             releaseMulticastLock();
+            releaseHostLock();
             Python py = Python.getInstance();
             PyObject module = py.getModule("mobile_api");
             return module.callAttr("stop_lan_server").toString();

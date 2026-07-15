@@ -311,7 +311,38 @@ export function createMenuController(ui, game, cardStack) {
         if (ui.menuDecksLock) ui.menuDecksLock.classList.toggle('hidden', !decksLocked);
         if (ui.menuShopLock) ui.menuShopLock.classList.toggle('hidden', !shopLocked);
 
+        updateReconnectButton();
         renderQuestPanel();
+    }
+
+    // Offer a one-tap rejoin when an unclean exit (app killed, crash) left a
+    // live LAN guest session behind. Hidden whenever there's nothing to rejoin.
+    function updateReconnectButton() {
+        if (!ui.btnReconnect) return;
+        const session = game.loadLanSession && game.loadLanSession();
+        ui.btnReconnect.classList.toggle('hidden', !session);
+        if (session && ui.reconnectSub) {
+            const host = session.hostBase.replace(/^https?:\/\//, '');
+            ui.reconnectSub.textContent = `Rejoin your game on ${host}`;
+        }
+    }
+
+    async function reconnectSavedLan() {
+        const session = game.loadLanSession && game.loadLanSession();
+        if (!session) { renderMenu(); return; }
+        applyCosmetics(getSelectedDeckId());
+        pushNav({ screen: 'game' });
+        showScreen('game');
+        // startLanGame re-fetches the host's authoritative state; if the host is
+        // unreachable it drops into the in-game reconnect overlay rather than
+        // failing outright.
+        game.startLanGame({
+            hostBase: session.hostBase,
+            matchId: session.matchId,
+            seed: session.seed,
+            playerId: session.playerId,
+            decks: session.decks,
+        });
     }
 
     function openMenu() {
@@ -1748,6 +1779,9 @@ export function createMenuController(ui, game, cardStack) {
         }
         if (ui.btnLan) {
             ui.btnLan.addEventListener('click', () => { openLan(); });
+        }
+        if (ui.btnReconnect) {
+            ui.btnReconnect.addEventListener('click', () => { reconnectSavedLan(); });
         }
         if (ui.btnCloseLan) {
             ui.btnCloseLan.addEventListener('click', () => { closeLan(); });

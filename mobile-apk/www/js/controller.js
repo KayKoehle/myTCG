@@ -1,4 +1,4 @@
-import { postJson, setLanHostBase } from './api.js';
+import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
 import { eloDelta, placementsFromVp, sampleAiElo } from './elo.js';
 import { activeEmotes, addCrowns, applyEloDelta, getElo, recordCasualGame, recordGameResult } from './profile.js';
@@ -49,6 +49,9 @@ export function createGameController(ui, cardStack) {
         // Top-left slot: surrender flag while the match runs, home once it
         // ends — or before the player's mulligan, when leaving is still free.
         const gameOver = snapshot.phase === 'GAME_OVER';
+        // A finished LAN match can't be rejoined — drop its saved session so the
+        // menu never offers a dead game to reconnect to.
+        if (gameOver && isLanGame()) clearLanSession();
         const showHome = gameOver || canQuitFree();
         if (ui.btnSurrender) {
             ui.btnSurrender.classList.toggle('hidden', showHome);
@@ -1318,7 +1321,20 @@ export function createGameController(ui, cardStack) {
             rerender(data.snapshot);
             if (playedFromRect) animateCardPlay(action.card_id, playedFromRect);
         } catch (error) {
-            flashStatus(error);
+            if (isLanGame()) {
+                // Tell a lost connection apart from a rules rejection: if we can
+                // still read the host's state, the move was simply rejected (or
+                // already applied) — show it and re-sync. If we can't, we've
+                // dropped, so reconnect instead of silently losing the match.
+                try {
+                    await refresh();
+                    flashStatus(error);
+                } catch (offline) {
+                    startReconnect();
+                }
+            } else {
+                flashStatus(error);
+            }
         } finally {
             app.actionPending = false;
         }
@@ -1447,11 +1463,20 @@ export function createGameController(ui, cardStack) {
         if (app.lanPollTimer) { clearTimeout(app.lanPollTimer); app.lanPollTimer = null; }
     }
     function scheduleLanPoll() {
-        if (app.lanPollTimer) return;
+        if (app.lanPollTimer || app.lanReconnecting) return;
         app.lanPollTimer = setTimeout(async () => {
             app.lanPollTimer = null;
-            if (!isLanGame()) return;
-            try { await refresh(); } catch (error) { scheduleLanPoll(); }
+            if (!isLanGame() || app.lanReconnecting) return;
+            try {
+                await refresh();
+                app.lanPollFails = 0;
+            } catch (error) {
+                // One dropped poll is usually a blip; a second in a row means the
+                // host is really unreachable, so escalate to the reconnect flow.
+                app.lanPollFails = (app.lanPollFails || 0) + 1;
+                if (app.lanPollFails >= 2) startReconnect();
+                else scheduleLanPoll();
+            }
         }, 1500);
     }
     async function lanTick() {
@@ -1596,6 +1621,9 @@ export function createGameController(ui, cardStack) {
     // identifies the profile deck so the result can be recorded. `decks`
     // (one deck name per seat, human first) switches the match to FFA.
     async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null }) {
+        // Starting any non-LAN match tears down lingering LAN state first —
+        // releases the host Wi-Fi lock, clears the rejoin session, stops polling.
+        endLanGame();
         app.deckAName = deckAName || null;
         app.deckACards = deckACards || null;
         app.deckBName = deckBName || null;
@@ -1640,10 +1668,20 @@ export function createGameController(ui, cardStack) {
         app.opponentTurnActive = false;
         app.passPending = false;
         playedCardIds = new Set();
+        // Hosting: keep the Wi-Fi radio awake so guests can reach us if the
+        // screen sleeps. Guests: persist enough to rejoin the host after a drop
+        // or an app restart (the host holds the authoritative match).
+        if (!app.lanHostBase) {
+            acquireLanHostLock();
+        } else {
+            saveLanSession({ hostBase: app.lanHostBase, matchId, seed, playerId, decks });
+        }
         try {
             await refresh();
         } catch (error) {
-            flashStatus(error);
+            // The host may just be momentarily unreachable (Wi-Fi settling,
+            // app resuming). Don't bail to the menu — reconnect in place.
+            startReconnect();
         }
     }
 
@@ -1651,10 +1689,96 @@ export function createGameController(ui, cardStack) {
     // no LAN game is active.
     function endLanGame() {
         clearLanPoll();
+        stopReconnect();
+        releaseLanHostLock();
+        clearLanSession();
         app.lanGame = false;
         app.lanHostBase = null;
+        app.lanPollFails = 0;
         setLanHostBase(null);
         app.humanPlayerId = 1;
+    }
+
+    // --- LAN reconnect -------------------------------------------------------
+    // A guest drives the authoritative match on the host over the network, so a
+    // dropped Wi-Fi, a backgrounded app, or a host that briefly slept all show
+    // up as a failed call. Rather than losing the match we surface a
+    // "reconnecting" overlay and re-fetch the host's state with backoff until it
+    // answers — the state is authoritative, so whatever happened while we were
+    // gone (including our own last move) is reflected once we're back.
+    const LAN_SESSION_KEY = 'mytcg_lan_session';
+    const LAN_SESSION_TTL_MS = 6 * 60 * 60 * 1000; // stale rejoin offers expire
+
+    function saveLanSession(session) {
+        try {
+            localStorage.setItem(LAN_SESSION_KEY, JSON.stringify({ ...session, savedAt: Date.now() }));
+        } catch (error) { /* storage unavailable: reconnect-in-session still works */ }
+    }
+    function clearLanSession() {
+        try { localStorage.removeItem(LAN_SESSION_KEY); } catch (error) { /* ignore */ }
+    }
+    function loadLanSession() {
+        try {
+            const raw = localStorage.getItem(LAN_SESSION_KEY);
+            if (!raw) return null;
+            const session = JSON.parse(raw);
+            if (!session || !session.matchId || !session.hostBase) return null;
+            if (Date.now() - (session.savedAt || 0) > LAN_SESSION_TTL_MS) {
+                clearLanSession();
+                return null;
+            }
+            return session;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function setReconnectOverlay(visible, message) {
+        if (!ui.reconnectOverlay) return;
+        ui.reconnectOverlay.classList.toggle('hidden', !visible);
+        ui.reconnectOverlay.setAttribute('aria-hidden', String(!visible));
+        if (message && ui.reconnectStatus) ui.reconnectStatus.textContent = message;
+    }
+
+    function startReconnect() {
+        if (!isLanGame() || app.lanReconnecting) return;
+        app.lanReconnecting = true;
+        clearLanPoll();
+        setReconnectOverlay(true, 'Reconnecting to the game…');
+        reconnectTick(1000);
+    }
+
+    async function reconnectTick(delay) {
+        if (!app.lanReconnecting) return;
+        let snapshot;
+        try {
+            const c = cfg();
+            const data = await postJson('/api/state', {
+                match_id: c.match_id, player_id: c.player_id, seed: c.seed,
+                deck_a: c.deck_a, deck_b: c.deck_b, deck_a_cards: c.deck_a_cards, decks: c.decks,
+            });
+            snapshot = data.snapshot;
+        } catch (error) {
+            const next = Math.min(delay * 2, 5000);
+            app.lanReconnectTimer = setTimeout(() => reconnectTick(next), delay);
+            return;
+        }
+        // Host answered — clear the reconnecting flag *before* rendering so the
+        // resumed render can reschedule polling (scheduleLanPoll is suppressed
+        // while reconnecting). rerender runs maybeAutoAdvance, which restarts the
+        // normal turn/poll flow from the freshly authoritative state.
+        app.lanReconnecting = false;
+        app.lanPollFails = 0;
+        if (app.lanReconnectTimer) { clearTimeout(app.lanReconnectTimer); app.lanReconnectTimer = null; }
+        setReconnectOverlay(false);
+        flashStatus('Reconnected.');
+        rerender(snapshot);
+    }
+
+    function stopReconnect() {
+        app.lanReconnecting = false;
+        if (app.lanReconnectTimer) { clearTimeout(app.lanReconnectTimer); app.lanReconnectTimer = null; }
+        setReconnectOverlay(false);
     }
 
     function openSheet(modal) {
@@ -1671,6 +1795,13 @@ export function createGameController(ui, cardStack) {
         onExitToMenu = options.onExitToMenu || null;
         if (ui.btnHome) {
             ui.btnHome.onclick = () => {
+                endLanGame();
+                if (onExitToMenu) onExitToMenu();
+            };
+        }
+        if (ui.btnReconnectLeave) {
+            // Give up on a match we can't reconnect to and go home.
+            ui.btnReconnectLeave.onclick = () => {
                 endLanGame();
                 if (onExitToMenu) onExitToMenu();
             };
@@ -1801,6 +1932,9 @@ export function createGameController(ui, cardStack) {
         isMatchLive,
         canQuitFree,
         promptSurrender,
+        // The menu offers a "Reconnect" entry when an unclean exit left a live
+        // guest session behind; it rejoins by feeding this back to startLanGame.
+        loadLanSession,
         // For the in-game trade UI: who we are and which match we're in.
         lanContext: () => ({
             hostBase: app.lanHostBase,

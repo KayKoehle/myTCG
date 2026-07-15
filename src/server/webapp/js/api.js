@@ -27,6 +27,19 @@ export function isLocalBridge() {
     return Boolean(window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function');
 }
 
+// Android only: keep the Wi-Fi radio awake while this device hosts a live match
+// so guests can still reach it if the host's screen sleeps. No-ops elsewhere.
+export function acquireLanHostLock() {
+    if (isLocalBridge() && window.MyTCGLocalApi.acquireHostLock) {
+        try { window.MyTCGLocalApi.acquireHostLock(); } catch (error) { /* best-effort */ }
+    }
+}
+export function releaseLanHostLock() {
+    if (isLocalBridge() && window.MyTCGLocalApi.releaseHostLock) {
+        try { window.MyTCGLocalApi.releaseHostLock(); } catch (error) { /* best-effort */ }
+    }
+}
+
 // Read a fetch Response as JSON, but degrade a non-JSON body (e.g. a plain-text
 // "Internal Server Error" from a 500, or an app-shell HTML page when no server
 // is listening) into a clear Error instead of the browser's opaque

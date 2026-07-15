@@ -40,6 +40,13 @@
                     <span class="menu-passplay-sub">Find &amp; invite players on your network</span>
                 </span>
             </button>
+            <button class="menu-passplay menu-reconnect hidden" id="btnReconnect">
+                <span class="menu-passplay-icon" aria-hidden="true">🔌</span>
+                <span class="menu-passplay-text">
+                    <span class="menu-passplay-title">Reconnect</span>
+                    <span class="menu-passplay-sub" id="reconnectSub">Rejoin your LAN game</span>
+                </span>
+            </button>
             <div class="menu-row">
                 <button class="menu-tile menu-decks-btn" id="btnMenuDecks">
                     <div class="menu-deck-art" id="menuDeckArt"></div>
@@ -96,6 +103,15 @@
     </div>
 
     <div class="app screen" id="gameScreen">
+        <div class="reconnect-overlay hidden" id="reconnectOverlay" role="alertdialog" aria-live="assertive"
+            aria-hidden="true">
+            <div class="reconnect-card">
+                <div class="reconnect-spinner" aria-hidden="true"></div>
+                <div class="reconnect-title">Connection lost</div>
+                <div class="reconnect-sub" id="reconnectStatus">Reconnecting to the game…</div>
+                <button class="btn ghost" id="btnReconnectLeave">Leave game</button>
+            </div>
+        </div>
         <header class="status-panel">
             <button class="icon-btn" id="btnSurrender" aria-label="Surrender the match">
                 <svg viewBox="0 0 24 24" aria-hidden="true">

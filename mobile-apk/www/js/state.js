@@ -19,6 +19,11 @@ export function createAppState() {
         lanHostBase: null,
         lanPollTimer: null,
         lanPlayerName: null,
+        // Reconnect: escalate after repeated poll failures; a backoff timer
+        // re-fetches the host's authoritative state until it answers.
+        lanReconnecting: false,
+        lanReconnectTimer: null,
+        lanPollFails: 0,
         seed: Math.floor(Math.random() * 1_000_000_000),
         defaultDeckA: 'epic_of_gilgamesh',
         defaultDeckB: 'siege_of_troy',
