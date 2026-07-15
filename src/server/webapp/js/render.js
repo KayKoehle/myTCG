@@ -55,8 +55,8 @@ const CHOICE_VERB_BY_KIND = {
     return_human_to_hand: 'Return',
     revive_underworld_here: 'Revive',
     revive_choose_location: 'Revive at',
-    put_hand_to_underworld: 'Bury',
-    namtar_send_to_underworld: 'Send',
+    put_hand_to_underworld: 'Banish',
+    namtar_send_to_underworld: 'Banish',
     move_hero_to_here: 'Move',
     farmer_free_human: 'Free',
     enkidu_join_gilgamesh: 'Join',
@@ -64,7 +64,7 @@ const CHOICE_VERB_BY_KIND = {
     fisherman_draw_two_humans: 'Draw',
     tutor_from_deck: 'Draw',
     calchas_pick: 'Draw',
-    dolon_bottom_top_card: 'Bury',
+    dolon_bottom_top_card: 'Put on bottom',
 };
 
 // Decide whether a pending choice is a simple "pick one card" selection that
@@ -786,8 +786,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             { cls: 'seat-you', count: (loc.stacks[human] || []).length },
         ];
 
-        const yourPower = stackPower(loc.stacks[human] || []);
-        const oppPowers = laneOpponents.map((pid) => ({ pid, power: stackPower(loc.stacks[pid] || []) }));
+        // Prefer the engine's per-side totals: they include whole-side bonuses
+        // (e.g. Elders of Shuruppak's doubling) that summing card powers misses.
+        const sidePower = loc.side_power || {};
+        const yourPower = sidePower[human] ?? stackPower(loc.stacks[human] || []);
+        const oppPowers = laneOpponents.map((pid) => ({ pid, power: sidePower[pid] ?? stackPower(loc.stacks[pid] || []) }));
         const bestOppPower = oppPowers.length ? Math.max(...oppPowers.map((o) => o.power)) : 0;
         const laneLeadClass = youCanReach && yourPower > bestOppPower
             ? 'lead-you'

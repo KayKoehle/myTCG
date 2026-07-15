@@ -15,6 +15,7 @@ from .state import GameState
 from .transitions import (
     FLOOD_THRESHOLD,
     RT,
+    _location_power_for_side,
     available_decks,
     count_humans_in_play,
     deck_card_ids,
@@ -329,6 +330,10 @@ def build_state_snapshot(
                     ]
                     for i in range(n)
                 },
+                # The side's total as the scorer sees it — includes whole-side
+                # bonuses (e.g. Elders of Shuruppak's doubling) that no
+                # per-card power can carry.
+                "side_power": {pid[i]: _location_power_for_side(state, loc, i) for i in range(n)},
             }
             for loc in state.locations
         ],

@@ -176,13 +176,19 @@ def _galla_demons_enter(rt: Any, state: GameState, player_idx: int, card_id: str
 
 
 def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "Put any being from your hand, deck or battlefield into your underworld."
     options = [f"hand|{cid}" for cid in state.hands[player_idx] if is_being(cid)]
     options += [f"deck|{cid}" for cid in state.decks[player_idx] if is_being(cid)]
+    options += [
+        f"battlefield|{cid}"
+        for _, _, cid in prim.find_cards_in_play(state, is_being)
+        if catalog.card_owner_idx(state, cid) == player_idx and cid != card_id
+    ]
     if options:
         return Halt(
             prim.with_pending_choice(
                 state, player_idx, "namtar_send_to_underworld", card_id, location_idx,
-                ["PASS", *options], "Choose a being from your hand or deck to send to the Underworld",
+                ["PASS", *options], "Choose a being from your hand, deck or battlefield to send to the Underworld",
             )
         )
     return state
@@ -190,6 +196,8 @@ def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
 
 def _handle_namtar_send(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     zone, card_id = option.split("|", 1)
+    if zone == "battlefield":
+        return rt.banish_card(state, card_id)
     return prim.put_specific_zone_card_to_underworld(state, chooser_idx, zone, card_id)
 
 
