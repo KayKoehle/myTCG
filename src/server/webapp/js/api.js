@@ -9,10 +9,20 @@ export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;
 }
 
-// True inside the Android app, where a native bridge answers API calls and no
-// HTTP server is reachable. LAN play needs that server (peers reach a host's
-// HTTP API), so the LAN feature keys off this to explain itself instead of
-// failing on a fetch that has nothing to talk to.
+// Android only: the base URL of the in-process Python HTTP server this device
+// runs for LAN play (e.g. "http://127.0.0.1:8123"). Same-origin LAN calls
+// (discovery/lobby/trade, and the host's own game calls) are sent there since
+// the Capacitor origin has no server; null everywhere else (browser/desktop use
+// same-origin). Set by the LAN screen once the native bridge starts the server.
+let lanSelfBase = null;
+
+export function setLanSelfBase(base) {
+    lanSelfBase = base ? String(base).replace(/\/$/, '') : null;
+}
+
+// True inside the Android app, where a native bridge answers API calls. LAN play
+// needs a real HTTP server (peers reach a host's HTTP API); on Android that
+// server runs in-process via the bridge (see setLanSelfBase / startLanServer).
 export function isLocalBridge() {
     return Boolean(window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function');
 }
@@ -34,6 +44,23 @@ async function readJsonResponse(response) {
 }
 
 export async function postJson(url, body) {
+    // A guest in a LAN match drives the authoritative game on the *host*, so
+    // these calls go over the network to the host — even inside the Android app,
+    // where the local bridge only knows this device's own matches. Checked
+    // first so the bridge never intercepts a guest's host-bound game call.
+    if (lanHostBase && HOST_ROUTED.some((p) => url === p)) {
+        const response = await fetch(lanHostBase + url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok || data.ok === false) {
+            throw new Error(data.error || `Request failed ${response.status}`);
+        }
+        return data;
+    }
+
     // Inside the Android app a native bridge handles API calls locally
     // (fully offline). In the browser it is absent and we fall through to HTTP.
     if (window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function') {
@@ -45,11 +72,7 @@ export async function postJson(url, body) {
         return data;
     }
 
-    let target = url;
-    if (lanHostBase && HOST_ROUTED.some((p) => url === p)) {
-        target = lanHostBase + url;
-    }
-    const response = await fetch(target, {
+    const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -62,10 +85,12 @@ export async function postJson(url, body) {
 }
 
 // Explicit-base POST for LAN discovery / lobby / trade calls. `base` is another
-// instance's URL (or null/'' for same-origin). Kept separate from postJson so
-// these never get caught by the host-routing rewrite above.
+// instance's URL, or empty for "self" — which on Android means this device's
+// in-process server (lanSelfBase), and same-origin elsewhere. Kept separate from
+// postJson so these never get caught by the host-routing rewrite above.
 export async function lanPost(base, path, body) {
-    const url = (base ? String(base).replace(/\/$/, '') : '') + path;
+    const root = base ? String(base).replace(/\/$/, '') : (lanSelfBase || '');
+    const url = root + path;
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

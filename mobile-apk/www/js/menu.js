@@ -1,4 +1,4 @@
-import { postJson, lanPost, isLocalBridge } from './api.js';
+import { postJson, lanPost, isLocalBridge, setLanSelfBase } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -93,6 +93,9 @@ export function createMenuController(ui, game, cardStack) {
 
     // LAN multiplayer setup: discovery + lobby state while the LAN sheet is open.
     let lanEnabled = false;
+    // Android runs an in-process HTTP server for LAN; this is the port it bound
+    // (advertised to peers so they can reach this device). 0 until started.
+    let lanServerPort = 0;
     let lanPeers = [];
     let lanPeersTimer = null;
     let lanLobbyTimer = null;
@@ -517,7 +520,35 @@ export function createMenuController(ui, game, cardStack) {
     // --- LAN multiplayer -----------------------------------------------------
 
     function lanSelfPort() {
+        // On Android the reachable port is the in-process server's, not the
+        // Capacitor origin's (which has no server behind it).
+        if (lanServerPort) return lanServerPort;
         return Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+    }
+
+    // On Android, boot the in-process HTTP + discovery server the native bridge
+    // runs and point self LAN calls at it. Returns false if it could not start.
+    // A no-op (returns true) on browser/desktop, which use same-origin.
+    async function ensureLanServer() {
+        if (!isLocalBridge()) return true; // browser/desktop use the same-origin server
+        if (lanServerPort) return true;
+        if (!window.MyTCGLocalApi.startLanServer) {
+            showToast('Update the app to the latest version to use LAN play.');
+            return false;
+        }
+        try {
+            const data = JSON.parse(window.MyTCGLocalApi.startLanServer());
+            if (!data.ok || !data.port) {
+                showToast(data.error || 'Could not start LAN networking.');
+                return false;
+            }
+            lanServerPort = Number(data.port);
+            setLanSelfBase(data.base);
+            return true;
+        } catch (error) {
+            showToast(`Could not start LAN networking: ${error}`);
+            return false;
+        }
     }
     function lanPlayerName() {
         return (localStorage.getItem('mytcg_lan_name') || '').trim() || 'Player';
@@ -533,14 +564,10 @@ export function createMenuController(ui, game, cardStack) {
 
     async function openLan() {
         // LAN play is peer-to-peer over HTTP: a host advertises on the network
-        // and guests reach its API directly. The Android build runs fully
-        // offline through a native bridge with no such server, so hosting or
-        // joining would just fail on a fetch with nothing to answer it. Explain
-        // that up front instead of opening a lobby that can never connect.
-        if (isLocalBridge()) {
-            showToast('LAN play needs the browser/desktop version — the app runs offline with no network server.');
-            return;
-        }
+        // and guests reach its API directly. The Android build has no FastAPI
+        // server, so it boots an equivalent in-process one (Python, via the
+        // native bridge) first; if that fails there is nothing to host with.
+        if (isLocalBridge() && !(await ensureLanServer())) return;
         await ensureCollection();
         lanDeckId = getSelectedDeckId();
         ui.lanModal.classList.add('open');

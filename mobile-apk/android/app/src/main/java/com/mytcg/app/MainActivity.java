@@ -1,6 +1,7 @@
 package com.mytcg.app;
 
 import android.os.Bundle;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
@@ -18,7 +19,15 @@ public class MainActivity extends BridgeActivity {
 			Python.start(new AndroidPlatform(this));
 		}
 
-		getBridge().getWebView().addJavascriptInterface(new LocalApiBridge(), "MyTCGLocalApi");
+		// LAN play reaches other players' hosts over plain http:// while the app
+		// itself is served from the https://localhost Capacitor origin, so allow
+		// the WebView to make those (cleartext, mixed-content) cross-origin
+		// requests. Nothing sensitive is served — it's a peer-to-peer game on a
+		// trusted LAN (see the CORS note in src/server/main.py).
+		WebView webView = getBridge().getWebView();
+		webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+		webView.addJavascriptInterface(new LocalApiBridge(this), "MyTCGLocalApi");
 		// Backs the optional in-app update check (js/update.js). Absent in the
 		// browser build, which updates itself normally.
 		getBridge().getWebView().addJavascriptInterface(new UpdateBridge(this), "MyTCGUpdate");

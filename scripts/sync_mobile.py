@@ -3,6 +3,7 @@
 Masters live in the repo; the copies inside mobile-apk/ are generated:
 
     src/server/engine/                  -> mobile-apk/android/app/src/main/python/engine/
+    src/server/services/lan.py          -> mobile-apk/android/app/src/main/python/lan_service.py
     src/server/webapp/                  -> mobile-apk/www/            (assets/ left untouched)
     tables/all_cards.csv + finished decks -> mobile-apk/android/app/src/main/python/tables/
     decklists/*.csv                     -> mobile-apk/android/app/src/main/python/decklists/
@@ -38,6 +39,11 @@ def _iter_file_pairs() -> list[tuple[Path, Path]]:
     for path in sorted(engine_src.rglob("*.py")):
         rel = path.relative_to(engine_src)
         pairs.append((path, MOBILE_PY / "engine" / rel))
+
+    # LAN multiplayer service. It is stdlib-only and dependency-free by design
+    # (see its docstring) precisely so the Chaquopy build can reuse it; the
+    # Android app runs it behind an in-process HTTP server (see mobile_api.py).
+    pairs.append((REPO / "src" / "server" / "services" / "lan.py", MOBILE_PY / "lan_service.py"))
 
     webapp_src = REPO / "src" / "server" / "webapp"
     for path in sorted(webapp_src.rglob("*")):
