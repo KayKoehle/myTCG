@@ -4,9 +4,9 @@
 // (engine/ladder.py) makes them actually play at that strength.
 
 // Playable rating range — keep in sync with TIER_ANCHORS in engine/ladder.py
-// (random 575 ... minimax 1300, calibrated by arena cross-play).
-export const AI_MIN_ELO = 575;
-export const AI_MAX_ELO = 1300;
+// (random 440 ... minimax 1330, calibrated by arena cross-play).
+export const AI_MIN_ELO = 440;
+export const AI_MAX_ELO = 1330;
 
 export const DEFAULT_ELO = 1000;
 export const ELO_FLOOR = 100;
@@ -44,8 +44,15 @@ export function placementsFromVp(victoryPoints) {
 
 // Winning a free-for-all outright means beating every rival at once, so the
 // gain grows with the field: +25% per rival beyond the first (3P ×1.25,
-// 4P ×1.5, 5P ×1.75). Losses and duels are untouched.
+// 4P ×1.5, 5P ×1.75). Duels are untouched.
 const FFA_WIN_BONUS_PER_RIVAL = 0.25;
+
+// Losing a free-for-all is softened the same way the win is boosted: with
+// several rivals ganging up, a bad placement says less about your skill than
+// a lost duel does. -25% per rival beyond the first, never below half a
+// duel's loss (3P ×0.75, 4P+ ×0.5).
+const FFA_LOSS_SOFTEN_PER_RIVAL = 0.25;
+const FFA_LOSS_FLOOR = 0.5;
 
 // Multiplayer (and 1v1) Elo update, the standard pairwise generalization:
 // the game is scored as one Elo game against EACH rival — win 1, tie 0.5,
@@ -64,6 +71,9 @@ export function eloDelta(playerElo, rivals, playerRank, ranks) {
     const wonOutright = playerRank === 1 && rivals.every((rival) => ranks[rival.playerId] > 1);
     if (wonOutright && rivals.length > 1 && delta > 0) {
         delta *= 1 + FFA_WIN_BONUS_PER_RIVAL * (rivals.length - 1);
+    }
+    if (rivals.length > 1 && delta < 0) {
+        delta *= Math.max(FFA_LOSS_FLOOR, 1 - FFA_LOSS_SOFTEN_PER_RIVAL * (rivals.length - 1));
     }
     return Math.round(delta);
 }

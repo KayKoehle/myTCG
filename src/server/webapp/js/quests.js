@@ -1,9 +1,13 @@
-// Daily quests, weekly quests, and weekend events.
+// Rolling quests, weekly quests, and weekend events.
 //
-// Rotation is deterministic: the local date picks the day's daily quests, the
-// week's Monday picks the weekly quests and the weekend event, so the same
-// player always sees the same set until the period rolls over. Progress lives
-// in the profile (localStorage) and resets with the period key.
+// Rolling quests work like Marvel Snap's missions: up to QUEST_SLOTS active
+// at once, and a fresh quest arrives every QUEST_INTERVAL_MS (2 hours). A
+// finished quest pays out and leaves the board immediately — the panel only
+// ever shows work left to do, plus when the next quest lands. If every slot
+// is taken when the timer fires, the new quest waits for a free slot.
+// Weekly quests still rotate deterministically off the week's Monday (same
+// set on every device), as does the weekend event. Progress lives in the
+// profile (localStorage).
 //
 // The game controller feeds events in (round won, card played, game finished);
 // completing a quest pays its crown reward immediately and pops a toast.
@@ -12,13 +16,16 @@ import { addCrowns, getProfile, persistProfile, questsUnlocked } from './profile
 import { showToast } from './helpers.js';
 
 // counts(ctx) returns how much progress one event is worth (0 = no progress).
-const DAILY_POOL = [
+// Defs with `streak: true` instead track ctx.streak as absolute progress —
+// it can go back down to 0 when a loss breaks the streak.
+const ROLLING_POOL = [
     { id: 'd_win1', title: 'Win a game', reward: 10, target: 1, event: 'game', counts: (ctx) => (ctx.won ? 1 : 0) },
     { id: 'd_flawless', title: 'Win a game 4:0', reward: 15, target: 1, event: 'game', counts: (ctx) => (ctx.flawless ? 1 : 0) },
     { id: 'd_play3', title: 'Play 3 games', reward: 10, target: 3, event: 'game', counts: () => 1 },
     { id: 'd_rounds5', title: 'Win 5 rounds', reward: 10, target: 5, event: 'round', counts: () => 1 },
     { id: 'd_cards12', title: 'Play 12 cards', reward: 8, target: 12, event: 'card', counts: () => 1 },
     { id: 'd_win2', title: 'Win 2 games', reward: 18, target: 2, event: 'game', counts: (ctx) => (ctx.won ? 1 : 0) },
+    { id: 'd_streak2', title: 'Win 2 games in a row', reward: 20, target: 2, event: 'game', streak: true },
     { id: 'd_beings6', title: 'Play 6 beings', reward: 10, target: 6, event: 'card', counts: (ctx) => (ctx.isBeing ? 1 : 0) },
     { id: 'd_heroes2', title: 'Play 2 heroes', reward: 12, target: 2, event: 'card', counts: (ctx) => (ctx.isHero ? 1 : 0) },
     { id: 'd_banish2', title: 'Banish 2 enemy beings', reward: 12, target: 2, event: 'banish', counts: () => 1 },
@@ -34,6 +41,8 @@ const WEEKLY_POOL = [
     { id: 'w_play12', title: 'Play 12 games', reward: 40, target: 12, event: 'game', counts: () => 1 },
     { id: 'w_rounds20', title: 'Win 20 rounds', reward: 45, target: 20, event: 'round', counts: () => 1 },
     { id: 'w_flawless3', title: 'Win 3 games 4:0', reward: 60, target: 3, event: 'game', counts: (ctx) => (ctx.flawless ? 1 : 0) },
+    { id: 'w_streak3', title: 'Win 3 games in a row', reward: 60, target: 3, event: 'game', streak: true },
+    { id: 'w_streak5', title: 'Win 5 games in a row', reward: 80, target: 5, event: 'game', streak: true },
     { id: 'w_cards40', title: 'Play 40 cards', reward: 35, target: 40, event: 'card', counts: () => 1 },
     { id: 'w_beings25', title: 'Play 25 beings', reward: 45, target: 25, event: 'card', counts: (ctx) => (ctx.isBeing ? 1 : 0) },
     { id: 'w_heroes8', title: 'Play 8 heroes', reward: 45, target: 8, event: 'card', counts: (ctx) => (ctx.isHero ? 1 : 0) },
@@ -73,7 +82,11 @@ const WEEKEND_EVENTS = [
     },
 ];
 
-const DAILY_COUNT = 3;
+// Marvel Snap-style rolling slots: up to this many quests active at once,
+// with a fresh one arriving every interval.
+export const QUEST_SLOTS = 3;
+export const QUEST_INTERVAL_MS = 2 * 60 * 60 * 1000; // a new quest every 2h
+
 const WEEKLY_COUNT = 3;
 
 // --- Period keys ---------------------------------------------------------------
@@ -99,12 +112,6 @@ function weekKey(date = new Date()) {
 function isWeekend(date = new Date()) {
     const day = date.getDay();
     return day === 6 || day === 0; // Sat, Sun
-}
-
-// Milliseconds until the next daily quest rotation (local midnight).
-export function msUntilDailyReset(now = new Date()) {
-    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    return next.getTime() - now.getTime();
 }
 
 // Milliseconds until the next weekly rotation (Monday 00:00 local time).
@@ -155,13 +162,60 @@ function rotatedSlot(slot, key, pool, count, seedPrefix) {
     };
 }
 
+// A fresh quest for the rolling board: any pool entry not already active.
+// Seeded by the spawn time so re-renders in the same tick agree.
+function pickRollingQuest(rolling) {
+    const active = new Set(rolling.items.map((item) => item.id));
+    const available = ROLLING_POOL.filter((def) => !active.has(def.id));
+    if (!available.length) return null;
+    return available[hashString(`quest:${rolling.nextAt}:${rolling.items.length}`) % available.length];
+}
+
+// Advance the rolling board to `now`: spawn every quest that has become due
+// while slots are free. Returns true when something changed.
+function refreshRolling(rolling, now) {
+    let changed = false;
+    while (rolling.items.length < QUEST_SLOTS && rolling.nextAt <= now) {
+        const def = pickRollingQuest(rolling);
+        if (!def) break;
+        rolling.items.push({ id: def.id, progress: 0 });
+        // Catching up after a long absence still fills at most the free
+        // slots; the clock never drifts more than one interval into the past.
+        rolling.nextAt = Math.max(rolling.nextAt + QUEST_INTERVAL_MS, now - QUEST_INTERVAL_MS);
+        changed = true;
+    }
+    // Every slot taken with the timer expired: one quest is ready and
+    // waiting — it appears the moment a slot frees up. Hold the clock at
+    // `now` so no more than one quest is ever banked.
+    if (rolling.items.length >= QUEST_SLOTS && rolling.nextAt < now) {
+        rolling.nextAt = now;
+        changed = true;
+    }
+    return changed;
+}
+
 function ensureRotation() {
     const profile = getProfile();
     const quests = profile.quests || {};
-    const nextDaily = rotatedSlot(quests.daily, dayKey(), DAILY_POOL, DAILY_COUNT, 'daily');
+    const now = Date.now();
+    let rolling = quests.rolling;
+    let rollingChanged = false;
+    if (!rolling || !Array.isArray(rolling.items) || !Number.isFinite(rolling.nextAt)) {
+        // First run (or migration from the old daily rotation): start with a
+        // full board and the 2h clock ticking toward the next quest.
+        rolling = { items: [], nextAt: now };
+        while (rolling.items.length < QUEST_SLOTS) {
+            const def = pickRollingQuest(rolling);
+            if (!def) break;
+            rolling.items.push({ id: def.id, progress: 0 });
+        }
+        rolling.nextAt = now + QUEST_INTERVAL_MS;
+        rollingChanged = true;
+    }
+    rollingChanged = refreshRolling(rolling, now) || rollingChanged;
     const nextWeekly = rotatedSlot(quests.weekly, weekKey(), WEEKLY_POOL, WEEKLY_COUNT, 'weekly');
-    if (quests.daily !== nextDaily || quests.weekly !== nextWeekly) {
-        profile.quests = { daily: nextDaily, weekly: nextWeekly };
+    if (rollingChanged || quests.rolling !== rolling || quests.weekly !== nextWeekly) {
+        profile.quests = { rolling, weekly: nextWeekly };
         persistProfile();
     }
     return profile.quests;
@@ -185,18 +239,28 @@ export function weekendBannerLabel(now = new Date()) {
     return `Weekend event — starts in ${daysToSaturday} days`;
 }
 
-// Everything the menu needs to render the quest panel.
+// Everything the menu needs to render the quest panel. Completed quests are
+// never listed: rolling quests leave the board the moment they pay out, and
+// finished weekly quests are filtered here — the panel shows when the next
+// quest arrives instead.
 export function getQuestBoard() {
     const state = ensureRotation();
     const attach = (items, pool) => items
         .map((item) => ({ ...item, def: defById(pool, item.id) }))
         .filter((item) => item.def);
+    const weekly = attach(state.weekly.items, WEEKLY_POOL);
+    const rollingFull = state.rolling.items.length >= QUEST_SLOTS;
+    const nextQuestMs = Math.max(0, state.rolling.nextAt - Date.now());
     return {
         unlocked: questsUnlocked(),
-        daily: attach(state.daily.items, DAILY_POOL),
-        weekly: attach(state.weekly.items, WEEKLY_POOL),
+        rolling: attach(state.rolling.items, ROLLING_POOL),
+        // The next rolling quest: how long until it arrives, and whether it
+        // is already waiting for a slot to open up.
+        nextQuestMs,
+        nextQuestWaiting: rollingFull && nextQuestMs === 0,
+        weekly: weekly.filter((item) => !item.done),
+        weeklyDoneCount: weekly.filter((item) => item.done).length,
         weekend: currentWeekendEvent(),
-        dailyResetMs: msUntilDailyReset(),
         weeklyResetMs: msUntilWeeklyReset(),
     };
 }
@@ -208,29 +272,68 @@ function questRewardMultiplier() {
     return active && def.questMultiplier ? def.questMultiplier : 1;
 }
 
+// One quest item's reaction to an event. Returns 'done' | 'changed' | null.
+function progressItem(item, def, eventKind, ctx) {
+    if (!def || def.event !== eventKind || item.done) return null;
+    let changed = false;
+    if (def.streak) {
+        // Streak quests track the current win streak as absolute progress —
+        // a loss knocks the bar back down to zero.
+        const next = Math.min(def.target, Math.max(0, Number(ctx.streak) || 0));
+        if (next === item.progress) return null;
+        item.progress = next;
+        changed = true;
+    } else {
+        const gained = def.counts(ctx || {});
+        if (!gained) return null;
+        item.progress = Math.min(def.target, item.progress + gained);
+        changed = true;
+    }
+    return item.progress >= def.target ? 'done' : (changed ? 'changed' : null);
+}
+
+function completeQuest(def, label) {
+    const reward = def.reward * questRewardMultiplier();
+    addCrowns(reward);
+    showToast(`${label} complete: ${def.title} — +${reward} crowns!`, 'gold');
+}
+
 function applyEvent(eventKind, ctx) {
     // Quests only progress once they are visible to the player.
     if (!questsUnlocked()) return;
     const state = ensureRotation();
-    const slots = [
-        { slot: state.daily, pool: DAILY_POOL, label: 'Daily quest' },
-        { slot: state.weekly, pool: WEEKLY_POOL, label: 'Weekly quest' },
-    ];
     let changed = false;
-    for (const { slot, pool, label } of slots) {
-        for (const item of slot.items) {
-            const def = defById(pool, item.id);
-            if (!def || def.event !== eventKind || item.done) continue;
-            const gained = def.counts(ctx || {});
-            if (!gained) continue;
-            item.progress = Math.min(def.target, item.progress + gained);
+
+    // Rolling quests leave the board as soon as they pay out; the freed slot
+    // is refilled by the 2h clock (or immediately, if a quest was waiting).
+    const keep = [];
+    for (const item of state.rolling.items) {
+        const def = defById(ROLLING_POOL, item.id);
+        const result = progressItem(item, def, eventKind, ctx || {});
+        if (result === 'done') {
+            completeQuest(def, 'Quest');
             changed = true;
-            if (item.progress >= def.target) {
-                item.done = true;
-                const reward = def.reward * questRewardMultiplier();
-                addCrowns(reward);
-                showToast(`${label} complete: ${def.title} — +${reward} crowns!`, 'gold');
-            }
+            continue;
+        }
+        if (result === 'changed') changed = true;
+        keep.push(item);
+    }
+    if (keep.length !== state.rolling.items.length) {
+        state.rolling.items = keep;
+        refreshRolling(state.rolling, Date.now());
+    }
+
+    // Weekly quests keep their slot for the week (no refill mid-period);
+    // finished ones are simply not shown anymore.
+    for (const item of state.weekly.items) {
+        const def = defById(WEEKLY_POOL, item.id);
+        const result = progressItem(item, def, eventKind, ctx || {});
+        if (result === 'done') {
+            item.done = true;
+            completeQuest(def, 'Weekly quest');
+            changed = true;
+        } else if (result === 'changed') {
+            changed = true;
         }
     }
     if (changed) persistProfile();

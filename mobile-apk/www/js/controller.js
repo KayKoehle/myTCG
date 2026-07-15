@@ -827,7 +827,9 @@ export function createGameController(ui, cardStack) {
             playedCardIds: Array.from(playedCardIds),
             won,
         });
-        questOnGameFinished({ won, flawless, deckId: app.statsMeta.deckId });
+        // recordGameResult above already counted this game, so getWinStreak()
+        // is the up-to-date streak the win-streak quests track.
+        questOnGameFinished({ won, flawless, streak: getWinStreak(), deckId: app.statsMeta.deckId });
 
         // One rating across all modes: score the game pairwise against every
         // rated AI rival by final placement (VP order handles draws and

@@ -19,9 +19,20 @@ from __future__ import annotations
 import random
 
 from .actions import Action, ChooseOptionAction
-from .catalog import card
+from .catalog import card, is_being, is_hero, is_human, is_monster
 from .state import GameState
-from .transitions import _location_power_for_side, apply_action, is_terminal, legal_actions, returns
+from .transitions import (
+    FLOOD_THRESHOLD,
+    TROJAN_HORSE_PAYLOAD_POWER,
+    _location_power_for_side,
+    apply_action,
+    count_humans_in_play,
+    dynamic_card_power,
+    is_immortal,
+    is_terminal,
+    legal_actions,
+    returns,
+)
 
 WIN_SCORE = 10_000.0
 
@@ -33,6 +44,140 @@ _W_LANES_AHEAD = 60.0
 _W_POWER_MARGIN = 2.0
 _W_HAND_CARDS = 4.0
 _W_DECK_CARDS = 0.25
+
+
+# ---------------------------------------------------------------------------
+# Strategic evaluation: the deck combos one-ply power margins cannot see.
+#
+# Each term prices a *plan*: a card banked in the underworld that the deck
+# can revive, monster trophies that will grow Gilgamesh and Enkidu, human
+# power exposed to the coming flood (vs the Ark's protection), a Trojan
+# Horse payload worth assembling first. Card names are AI domain knowledge
+# and live only here — the rules runtime never branches on them.
+# ---------------------------------------------------------------------------
+
+# Revival combos: (names worth banking in the underworld, revivers that cash
+# them in, evaluation bonus while both halves are live). Inanna's revival
+# also banishes an enemy being per opponent, hence the large bonus — it is
+# worth "discarding" her from hand or deck to set it up.
+_REVIVAL_COMBOS: tuple[tuple[tuple[str, ...], tuple[str, ...], float], ...] = (
+    (
+        ("Inanna, Goddess of Love and War",),
+        ("Ninšubur, Sukkal to Inanna", "Lulal, Inanna's Bodyguard"),
+        8.0,
+    ),
+    (
+        ("Dumuzid, Shepherd God", "Geshtinanna, Dumuzid's Sister"),
+        ("Sirtur, Mourning Mother",),
+        4.0,
+    ),
+)
+
+# Gala-Tura + Kur-Jara revive any cost<=3 being; Fisherman fishes humans back
+# out. While such an "out" is still available, cheap beings in the underworld
+# keep some of their value.
+_TWIN_REVIVERS = ("Gala-Tura", "Kur-Jara")
+_W_CHEAP_REVIVE_TARGET = 1.5
+_FISHERMAN = "Fisherman"
+_W_FISHABLE_HUMAN = 0.5
+
+# Gilgamesh and Enkidu each have power 1 + the power of all monsters in the
+# owner's underworld: every trophy point pays off once per grower still to
+# come (the ones already in play collect it in the lane totals directly).
+_MONSTER_GROWERS = ("Gilgamesh", "Enkidu")
+_W_MONSTER_TROPHY = 1.5
+
+# Human power standing in the open while the Deluge is loose: near-certain
+# loss once the flood is scheduled, discounted while it merely looms.
+_W_FLOOD_RISK = 1.6
+
+# A Trojan Horse in hand is worth the margin its best smuggle would swing
+# right now — half the realized rate, so assembling a payload beats playing
+# the horse empty, and playing it beats holding it forever.
+_TROJAN_HORSE = "The Trojan Horse"
+_W_HORSE_PAYLOAD = 1.0
+
+
+def _flood_exposure(state: GameState, idx: int) -> float:
+    """Human power `idx` would lose to the flood right now (own side only)."""
+    protected = state.protected_locations[idx]
+    exposed = 0.0
+    for location in state.locations:
+        if location.location_id == protected or idx not in location.accessible:
+            continue
+        for cid in location.stacks[idx]:
+            if not is_human(cid) or is_hero(cid):
+                continue
+            if is_immortal(state, cid, location.location_id):
+                continue
+            exposed += max(0, dynamic_card_power(state, cid, location.location_id, idx))
+    return exposed
+
+
+def _flood_term(state: GameState, ai_idx: int, opponents: list[int]) -> float:
+    """Positive when the flood threatens the opponents more than the AI."""
+    if state.flood_used or not any(state.set_aside):
+        return 0.0
+    if state.flood_pending_turn:
+        imminence = 1.0
+    else:
+        humans = count_humans_in_play(state)
+        if humans < FLOOD_THRESHOLD - 3:
+            return 0.0
+        # 5 humans -> 0.25, 6 -> 0.40, 7 -> 0.55; scheduled -> 1.0.
+        imminence = 0.25 + 0.15 * (humans - (FLOOD_THRESHOLD - 3))
+    own = _flood_exposure(state, ai_idx)
+    enemy = max(_flood_exposure(state, i) for i in opponents)
+    return _W_FLOOD_RISK * imminence * (enemy - own)
+
+
+def _strategy_score(state: GameState, idx: int) -> float:
+    """The value of `idx`'s combo setups that the margins don't price yet."""
+    underworld = state.underworlds[idx]
+    hand = state.hands[idx]
+    available = {card(cid).name for cid in hand}
+    available.update(card(cid).name for cid in state.decks[idx])
+    score = 0.0
+
+    if underworld:
+        below = [card(cid).name for cid in underworld]
+        for targets, revivers, bonus in _REVIVAL_COMBOS:
+            if any(name in targets for name in below) and any(name in available for name in revivers):
+                score += bonus
+
+        owned_everywhere = set(available)
+        owned_everywhere.update(below)
+        owned_everywhere.update(
+            card(cid).name
+            for location in state.locations
+            for cid in location.stacks[idx]
+        )
+        if all(name in owned_everywhere for name in _TWIN_REVIVERS):
+            cheap = sum(1 for cid in underworld if is_being(cid) and card(cid).cost <= 3)
+            score += _W_CHEAP_REVIVE_TARGET * min(cheap, 3)
+        if _FISHERMAN in available:
+            fishable = sum(1 for cid in underworld if is_human(cid))
+            score += _W_FISHABLE_HUMAN * min(fishable, 4)
+
+        trophies = sum(card(cid).power for cid in underworld if is_monster(cid))
+        if trophies > 0:
+            growers_to_come = sum(1 for name in _MONSTER_GROWERS if name in available)
+            score += _W_MONSTER_TROPHY * trophies * growers_to_come
+
+    if any(card(cid).name == _TROJAN_HORSE for cid in hand):
+        best_payload = 0
+        for location in state.locations:
+            if idx not in location.accessible:
+                continue
+            payload = sum(
+                max(0, -TROJAN_HORSE_PAYLOAD_POWER - dynamic_card_power(state, cid, location.location_id, idx))
+                for cid in location.stacks[idx]
+                if is_human(cid)
+            )
+            best_payload = max(best_payload, payload)
+        score += _W_HORSE_PAYLOAD * best_payload
+
+    return score
 
 
 def evaluate_state(state: GameState, ai_idx: int) -> float:
@@ -61,6 +206,8 @@ def evaluate_state(state: GameState, ai_idx: int) -> float:
     score += _W_POWER_MARGIN * power_margin
     score += _W_HAND_CARDS * (len(state.hands[ai_idx]) - max(len(state.hands[i]) for i in opponents))
     score += _W_DECK_CARDS * (len(state.decks[ai_idx]) - max(len(state.decks[i]) for i in opponents))
+    score += _strategy_score(state, ai_idx)
+    score += _flood_term(state, ai_idx, opponents)
     return score
 
 
@@ -85,10 +232,46 @@ def _choose_mulligan_action(state: GameState, ai_idx: int, ai_player_id: int) ->
     return ChooseOptionAction(player_id=ai_player_id, option_id="KEEP")
 
 
+# Playing a card often opens a follow-up choice (a tutor pick, the Ark's
+# location, the Trojan Horse payload, a revive target). The greedy search
+# resolves such chains — as long as the AI itself is the chooser — before
+# scoring, so the decision to play the card already sees the payoff of its
+# best follow-up instead of an unresolved intermediate state.
+_CHAIN_DEPTH = 4
+_CHAIN_BUDGET = 400  # apply_action calls per root action (subsets can explode)
+
+
+def _greedy_action_value(state: GameState, ai_idx: int, depth: int, budget: list[int]) -> float:
+    pending = state.pending_choice
+    if (
+        depth <= 0
+        or budget[0] <= 0
+        or pending is None
+        or pending.chooser_idx != ai_idx
+        or pending.choice_kind == "opening_mulligan"
+    ):
+        return evaluate_state(state, ai_idx)
+    best: float | None = None
+    for action in legal_actions(state):
+        if budget[0] <= 0:
+            break
+        budget[0] -= 1
+        try:
+            child = apply_action(state, action)
+        except ValueError:
+            continue
+        value = _greedy_action_value(child, ai_idx, depth - 1, budget)
+        if best is None or value > best:
+            best = value
+    return best if best is not None else evaluate_state(state, ai_idx)
+
+
 def choose_heuristic_action(state: GameState, ai_player_id: int, rng: random.Random | None = None) -> Action:
     """Greedy one-ply: try every legal action, keep the best-evaluating one.
 
-    Ties are broken randomly (seeded by the caller for reproducibility).
+    Follow-up choices the action opens are resolved greedily first (see
+    `_greedy_action_value`). Ties are broken randomly (seeded by the caller
+    for reproducibility).
     """
     candidates = [a for a in legal_actions(state) if a.player_id == ai_player_id]
     if not candidates:
@@ -107,7 +290,7 @@ def choose_heuristic_action(state: GameState, ai_player_id: int, rng: random.Ran
             next_state = apply_action(state, action)
         except ValueError:
             continue
-        score = evaluate_state(next_state, ai_idx)
+        score = _greedy_action_value(next_state, ai_idx, _CHAIN_DEPTH, [_CHAIN_BUDGET])
         if score > best_score + 1e-9:
             best_actions = [action]
             best_score = score

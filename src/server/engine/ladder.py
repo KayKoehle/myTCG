@@ -20,15 +20,16 @@ from .snapshot import observation_string
 from .state import GameState
 from .transitions import legal_actions
 
-# (agent kind, Elo anchor), weakest first. Calibrated 2026-07-10 by a
-# least-squares Elo fit over 1600 games of agent-vs-agent arena cross-play
-# (all six pairings; see stats/arena_calib_*.json), with search anchored at
-# 1200. Depth-4 minimax measured no stronger than depth 3, so 3 it is.
+# (agent kind, Elo anchor), weakest first. Recalibrated 2026-07-15 after the
+# strategic evaluation landed in engine/ai.py (240-game asymmetric arena runs
+# per pairing, search anchored at 1200): search now beats random 98.8% and
+# neural 93.3%, minimax beats search 67.9%. Depth-4 minimax measured no
+# stronger than depth 3, so 3 it is.
 TIER_ANCHORS: tuple[tuple[str, int], ...] = (
-    ("random", 575),
-    ("neural", 825),
+    ("random", 440),
+    ("neural", 740),
     ("search", 1200),
-    ("minimax", 1300),
+    ("minimax", 1330),
 )
 
 MIN_AI_ELO = TIER_ANCHORS[0][1]
