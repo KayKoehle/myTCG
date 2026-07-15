@@ -531,11 +531,13 @@ export function createMenuController(ui, game, cardStack) {
     // A no-op (returns true) on browser/desktop, which use same-origin.
     async function ensureLanServer() {
         if (!isLocalBridge()) return true; // browser/desktop use the same-origin server
-        if (lanServerPort) return true;
         if (!window.MyTCGLocalApi.startLanServer) {
             showToast('Update the app to the latest version to use LAN play.');
             return false;
         }
+        // Called every time the LAN screen opens (not just once): the native side
+        // is idempotent about the server but re-takes the multicast lock that
+        // pauseLanDiscovery released on the previous close.
         try {
             const data = JSON.parse(window.MyTCGLocalApi.startLanServer());
             if (!data.ok || !data.port) {
@@ -548,6 +550,15 @@ export function createMenuController(ui, game, cardStack) {
         } catch (error) {
             showToast(`Could not start LAN networking: ${error}`);
             return false;
+        }
+    }
+
+    // Drop the discovery (multicast) lock to save battery once we stop browsing
+    // for peers — leaving the LAN screen, or heading into a match. A hosted game
+    // stays reachable over TCP without it.
+    function pauseLanDiscovery() {
+        if (isLocalBridge() && window.MyTCGLocalApi.pauseLanDiscovery) {
+            try { window.MyTCGLocalApi.pauseLanDiscovery(); } catch (error) { /* best-effort */ }
         }
     }
     function lanPlayerName() {
@@ -592,6 +603,10 @@ export function createMenuController(ui, game, cardStack) {
             lanPost('', '/api/lan/disable', {}).catch(() => {});
             lanEnabled = false;
         }
+        // Either way we've stopped browsing for peers, so drop the battery-hungry
+        // discovery lock (Android). keepDiscovery keeps the LanService running
+        // for the host's live match; it does not need multicast reception.
+        pauseLanDiscovery();
     }
 
     function startPeerPolling() {

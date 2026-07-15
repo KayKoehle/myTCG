@@ -9,11 +9,13 @@ import com.chaquo.python.Python;
 
 public class LocalApiBridge {
     private final Context appContext;
-    // Held while LAN play is active so Android delivers the UDP broadcast beacons
-    // discovery relies on (Wi-Fi drops multicast/broadcast to sleep the radio
-    // unless a lock is held) and keeps the Wi-Fi radio awake for the HTTP server.
+    // Held only while peer discovery is active (the LAN browse/lobby screen): a
+    // MulticastLock is what lets Android deliver the UDP broadcast beacons
+    // discovery relies on. It is released the moment a match starts or the LAN
+    // screen closes — the radio drain of holding it (and of a full Wi-Fi lock,
+    // which we deliberately don't take) isn't worth paying once discovery is
+    // done, and a hosted match stays reachable over ordinary TCP without it.
     private WifiManager.MulticastLock multicastLock;
-    private WifiManager.WifiLock wifiLock;
 
     public LocalApiBridge(Context context) {
         this.appContext = context.getApplicationContext();
@@ -33,12 +35,14 @@ public class LocalApiBridge {
     }
 
     // Starts the in-process HTTP server (so LAN peers can reach this device) and
-    // acquires the Wi-Fi/multicast locks discovery needs. Returns the JSON the
-    // Python side reports, including the port to advertise.
+    // acquires the multicast lock discovery needs. Idempotent — called every
+    // time the LAN screen opens, so it also re-takes the lock after a previous
+    // pauseLanDiscovery. Returns the JSON the Python side reports (port to
+    // advertise).
     @JavascriptInterface
     public String startLanServer() {
         try {
-            acquireLocks();
+            acquireMulticastLock();
             Python py = Python.getInstance();
             PyObject module = py.getModule("mobile_api");
             return module.callAttr("start_lan_server").toString();
@@ -48,21 +52,29 @@ public class LocalApiBridge {
         }
     }
 
+    // Releases the discovery lock without tearing down the HTTP server: called
+    // when leaving the LAN browse/lobby screen (including into a match), where a
+    // hosted game stays reachable but no more broadcasts need to be heard.
+    @JavascriptInterface
+    public String pauseLanDiscovery() {
+        releaseMulticastLock();
+        return "{\"ok\":true}";
+    }
+
     @JavascriptInterface
     public String stopLanServer() {
         try {
+            releaseMulticastLock();
             Python py = Python.getInstance();
             PyObject module = py.getModule("mobile_api");
-            String result = module.callAttr("stop_lan_server").toString();
-            releaseLocks();
-            return result;
+            return module.callAttr("stop_lan_server").toString();
         } catch (Exception e) {
             String message = e.getMessage() == null ? "Could not stop LAN server" : e.getMessage();
             return "{\"ok\":false,\"error\":\"" + escapeJson(message) + "\"}";
         }
     }
 
-    private synchronized void acquireLocks() {
+    private synchronized void acquireMulticastLock() {
         WifiManager wifi = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
         if (wifi == null) {
             return;
@@ -74,21 +86,11 @@ public class LocalApiBridge {
         if (!multicastLock.isHeld()) {
             multicastLock.acquire();
         }
-        if (wifiLock == null) {
-            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mytcg-lan");
-            wifiLock.setReferenceCounted(false);
-        }
-        if (!wifiLock.isHeld()) {
-            wifiLock.acquire();
-        }
     }
 
-    private synchronized void releaseLocks() {
+    private synchronized void releaseMulticastLock() {
         if (multicastLock != null && multicastLock.isHeld()) {
             multicastLock.release();
-        }
-        if (wifiLock != null && wifiLock.isHeld()) {
-            wifiLock.release();
         }
     }
 
