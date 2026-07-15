@@ -1,7 +1,7 @@
 import { postJson, setLanHostBase } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
 import { eloDelta, placementsFromVp, sampleAiElo } from './elo.js';
-import { activeEmotes, addCrowns, applyEloDelta, getElo, recordGameResult } from './profile.js';
+import { activeEmotes, addCrowns, applyEloDelta, getElo, recordCasualGame, recordGameResult } from './profile.js';
 import {
     questOnCardBanished,
     questOnCardDrawn,
@@ -807,7 +807,13 @@ export function createGameController(ui, cardStack) {
     // quest system. Only menu-started matches carry statsMeta; the settings
     // sheet's debug games don't count.
     function recordFinishedGame(entry, snapshot) {
-        if (!app.statsMeta) return;
+        if (!app.statsMeta) {
+            // Local hotseat and LAN matches carry no statsMeta (no single rated
+            // deck), but they are still finished games: count them so the Decks
+            // and Quests unlocks progress the same way solo games do.
+            if (isLocalGame() || isLanGame()) recordCasualGame();
+            return;
+        }
         const winner = entry.split(':')[1] || '';
         const won = winner !== 'DRAW' && Number(winner) === cfg().player_id;
         const vp = snapshot.victory_points || {};
@@ -880,26 +886,35 @@ export function createGameController(ui, cardStack) {
         const winner = entry.split(':')[1] || '';
         const isDraw = winner === 'DRAW';
         const youWon = !isDraw && Number(winner) === cfg().player_id;
+        // Pass-and-play shares one screen among several humans, so a "You won /
+        // You lost" frame reads as if everyone claimed the crown. Name the
+        // winning seat instead and celebrate only them; solo and LAN games keep
+        // the per-viewer framing (each player has their own device there).
+        const hotseat = isLocalGame();
+        const celebrate = !isDraw && (hotseat || youWon);
+        const winnerLabel = isDraw ? '' : seatLabel(winner);
 
         const overlay = document.createElement('div');
-        overlay.className = `game-result-overlay ${isDraw ? 'game-draw' : (youWon ? 'game-win' : 'game-loss')}`;
+        overlay.className = `game-result-overlay ${isDraw ? 'game-draw' : (celebrate ? 'game-win' : 'game-loss')}`;
         const crowns = document.createElement('div');
         crowns.className = 'game-result-crowns';
         const crownCount = isDraw ? 1 : 4;
         for (let i = 0; i < crownCount; i += 1) {
             const crown = document.createElement('div');
             crown.className = 'game-result-crown';
-            crown.innerHTML = roundCrownSvg(youWon);
+            crown.innerHTML = roundCrownSvg(celebrate);
             crowns.appendChild(crown);
         }
         const title = document.createElement('div');
         title.className = 'game-result-title';
-        title.textContent = isDraw ? 'Draw' : (youWon ? 'Victory!' : 'Defeat');
+        title.textContent = isDraw ? 'Draw' : (hotseat ? `${winnerLabel} wins!` : (youWon ? 'Victory!' : 'Defeat'));
         const sub = document.createElement('div');
         sub.className = 'game-result-sub';
         sub.textContent = isDraw
             ? 'The game ends with no winner'
-            : (youWon ? 'You claimed the fourth crown' : 'Your opponent claimed the fourth crown');
+            : (hotseat
+                ? `${winnerLabel} claimed the fourth crown`
+                : (youWon ? 'You claimed the fourth crown' : 'Your opponent claimed the fourth crown'));
         overlay.append(crowns, title, sub);
         // Rated (menu-started) games show how the result moved the rating.
         let eloLine = null;
@@ -915,7 +930,7 @@ export function createGameController(ui, cardStack) {
         overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, fill: 'forwards' });
         const crownEls = Array.from(crowns.children);
         crownEls.forEach((crownEl, i) => {
-            if (youWon) {
+            if (celebrate) {
                 crownEl.animate(
                     [
                         { transform: 'translateY(40px) scale(0.2)', opacity: 0 },
@@ -984,9 +999,12 @@ export function createGameController(ui, cardStack) {
         const winner = parts[2] || '';
         const isDraw = winner === 'DRAW';
         const youWon = !isDraw && Number(winner) === cfg().player_id;
+        // Shared-screen hotseat: name the seat that took the crown rather than
+        // framing it as the current holder's win/loss.
+        const hotseat = isLocalGame();
 
         const overlay = document.createElement('div');
-        overlay.className = `round-result-overlay ${isDraw ? 'draw' : (youWon ? 'win-you' : 'win-opp')}`;
+        overlay.className = `round-result-overlay ${isDraw ? 'draw' : ((youWon || hotseat) ? 'win-you' : 'win-opp')}`;
         const crown = document.createElement('div');
         crown.className = 'round-crown';
         crown.innerHTML = roundCrownSvg(!isDraw);
@@ -994,7 +1012,9 @@ export function createGameController(ui, cardStack) {
         text.className = 'round-result-text';
         text.textContent = isDraw
             ? `Round ${roundNo}: Draw — no crown`
-            : (youWon ? `Round ${roundNo}: You win the crown!` : `Round ${roundNo}: Opponent wins the crown`);
+            : (hotseat
+                ? `Round ${roundNo}: ${seatLabel(winner)} wins the crown!`
+                : (youWon ? `Round ${roundNo}: You win the crown!` : `Round ${roundNo}: Opponent wins the crown`));
         overlay.append(crown, text);
         document.body.appendChild(overlay);
 

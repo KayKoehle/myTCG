@@ -9,6 +9,30 @@ export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;
 }
 
+// True inside the Android app, where a native bridge answers API calls and no
+// HTTP server is reachable. LAN play needs that server (peers reach a host's
+// HTTP API), so the LAN feature keys off this to explain itself instead of
+// failing on a fetch that has nothing to talk to.
+export function isLocalBridge() {
+    return Boolean(window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function');
+}
+
+// Read a fetch Response as JSON, but degrade a non-JSON body (e.g. a plain-text
+// "Internal Server Error" from a 500, or an app-shell HTML page when no server
+// is listening) into a clear Error instead of the browser's opaque
+// "invalid JSON" SyntaxError.
+async function readJsonResponse(response) {
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        const snippet = text.trim().slice(0, 120);
+        throw new Error(snippet
+            ? `Server returned a non-JSON response (${response.status}): ${snippet}`
+            : `Server returned an empty response (${response.status})`);
+    }
+}
+
 export async function postJson(url, body) {
     // Inside the Android app a native bridge handles API calls locally
     // (fully offline). In the browser it is absent and we fall through to HTTP.
@@ -30,7 +54,7 @@ export async function postJson(url, body) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok || data.ok === false) {
         throw new Error(data.error || `Request failed ${response.status}`);
     }
@@ -47,7 +71,7 @@ export async function lanPost(base, path, body) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body || {}),
     });
-    const data = await response.json();
+    const data = await readJsonResponse(response);
     if (!response.ok) {
         throw new Error(data.error || `Request failed ${response.status}`);
     }

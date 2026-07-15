@@ -278,6 +278,15 @@ export function recordGameResult({ deckId, cardIds, playedCardIds, won }) {
     save();
 }
 
+// Local pass-and-play and LAN games are unrated and span several human decks,
+// so per-deck win stats and Elo don't apply — but they are still real finished
+// games and must count toward the progression unlocks (Decks at 1 game, Quests
+// at 3) exactly like solo matches. Called once per finished multiplayer game.
+export function recordCasualGame() {
+    profile.stats.gamesPlayed += 1;
+    save();
+}
+
 export function deckWinRate(deckId) {
     const s = profile.stats.decks[deckId];
     if (!s || !s.games) return null;
