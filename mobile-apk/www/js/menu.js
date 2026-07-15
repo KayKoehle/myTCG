@@ -32,6 +32,8 @@ import {
     getFavoriteMode,
     getSelectedDeckId,
     setFavoriteMode,
+    modeUnlocked,
+    modeUnlockHint,
     isCustomDeck,
     MAX_ACTIVE_EMOTES,
     ownedCount,
@@ -274,14 +276,22 @@ export function createMenuController(ui, game, cardStack) {
     function renderModeRow() {
         if (!ui.menuModeRow) return;
         const favorite = getFavoriteMode();
-        ui.menuModeRow.innerHTML = GAME_MODES.map((mode) => `
-            <button class="mode-chip ${mode.id === favorite ? 'active' : ''}" role="radio"
+        ui.menuModeRow.innerHTML = GAME_MODES.map((mode) => {
+            const locked = !modeUnlocked(mode.id);
+            return `
+            <button class="mode-chip ${mode.id === favorite ? 'active' : ''} ${locked ? 'locked' : ''}" role="radio"
                 aria-checked="${mode.id === favorite}" data-mode-id="${mode.id}"
-                title="${escapeHtml(mode.name)}">${escapeHtml(mode.label)}</button>
-        `).join('');
+                title="${escapeHtml(locked ? (modeUnlockHint(mode.id) || mode.name) : mode.name)}">${locked ? '🔒 ' : ''}${escapeHtml(mode.label)}</button>
+        `;
+        }).join('');
         ui.menuModeRow.querySelectorAll('[data-mode-id]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                setFavoriteMode(btn.dataset.modeId);
+                const modeId = btn.dataset.modeId;
+                if (!modeUnlocked(modeId)) {
+                    showToast(modeUnlockHint(modeId));
+                    return;
+                }
+                setFavoriteMode(modeId);
                 renderMenu();
             });
         });
@@ -434,6 +444,10 @@ export function createMenuController(ui, game, cardStack) {
         // Every AI rival draws a random stock deck. Mirror matches are fine:
         // the engine aliases card ids shared between seats.
         const mode = gameModeById(getFavoriteMode());
+        if (!modeUnlocked(mode.id)) {
+            showToast(modeUnlockHint(mode.id));
+            return;
+        }
         const aiDecks = Array.from(
             { length: Math.max(1, mode.players - 1) },
             () => DECK_IDS[Math.floor(Math.random() * DECK_IDS.length)]
@@ -446,7 +460,7 @@ export function createMenuController(ui, game, cardStack) {
             deckACards: deckA.cards,
             deckBName: aiDecks[0],
             decks: mode.players > 2 ? [deckA.name, ...aiDecks] : null,
-            statsMeta: { deckId, cardIds: ids },
+            statsMeta: { deckId, cardIds: ids, mode: mode.id },
         });
     }
 

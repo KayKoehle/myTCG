@@ -3740,6 +3740,13 @@ details[open]>.cos-summary::before {
     box-shadow: 0 0 12px rgba(23, 182, 255, 0.25);
 }
 
+/* FFA tables still locked behind the previous mode's win. */
+.mode-chip.locked {
+    opacity: 0.55;
+    filter: grayscale(0.4);
+    cursor: not-allowed;
+}
+
 /* --- Pass & Play ----------------------------------------------------------- */
 
 .menu-passplay {

@@ -655,8 +655,12 @@ export function createGameController(ui, cardStack) {
             const raw = String(entry || '');
             const parts = raw.split(':');
             if (raw.startsWith('round_result:')) {
-                // Every crown won in a round is banked as shop currency.
-                if (Number(parts[2]) === you) {
+                // Every crown won in a round is banked as shop currency. In
+                // pass-and-play every seat plays on this device's profile, so
+                // any seat's round win banks — not just whoever happens to be
+                // holding the device when the entry lands.
+                const roundWinner = Number(parts[2]);
+                if (isLocalGame() ? localSeats().includes(roundWinner) : roundWinner === you) {
                     addCrowns(1);
                     if (app.statsMeta) questOnRoundWon();
                 }
@@ -826,6 +830,7 @@ export function createGameController(ui, cardStack) {
             cardIds: app.statsMeta.cardIds,
             playedCardIds: Array.from(playedCardIds),
             won,
+            mode: app.statsMeta.mode || null,
         });
         // recordGameResult above already counted this game, so getWinStreak()
         // is the up-to-date streak the win-streak quests track.
