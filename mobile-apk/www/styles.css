@@ -3198,6 +3198,15 @@ select {
     opacity: 0.55;
 }
 
+/* Shown when a section has no open quests left right now. */
+.quest-empty {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: center;
+    padding: 6px 0;
+}
+
 .quest-title {
     font-size: 13px;
     font-weight: 700;

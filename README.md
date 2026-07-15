@@ -116,17 +116,18 @@ player: the client samples each AI's Elo near the player's own rating and
 sends it as `ai_elo` to `/api/ai-move`; `engine/ladder.py` then plays a
 per-move mixture of the agents above so strength is a continuous function of
 that number. Anchors (calibrated by arena cross-play, search fixed at 1200):
-random 575, neural 825, search 1200, minimax 1300. The player has ONE rating
+random 440, neural 740, search 1200, minimax 1330. The player has ONE rating
 across all modes — a 1v1 counts like one Elo game, an N-player FFA as
 pairwise games against every rival by final placement, with the K factor
 split so both move the rating equally. The rating lives in the local profile
 (`webapp/js/elo.js`, `profile.js`) and is shown next to the crowns
 ("YOU 1200 | OPP 1213") and on the game-over overlay ("+12 Elo → 1213").
 
-**Current benchmarks** (arena cross-play, 2026-07-10): minimax beats search
-69%, search beats neural 89%, neural beats random 67%. The neural policy is
-still the weakest trained tier — see "Training the AI & balancing the decks"
-below to improve it.
+**Current benchmarks** (arena cross-play, 2026-07-15, after the strategic
+combo evaluation landed in `engine/ai.py`): minimax beats search 68%, search
+beats neural 93% and random 99%. The neural policy is still the weakest
+trained tier — see "Training the AI & balancing the decks" below to improve
+it.
 
 ## Training the AI & balancing the decks
 
@@ -201,11 +202,10 @@ uv run python -m src.server.ai.arena --games 1000 --agent search
 #   --out stats/my.json     where raw per-game records are written
 ```
 
-Agent strength, measured with exactly these asymmetric runs (1600 games,
-all six pairings, least-squares Elo fit with search anchored at 1200):
-random 575 < neural 825 < search 1200 < minimax 1300. These are the ladder
-anchors in `engine/ladder.py` / `webapp/js/elo.js` — re-run the pairings and
-update both files whenever an agent changes.
+Agent strength, measured with exactly these asymmetric runs (search anchored
+at 1200): random 440 < neural 740 < search 1200 < minimax 1330. These are the
+ladder anchors in `engine/ladder.py` / `webapp/js/elo.js` — re-run the
+pairings and update both files whenever an agent changes.
 
 The printed report contains:
 

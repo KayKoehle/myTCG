@@ -1,18 +1,22 @@
-"""AI opponents: the search AI must clearly beat random; the neural runtime
-must be deterministic and faithful to the torch model; the Elo ladder must
-always produce legal moves at any rating."""
+"""AI opponents: the search AI must clearly beat random; the AI must see the
+deck combos (banking Inanna, Ark placement, monster trophies, the Trojan
+Horse payload); the neural runtime must be deterministic and faithful to the
+torch model; the Elo ladder must always produce legal moves at any rating."""
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from engine_utils import by_name, put_in_hand, put_in_play, remove_everywhere, start_game
+from server.engine.actions import PlayCardAction
 from server.engine.ai import choose_heuristic_action, choose_minimax_action
 from server.engine.ladder import MAX_AI_ELO, MIN_AI_ELO, TIER_ANCHORS, _tier_for_elo, choose_ladder_action
 from server.engine.policy import PurePolicy, obs_to_features
 from server.engine.snapshot import observation_string
-from server.engine.transitions import apply_action, create_initial_state, is_terminal, legal_actions, returns
+from server.engine.transitions import _apply_on_enter, apply_action, create_initial_state, is_terminal, legal_actions, returns
 
 REPO = Path(__file__).resolve().parents[1]
 WEIGHTS = REPO / "src" / "server" / "model" / "policy_weights.json"
@@ -68,6 +72,107 @@ def test_minimax_ai_beats_random_player():
         state = apply_action(state, action)
         steps += 1
     assert returns(state)[1] > 0, "minimax AI lost to a random player"
+
+
+# --- Deck-combo awareness ------------------------------------------------------
+#
+# The strategic evaluation must make the search AI play the plans a human
+# pilots these decks with — not just the best one-ply power swing.
+
+GIL = "epic_of_gilgamesh"
+TROY = "siege_of_troy"
+INA = "inannas_descent"
+FLOOD = "the_flood"
+
+
+def test_ai_banks_inanna_in_the_underworld():
+    """Gatekeeper Neti's choice: send Inanna down while a reviver is left."""
+    state = start_game(INA, TROY, seed=5)
+    neti = by_name(INA, "Gatekeeper Neti")
+    inanna = by_name(INA, "Inanna, Goddess of Love and War")
+    lulal = by_name(INA, "Lulal, Inanna's Bodyguard")
+    state = put_in_hand(state, inanna, 0)
+    state = put_in_hand(state, lulal, 0)
+    state = put_in_play(state, neti, 0, 0)
+    state = _apply_on_enter(state, 0, neti, 0)
+    assert state.pending_choice is not None
+    assert state.pending_choice.choice_kind == "put_hand_to_underworld"
+
+    action = choose_heuristic_action(state, state.player_ids[0])
+    assert action.option_id == inanna, "the AI should bank Inanna for the revival combo"
+
+
+def test_ai_protects_its_humans_with_the_ark():
+    """The Ark's location choice: shield the lane holding the human power."""
+    state = start_game(FLOOD, GIL, seed=6)
+    for name in ("Farmer", "Fisherman", "Citizen of Shruppak"):
+        state = put_in_play(state, by_name(FLOOD, name), 1, 0)
+    state = replace(state, flood_pending_turn=state.turn_number)
+    ark = by_name(FLOOD, "The Ark")
+    state = put_in_play(state, ark, 0, 0)
+    state = _apply_on_enter(state, 0, ark, 0)
+    assert state.pending_choice is not None
+    assert state.pending_choice.choice_kind == "choose_ark_location"
+
+    action = choose_heuristic_action(state, state.player_ids[0])
+    assert action.option_id == "1", "the Ark must protect the location with the humans"
+
+
+def test_ai_grows_gilgamesh_by_defeating_monsters():
+    """Playing Gilgamesh onto the monster beats developing an empty lane."""
+    state = start_game(GIL, TROY, seed=7)
+    gil = by_name(GIL, "Gilgamesh")
+    enk = by_name(GIL, "Enkidu")
+    scorpions = by_name(GIL, "Scorpion-Men")
+    state = put_in_play(state, scorpions, 2, 0)
+    # The other lanes are not flippable with a small body, so lane greed
+    # cannot mask the trophy plan.
+    state = put_in_play(state, by_name(TROY, "Ajax, the Great"), 0, 1)
+    state = put_in_play(state, by_name(TROY, "Achilles"), 1, 1)
+    state = put_in_hand(state, gil, 0)
+    state = remove_everywhere(state, enk)
+    state = replace(
+        state,
+        hands=((gil,), state.hands[1]),
+        decks=(state.decks[0] + (enk,), state.decks[1]),
+        phase="MAIN",
+        current_player_idx=0,
+        mana_pool=(2, 0),
+    )
+
+    action = choose_heuristic_action(state, state.player_ids[0])
+    assert isinstance(action, PlayCardAction) and action.card_id == gil
+    assert action.location_id == 2, "the hero should defeat the monster for the trophy"
+
+
+def test_ai_assembles_a_trojan_horse_payload():
+    """The horse goes where the humans are — and smuggles them across."""
+    state = start_game(TROY, GIL, seed=8)
+    horse = by_name(TROY, "The Trojan Horse")
+    soldiers = by_name(TROY, "Greek Soldiers")
+    menelaus = by_name(TROY, "Menelaus, the Wronged King")
+    state = put_in_play(state, soldiers, 0, 0)
+    state = put_in_play(state, menelaus, 0, 0)
+    # The other lanes are already held by the enemy, so the -1 horse alone
+    # cannot flip them — the payload is the only real value on offer.
+    state = put_in_play(state, by_name(GIL, "Ishtar"), 1, 1)
+    state = put_in_play(state, by_name(GIL, "Utnapishtim, Survivor of the Flood"), 2, 1)
+    state = put_in_hand(state, horse, 0)
+    state = replace(state, hands=((horse,), state.hands[1]), phase="MAIN", current_player_idx=0, mana_pool=(4, 0))
+
+    action = choose_heuristic_action(state, state.player_ids[0])
+    assert isinstance(action, PlayCardAction) and action.card_id == horse
+    assert action.location_id == 0, "the horse should be played where its payload waits"
+
+    # Resolve the follow-up choices greedily: the payload rides along.
+    state = apply_action(state, action)
+    for _ in range(6):
+        if state.pending_choice is None:
+            break
+        chooser_id = state.player_ids[state.pending_choice.chooser_idx]
+        state = apply_action(state, choose_heuristic_action(state, chooser_id))
+    assert soldiers in state.facedown_cards and menelaus in state.facedown_cards
+    assert soldiers in state.locations[0].stacks[1] and menelaus in state.locations[0].stacks[1]
 
 
 def test_ladder_tiers_follow_the_anchors():

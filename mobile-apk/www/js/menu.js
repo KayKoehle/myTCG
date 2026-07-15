@@ -355,16 +355,16 @@ export function createMenuController(ui, game, cardStack) {
 
     // --- Quests ----------------------------------------------------------------
 
-    function questRowHtml(item, label) {
+    function questRowHtml(item) {
         const pct = Math.round(Math.min(1, item.progress / item.def.target) * 100);
         return `
-            <div class="quest-row ${item.done ? 'done' : ''}">
+            <div class="quest-row">
                 <div class="quest-row-main">
                     <div class="quest-title">${escapeHtml(item.def.title)}</div>
                     <div class="quest-bar"><div class="quest-bar-fill" style="width:${pct}%"></div></div>
                 </div>
                 <div class="quest-side">
-                    <span class="quest-progress">${item.done ? '✓' : `${item.progress}/${item.def.target}`}</span>
+                    <span class="quest-progress">${item.progress}/${item.def.target}</span>
                     <span class="quest-reward">${item.def.reward}<span class="crown-icon"></span></span>
                 </div>
             </div>
@@ -403,14 +403,18 @@ export function createMenuController(ui, game, cardStack) {
                 <div class="weekend-desc">${escapeHtml(eventDef.desc)}</div>
             </div>
             <div class="quest-section">
-                <div class="quest-section-title">Daily quests
-                    <span class="quest-countdown">new in ${countdownText(board.dailyResetMs)}</span></div>
-                ${board.daily.map((item) => questRowHtml(item)).join('')}
+                <div class="quest-section-title">Quests
+                    <span class="quest-countdown">${board.nextQuestWaiting
+                        ? 'next quest waiting — complete one!'
+                        : `new quest in ${countdownText(board.nextQuestMs)}`}</span></div>
+                ${board.rolling.map((item) => questRowHtml(item)).join('')}
+                ${board.rolling.length ? '' : '<div class="quest-empty">All quests done — the next one is on its way.</div>'}
             </div>
             <div class="quest-section">
                 <div class="quest-section-title">Weekly quests
                     <span class="quest-countdown">new in ${countdownText(board.weeklyResetMs)}</span></div>
                 ${board.weekly.map((item) => questRowHtml(item)).join('')}
+                ${board.weekly.length ? '' : '<div class="quest-empty">All weekly quests complete — well fought!</div>'}
             </div>
         `;
     }

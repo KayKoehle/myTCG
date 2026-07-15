@@ -101,7 +101,7 @@ function defaultProfile() {
         },
         equipped: { cardBack: 'classic', board: 'classic', emotes: ['good_luck', 'heart', 'good_game'] },
         stats: defaultStats(),
-        quests: {}, // managed by quests.js: { daily: {key, items}, weekly: {key, items} }
+        quests: {}, // managed by quests.js: { rolling: {items, nextAt}, weekly: {key, items} }
     };
 }
 
