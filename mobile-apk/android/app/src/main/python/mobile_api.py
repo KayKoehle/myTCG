@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from engine.policy import PurePolicy, find_default_weights
 from engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from engine.state import GameState
 from engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
+from lan_service import LanService
 
 
 def _matchup_stats_path() -> Path | None:
@@ -206,6 +208,19 @@ class MobileGameService:
 
 SERVICE = MobileGameService()
 
+# LAN multiplayer. On Android there is no FastAPI server, so the same stdlib
+# LanService the browser/desktop build uses runs here in-process, reachable both
+# through the native bridge (this instance driving its own UI) and through an
+# in-process HTTP server (peers on the LAN reaching this instance) — see
+# `start_lan_server`. The engine's deck registrar lets the host deal custom
+# decks, exactly as `endpoints.py` wires it on the server.
+LAN = LanService(deck_registrar=register_custom_deck)
+
+# One lock guards every request: the native bridge (UI thread) and the LAN HTTP
+# server (its own threads) both dispatch through `handle_post_json` into the one
+# shared `SERVICE`/`LAN`, so their access to match/lobby state must be serialized.
+_DISPATCH_LOCK = threading.RLock()
+
 
 def _response_ok(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
@@ -215,9 +230,117 @@ def _response_error(message: str) -> str:
     return json.dumps({"ok": False, "error": message}, ensure_ascii=False)
 
 
+def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
+    """Dispatch the LAN endpoints. Returns None if `url` isn't a LAN path.
+
+    Response shapes mirror `src/server/api/endpoints.py` so the same webapp JS
+    drives host and guest identically whether it is talking to a FastAPI server
+    or to this bridge.
+    """
+    if url == "/api/lan/enable":
+        LAN.start(self_name=body.get("name", "Player"), http_port=body.get("port", 8123))
+        return _response_ok({"ok": True, "status": LAN.status()})
+
+    if url == "/api/lan/disable":
+        LAN.stop()
+        return _response_ok({"ok": True})
+
+    if url == "/api/lan/peers":
+        return _response_ok({"ok": True, "peers": LAN.peers()})
+
+    if url == "/api/lan/host":
+        deck_name = body.get("deck_name")
+        if not deck_name:
+            return _response_ok({"ok": False, "error": "A deck is required to host a game."})
+        try:
+            lobby = LAN.host_game(
+                host_name=body.get("name", "Host"),
+                deck_name=deck_name,
+                num_players=body.get("num_players", 2),
+                deck_cards=body.get("deck_cards"),
+                seed=body.get("seed"),
+            )
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        return _response_ok({"ok": True, "lobby": lobby})
+
+    if url == "/api/lan/join":
+        try:
+            result = LAN.join_game(
+                lobby_id=body["lobby_id"],
+                name=body.get("name", "Player"),
+                deck_name=body["deck_name"],
+                deck_cards=body.get("deck_cards"),
+            )
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        return _response_ok({"ok": True, **result})
+
+    if url == "/api/lan/lobby":
+        try:
+            return _response_ok({"ok": True, "lobby": LAN.lobby(body["lobby_id"])})
+        except KeyError as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
+    if url == "/api/lan/start":
+        try:
+            params = LAN.start_game(body["lobby_id"])
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        # Build the authoritative match locally so guests can immediately drive
+        # it through /api/state and /api/action on this instance.
+        SERVICE.get_or_create_match(
+            match_id=params["match_id"], seed=params["seed"], decks=params["decks"],
+        )
+        return _response_ok({"ok": True, **params})
+
+    if url == "/api/lan/trade/propose":
+        return _response_ok({"ok": True, "trade": LAN.propose_trade(
+            match_id=body["match_id"], a_pid=body["a_pid"], b_pid=body["b_pid"])})
+
+    if url == "/api/lan/trade/offer":
+        try:
+            return _response_ok({"ok": True, "trade": LAN.set_offer(
+                body["trade_id"], body["player_id"], body.get("card_ids", []))})
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
+    if url == "/api/lan/trade/confirm":
+        try:
+            return _response_ok({"ok": True, "trade": LAN.confirm_trade(
+                body["trade_id"], body["player_id"])})
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
+    if url == "/api/lan/trade/cancel":
+        try:
+            return _response_ok({"ok": True, "trade": LAN.cancel_trade(body["trade_id"])})
+        except KeyError as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
+    if url == "/api/lan/trade/state":
+        try:
+            return _response_ok({"ok": True, "trade": LAN.trade(body["trade_id"])})
+        except KeyError as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
+    return None
+
+
 def handle_post_json(url: str, body_json: str) -> str:
+    with _DISPATCH_LOCK:
+        return _dispatch(url, body_json)
+
+
+def _dispatch(url: str, body_json: str) -> str:
     try:
         body = json.loads(body_json) if body_json else {}
+
+        if url.startswith("/api/lan/"):
+            lan_response = _handle_lan(url, body)
+            if lan_response is not None:
+                return lan_response
+
         match_id = str(body.get("match_id", "snap-match-local"))
         seed = int(body.get("seed", 42))
         deck_a = str(body.get("deck_a", "epic_of_gilgamesh"))
@@ -278,3 +401,95 @@ def handle_post_json(url: str, body_json: str) -> str:
         return _response_error(f"Unsupported local API path: {url}")
     except Exception as exc:  # noqa: BLE001
         return _response_error(str(exc))
+
+
+# --- In-process HTTP server (LAN peers reach this instance) ------------------
+# The browser/desktop build reaches a host over HTTP; the Android app has no
+# FastAPI server, so we run a tiny stdlib one that answers the very same POST
+# API by forwarding to `handle_post_json`. It binds all interfaces so other
+# devices on the Wi-Fi can join a game this phone hosts, and it also answers
+# this instance's own same-origin LAN calls (the webapp posts to it directly).
+
+import http.server  # noqa: E402  (kept local to the server section)
+import socketserver  # noqa: E402
+
+_LAN_SERVER: "socketserver.BaseServer | None" = None
+_LAN_SERVER_PORT = 0
+_LAN_SERVER_LOCK = threading.Lock()
+_DEFAULT_LAN_PORT = 8123
+
+
+class _LanRequestHandler(http.server.BaseHTTPRequestHandler):
+    # Peers reach us cross-origin (a guest's WebView origin differs from this
+    # host's address), so every response carries permissive CORS headers and we
+    # answer the preflight — mirroring the FastAPI CORS middleware on the server.
+    def _cors(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler naming)
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: N802
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            raw = self.rfile.read(length).decode("utf-8") if length else ""
+            result = handle_post_json(self.path, raw)
+        except Exception as exc:  # noqa: BLE001
+            result = _response_error(str(exc))
+        payload = result.encode("utf-8")
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args: Any) -> None:  # silence default stderr logging
+        pass
+
+
+class _ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def start_lan_server(port: int = _DEFAULT_LAN_PORT) -> str:
+    """Start (once) the LAN HTTP server and report the bound port.
+
+    Called by the native bridge when the LAN screen opens. Idempotent: repeat
+    calls return the already-running server's address. Falls back to an
+    OS-assigned port if the preferred one is taken.
+    """
+    global _LAN_SERVER, _LAN_SERVER_PORT
+    with _LAN_SERVER_LOCK:
+        if _LAN_SERVER is None:
+            try:
+                server = _ThreadingHTTPServer(("0.0.0.0", int(port)), _LanRequestHandler)
+            except OSError:
+                server = _ThreadingHTTPServer(("0.0.0.0", 0), _LanRequestHandler)
+            _LAN_SERVER = server
+            _LAN_SERVER_PORT = server.server_address[1]
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+        return _response_ok({
+            "ok": True,
+            "port": _LAN_SERVER_PORT,
+            "base": f"http://127.0.0.1:{_LAN_SERVER_PORT}",
+        })
+
+
+def stop_lan_server() -> str:
+    """Stop the HTTP server and LAN discovery (best-effort)."""
+    global _LAN_SERVER, _LAN_SERVER_PORT
+    with _LAN_SERVER_LOCK:
+        LAN.stop()
+        if _LAN_SERVER is not None:
+            _LAN_SERVER.shutdown()
+            _LAN_SERVER.server_close()
+            _LAN_SERVER = None
+            _LAN_SERVER_PORT = 0
+    return _response_ok({"ok": True})

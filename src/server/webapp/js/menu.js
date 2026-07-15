@@ -1,4 +1,4 @@
-import { postJson, lanPost, isLocalBridge } from './api.js';
+import { postJson, lanPost, isLocalBridge, setLanSelfBase } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -93,6 +93,9 @@ export function createMenuController(ui, game, cardStack) {
 
     // LAN multiplayer setup: discovery + lobby state while the LAN sheet is open.
     let lanEnabled = false;
+    // Android runs an in-process HTTP server for LAN; this is the port it bound
+    // (advertised to peers so they can reach this device). 0 until started.
+    let lanServerPort = 0;
     let lanPeers = [];
     let lanPeersTimer = null;
     let lanLobbyTimer = null;
@@ -308,7 +311,38 @@ export function createMenuController(ui, game, cardStack) {
         if (ui.menuDecksLock) ui.menuDecksLock.classList.toggle('hidden', !decksLocked);
         if (ui.menuShopLock) ui.menuShopLock.classList.toggle('hidden', !shopLocked);
 
+        updateReconnectButton();
         renderQuestPanel();
+    }
+
+    // Offer a one-tap rejoin when an unclean exit (app killed, crash) left a
+    // live LAN guest session behind. Hidden whenever there's nothing to rejoin.
+    function updateReconnectButton() {
+        if (!ui.btnReconnect) return;
+        const session = game.loadLanSession && game.loadLanSession();
+        ui.btnReconnect.classList.toggle('hidden', !session);
+        if (session && ui.reconnectSub) {
+            const host = session.hostBase.replace(/^https?:\/\//, '');
+            ui.reconnectSub.textContent = `Rejoin your game on ${host}`;
+        }
+    }
+
+    async function reconnectSavedLan() {
+        const session = game.loadLanSession && game.loadLanSession();
+        if (!session) { renderMenu(); return; }
+        applyCosmetics(getSelectedDeckId());
+        pushNav({ screen: 'game' });
+        showScreen('game');
+        // startLanGame re-fetches the host's authoritative state; if the host is
+        // unreachable it drops into the in-game reconnect overlay rather than
+        // failing outright.
+        game.startLanGame({
+            hostBase: session.hostBase,
+            matchId: session.matchId,
+            seed: session.seed,
+            playerId: session.playerId,
+            decks: session.decks,
+        });
     }
 
     function openMenu() {
@@ -517,7 +551,46 @@ export function createMenuController(ui, game, cardStack) {
     // --- LAN multiplayer -----------------------------------------------------
 
     function lanSelfPort() {
+        // On Android the reachable port is the in-process server's, not the
+        // Capacitor origin's (which has no server behind it).
+        if (lanServerPort) return lanServerPort;
         return Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+    }
+
+    // On Android, boot the in-process HTTP + discovery server the native bridge
+    // runs and point self LAN calls at it. Returns false if it could not start.
+    // A no-op (returns true) on browser/desktop, which use same-origin.
+    async function ensureLanServer() {
+        if (!isLocalBridge()) return true; // browser/desktop use the same-origin server
+        if (!window.MyTCGLocalApi.startLanServer) {
+            showToast('Update the app to the latest version to use LAN play.');
+            return false;
+        }
+        // Called every time the LAN screen opens (not just once): the native side
+        // is idempotent about the server but re-takes the multicast lock that
+        // pauseLanDiscovery released on the previous close.
+        try {
+            const data = JSON.parse(window.MyTCGLocalApi.startLanServer());
+            if (!data.ok || !data.port) {
+                showToast(data.error || 'Could not start LAN networking.');
+                return false;
+            }
+            lanServerPort = Number(data.port);
+            setLanSelfBase(data.base);
+            return true;
+        } catch (error) {
+            showToast(`Could not start LAN networking: ${error}`);
+            return false;
+        }
+    }
+
+    // Drop the discovery (multicast) lock to save battery once we stop browsing
+    // for peers — leaving the LAN screen, or heading into a match. A hosted game
+    // stays reachable over TCP without it.
+    function pauseLanDiscovery() {
+        if (isLocalBridge() && window.MyTCGLocalApi.pauseLanDiscovery) {
+            try { window.MyTCGLocalApi.pauseLanDiscovery(); } catch (error) { /* best-effort */ }
+        }
     }
     function lanPlayerName() {
         return (localStorage.getItem('mytcg_lan_name') || '').trim() || 'Player';
@@ -533,14 +606,10 @@ export function createMenuController(ui, game, cardStack) {
 
     async function openLan() {
         // LAN play is peer-to-peer over HTTP: a host advertises on the network
-        // and guests reach its API directly. The Android build runs fully
-        // offline through a native bridge with no such server, so hosting or
-        // joining would just fail on a fetch with nothing to answer it. Explain
-        // that up front instead of opening a lobby that can never connect.
-        if (isLocalBridge()) {
-            showToast('LAN play needs the browser/desktop version — the app runs offline with no network server.');
-            return;
-        }
+        // and guests reach its API directly. The Android build has no FastAPI
+        // server, so it boots an equivalent in-process one (Python, via the
+        // native bridge) first; if that fails there is nothing to host with.
+        if (isLocalBridge() && !(await ensureLanServer())) return;
         await ensureCollection();
         lanDeckId = getSelectedDeckId();
         ui.lanModal.classList.add('open');
@@ -565,6 +634,10 @@ export function createMenuController(ui, game, cardStack) {
             lanPost('', '/api/lan/disable', {}).catch(() => {});
             lanEnabled = false;
         }
+        // Either way we've stopped browsing for peers, so drop the battery-hungry
+        // discovery lock (Android). keepDiscovery keeps the LanService running
+        // for the host's live match; it does not need multicast reception.
+        pauseLanDiscovery();
     }
 
     function startPeerPolling() {
@@ -1706,6 +1779,9 @@ export function createMenuController(ui, game, cardStack) {
         }
         if (ui.btnLan) {
             ui.btnLan.addEventListener('click', () => { openLan(); });
+        }
+        if (ui.btnReconnect) {
+            ui.btnReconnect.addEventListener('click', () => { reconnectSavedLan(); });
         }
         if (ui.btnCloseLan) {
             ui.btnCloseLan.addEventListener('click', () => { closeLan(); });

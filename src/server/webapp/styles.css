@@ -3759,6 +3759,52 @@ details[open]>.cos-summary::before {
 .menu-passplay-title { font-size: 16px; font-weight: 800; letter-spacing: 0.05em; }
 .menu-passplay-sub { font-size: 12px; color: var(--muted); }
 
+/* Rejoin affordance stands out from the regular menu buttons with a warm edge. */
+.menu-reconnect {
+    border-color: rgba(255, 186, 73, 0.6);
+    background: linear-gradient(165deg, rgba(66, 48, 16, 0.92), rgba(38, 27, 9, 0.95));
+}
+@media (hover: hover) {
+    .menu-reconnect:hover { border-color: rgba(255, 186, 73, 0.9); }
+}
+
+/* In-game reconnect overlay: covers the board while we re-reach the host. */
+.reconnect-overlay {
+    position: fixed;
+    inset: 0;
+    /* Above the board, its header, and any open sheet — the match is paused. */
+    z-index: 1300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 15, 25, 0.72);
+    backdrop-filter: blur(6px);
+}
+.reconnect-overlay.hidden { display: none; }
+.reconnect-card {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 26px 30px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.96), rgba(9, 24, 38, 0.98));
+    text-align: center;
+    max-width: 80%;
+}
+.reconnect-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(23, 182, 255, 0.25);
+    border-top-color: rgba(23, 182, 255, 0.95);
+    animation: reconnect-spin 900ms linear infinite;
+}
+@keyframes reconnect-spin { to { transform: rotate(360deg); } }
+.reconnect-title { font-size: 17px; font-weight: 800; letter-spacing: 0.04em; }
+.reconnect-sub { font-size: 13px; color: var(--muted); }
+.reconnect-card .btn { margin-top: 4px; }
+
 .passplay-count {
     display: flex;
     gap: 8px;
