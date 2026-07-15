@@ -76,6 +76,8 @@ function defaultStats() {
         elo: DEFAULT_ELO, // one rating across all game modes
         gamesPlayed: 0,
         gamesWon: 0,
+        winStreak: 0, // consecutive rated wins; any rated non-win resets it
+        bestWinStreak: 0,
         crownsEarned: 0, // lifetime total, never reduced by spending
         decks: {}, // deckId -> { games, wins }
         cards: {}, // legacy global card stats (no longer written or read)
@@ -230,6 +232,11 @@ export function getElo() {
     return Number.isFinite(elo) ? elo : DEFAULT_ELO;
 }
 
+// Consecutive rated wins, counting the game just recorded.
+export function getWinStreak() {
+    return Math.max(0, Number(profile.stats.winStreak) || 0);
+}
+
 // Applies a (possibly negative) rating change and returns the new rating.
 export function applyEloDelta(delta) {
     profile.stats.elo = Math.max(ELO_FLOOR, getElo() + Math.round(Number(delta) || 0));
@@ -255,6 +262,8 @@ export function questsUnlocked() {
 export function recordGameResult({ deckId, cardIds, playedCardIds, won }) {
     profile.stats.gamesPlayed += 1;
     if (won) profile.stats.gamesWon += 1;
+    profile.stats.winStreak = won ? (profile.stats.winStreak || 0) + 1 : 0;
+    profile.stats.bestWinStreak = Math.max(profile.stats.bestWinStreak || 0, profile.stats.winStreak);
     if (deckId) {
         const deckStats = profile.stats.decks[deckId] || { games: 0, wins: 0 };
         deckStats.games += 1;

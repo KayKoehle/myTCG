@@ -153,13 +153,13 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
     if (typeof optionId === 'string') {
         const parts = optionId.split('|');
         const zone = parts[0];
-        if (parts.length === 2 && (zone === 'hand' || zone === 'deck' || zone === 'underworld')) {
+        if (parts.length === 2 && (zone === 'hand' || zone === 'deck' || zone === 'underworld' || zone === 'battlefield')) {
             const zoneName = zone.charAt(0).toUpperCase() + zone.slice(1);
             return `${zoneName}: ${cardDisplayName(parts[1], cardNameById)}`;
         }
 
         if (parts.length === 2 && zone === 'BOTTOM') {
-            return `Bury: ${cardDisplayName(parts[1], cardNameById)}`;
+            return `Put on bottom: ${cardDisplayName(parts[1], cardNameById)}`;
         }
 
         // Dolon in multiplayer: first pick whose deck to scout ("OPP|<side>").

@@ -1,7 +1,7 @@
 import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
-import { eloDelta, placementsFromVp, sampleAiElo } from './elo.js';
-import { activeEmotes, addCrowns, applyEloDelta, getElo, recordCasualGame, recordGameResult } from './profile.js';
+import { eloDelta, placementsFromVp, sampleAiElo, streakMultiplier } from './elo.js';
+import { activeEmotes, addCrowns, applyEloDelta, getElo, getWinStreak, recordCasualGame, recordGameResult } from './profile.js';
 import {
     questOnCardBanished,
     questOnCardDrawn,
@@ -691,7 +691,7 @@ export function createGameController(ui, cardStack) {
         // "Reach X power on one location" checks the board after every change.
         if (fresh.length && app.statsMeta) {
             const humanPid = String(you);
-            const best = Math.max(0, ...(snapshot.locations || []).map((loc) => stackPower((loc.stacks || {})[humanPid] || [])));
+            const best = Math.max(0, ...(snapshot.locations || []).map((loc) => (loc.side_power || {})[humanPid] ?? stackPower((loc.stacks || {})[humanPid] || [])));
             if (best > 0) questOnPowerReached(best);
         }
     }
@@ -837,7 +837,11 @@ export function createGameController(ui, cardStack) {
             playerId: id,
             elo: (app.aiElos || {})[id] ?? app.playerElo ?? getElo(),
         }));
-        const delta = eloDelta(getElo(), rivals, ranks[cfg().player_id], ranks);
+        let delta = eloDelta(getElo(), rivals, ranks[cfg().player_id], ranks);
+        // Streak heat: recordGameResult above already counted this game, so
+        // getWinStreak() includes it — the bonus kicks in from the 2nd
+        // straight win and only ever grows a gain.
+        if (won && delta > 0) delta = Math.round(delta * streakMultiplier(getWinStreak()));
         app.lastEloDelta = delta;
         applyEloDelta(delta);
     }
@@ -925,7 +929,9 @@ export function createGameController(ui, cardStack) {
             const delta = app.lastEloDelta;
             eloLine = document.createElement('div');
             eloLine.className = `game-result-elo ${delta >= 0 ? 'elo-up' : 'elo-down'}`;
-            eloLine.textContent = `${delta >= 0 ? '+' : ''}${delta} Elo → ${getElo()}`;
+            const streak = getWinStreak();
+            const streakNote = youWon && streak >= 2 ? ` · 🔥 ${streak}-win streak` : '';
+            eloLine.textContent = `${delta >= 0 ? '+' : ''}${delta} Elo → ${getElo()}${streakNote}`;
             overlay.appendChild(eloLine);
         }
         document.body.appendChild(overlay);

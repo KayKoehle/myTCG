@@ -42,6 +42,11 @@ export function placementsFromVp(victoryPoints) {
     return ranks;
 }
 
+// Winning a free-for-all outright means beating every rival at once, so the
+// gain grows with the field: +25% per rival beyond the first (3P ×1.25,
+// 4P ×1.5, 5P ×1.75). Losses and duels are untouched.
+const FFA_WIN_BONUS_PER_RIVAL = 0.25;
+
 // Multiplayer (and 1v1) Elo update, the standard pairwise generalization:
 // the game is scored as one Elo game against EACH rival — win 1, tie 0.5,
 // loss 0 by final placement — and the K factor is split across the rivals so
@@ -56,5 +61,20 @@ export function eloDelta(playerElo, rivals, playerRank, ranks) {
         const score = playerRank < rivalRank ? 1 : (playerRank === rivalRank ? 0.5 : 0);
         delta += kPerRival * (score - expectedScore(playerElo, rival.elo));
     }
+    const wonOutright = playerRank === 1 && rivals.every((rival) => ranks[rival.playerId] > 1);
+    if (wonOutright && rivals.length > 1 && delta > 0) {
+        delta *= 1 + FFA_WIN_BONUS_PER_RIVAL * (rivals.length - 1);
+    }
     return Math.round(delta);
+}
+
+// Consecutive rated wins heat the rating up: +10% Elo per win already on the
+// streak, capped at +50%. `streak` counts the current win too, so the bonus
+// starts on the second straight win.
+const STREAK_BONUS_PER_WIN = 0.1;
+const STREAK_BONUS_CAP = 0.5;
+
+export function streakMultiplier(streak) {
+    const priorWins = Math.max(0, (Number(streak) || 0) - 1);
+    return 1 + Math.min(STREAK_BONUS_CAP, STREAK_BONUS_PER_WIN * priorWins);
 }

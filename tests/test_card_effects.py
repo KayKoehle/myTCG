@@ -395,3 +395,57 @@ def test_hand_synergies_reported_in_snapshot():
     # The other player sees no synergy for a hand that is not theirs.
     snap_p0 = build_state_snapshot(state, "m", state.player_ids[0], GIL, TROY)
     assert achilles not in snap_p0["hand_synergies"]
+
+
+# --- Namtar: banish from hand, deck, or battlefield ------------------------------------
+
+
+def test_namtar_offers_battlefield_beings_and_banishes_the_chosen_one():
+    state = start_game(INA, TROY)
+    namtar = by_name(INA, "Namtar, Sukkal to Ereshkigal")
+    neti = by_name(INA, "Gatekeeper Neti")
+    state = put_in_play(state, neti, 0, 0)
+    state = put_in_play(state, namtar, 0, 0)
+
+    after = _apply_on_enter(state, 0, namtar, 0)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "namtar_send_to_underworld"
+    assert f"battlefield|{neti}" in pending.options, "own beings in play are offered"
+    assert f"battlefield|{namtar}" not in pending.options, "Namtar never offers itself"
+
+    chosen = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id=f"battlefield|{neti}"))
+    assert neti in chosen.underworlds[0]
+    assert neti not in chosen.locations[0].stacks[0]
+
+
+def test_namtar_does_not_offer_enemy_battlefield_beings():
+    state = start_game(INA, TROY)
+    namtar = by_name(INA, "Namtar, Sukkal to Ereshkigal")
+    odysseus = by_name(TROY, "Odysseus")
+    state = put_in_play(state, odysseus, 0, 1)
+    state = put_in_play(state, namtar, 0, 0)
+
+    after = _apply_on_enter(state, 0, namtar, 0)
+    pending = after.pending_choice
+    assert pending is not None
+    assert f"battlefield|{odysseus}" not in pending.options, "enemy beings go to THEIR underworld, not yours"
+
+
+# --- Elders of Shuruppak: the doubled total reaches the UI ------------------------------
+
+
+def test_snapshot_side_power_includes_elders_doubling():
+    state = start_game(FLOOD, TROY)
+    farmer = by_name(FLOOD, "Farmer")
+    shepherd = by_name(FLOOD, "Shepherd")
+    elders = by_name(FLOOD, "Elders of Shuruppak")
+    state = put_in_play(state, farmer, 0, 0)
+    state = put_in_play(state, shepherd, 0, 0)
+    state = put_in_play(state, elders, 0, 0)
+
+    snap = build_state_snapshot(state, "m", state.player_ids[0], FLOOD, TROY)
+    loc = snap["locations"][0]
+    viewer_key = str(state.player_ids[0])
+    per_card_sum = sum(c["power"] for c in loc["stacks"][viewer_key])
+    humans_power = sum(CARD_LIBRARY[c].power for c in (farmer, shepherd, elders))
+    assert loc["side_power"][viewer_key] == per_card_sum + humans_power, "humans count double with Elders on top"
