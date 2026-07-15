@@ -168,13 +168,22 @@ def register_ws_routes(app: FastAPI):
 
     @app.post("/api/lan/host")
     async def lan_host(request: dict):
-        lobby = lan_service.host_game(
-            host_name=request.get("name", "Host"),
-            deck_name=request["deck_name"],
-            num_players=request.get("num_players", 2),
-            deck_cards=request.get("deck_cards"),
-            seed=request.get("seed"),
-        )
+        # Return a structured error rather than letting a missing field raise:
+        # an unhandled 500 sends a plain-text body that the client can only
+        # report as an opaque "invalid JSON" parse failure.
+        deck_name = request.get("deck_name")
+        if not deck_name:
+            return {"ok": False, "error": "A deck is required to host a game."}
+        try:
+            lobby = lan_service.host_game(
+                host_name=request.get("name", "Host"),
+                deck_name=deck_name,
+                num_players=request.get("num_players", 2),
+                deck_cards=request.get("deck_cards"),
+                seed=request.get("seed"),
+            )
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
         return {"ok": True, "lobby": lobby}
 
     @app.post("/api/lan/join")

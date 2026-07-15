@@ -1,4 +1,4 @@
-import { postJson, lanPost } from './api.js';
+import { postJson, lanPost, isLocalBridge } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -532,6 +532,15 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     async function openLan() {
+        // LAN play is peer-to-peer over HTTP: a host advertises on the network
+        // and guests reach its API directly. The Android build runs fully
+        // offline through a native bridge with no such server, so hosting or
+        // joining would just fail on a fetch with nothing to answer it. Explain
+        // that up front instead of opening a lobby that can never connect.
+        if (isLocalBridge()) {
+            showToast('LAN play needs the browser/desktop version — the app runs offline with no network server.');
+            return;
+        }
         await ensureCollection();
         lanDeckId = getSelectedDeckId();
         ui.lanModal.classList.add('open');
