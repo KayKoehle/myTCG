@@ -142,7 +142,7 @@ register("Utnapishtim, Survivor of the Flood", CardBehavior(immortal=lambda rt, 
 
 # --- Ishtar ------------------------------------------------------------------
 
-def _ishtar_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+def _ishtar_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, lambda cid: is_being(cid) and card(cid).cost <= 2)
@@ -184,7 +184,7 @@ def _scorpion_men_reward(rt: Any, state: GameState, player_idx: int, location_id
     return prim.draw_from_deck(state, player_idx, 2)
 
 
-def _serpent_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+def _serpent_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     enemy_hand = list(state.hands[opp_idx])
     if not enemy_hand:
         return None
@@ -204,7 +204,7 @@ def _humbaba_reward(rt: Any, state: GameState, player_idx: int, location_idx: in
     return replace(state, next_free_play_max_cost=tuple(free))
 
 
-def _bull_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+def _bull_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     enemy_beings = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)

@@ -321,6 +321,20 @@ def is_immortal(state: GameState, card_id: str, location_idx: int | None = None)
     return immortal_hook is not None and immortal_hook(RT, state, card_id, location_idx)
 
 
+def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:
+    """Whether an enemy top card (e.g. Agamemnon) caps `side_idx`'s stack at
+    this location so no further card may arrive — by play, move, or revive."""
+    location = state.locations[location_idx]
+    for enemy_side in prim.other_side_indices(state, side_idx):
+        enemy_top = prim.top_card(location, enemy_side)
+        if enemy_top is None:
+            continue
+        stack_limit = effects.behavior_of(enemy_top).max_enemy_stack_while_top
+        if stack_limit is not None and len(location.stacks[side_idx]) >= stack_limit:
+            return True
+    return False
+
+
 def destroy_card(state: GameState, card_id: str) -> GameState:
     """Remove a card from play into its owner's underworld."""
     found = prim.find_card_in_play(state, card_id)
@@ -388,6 +402,9 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
     # FFA: cards may never be moved to a location their owner cannot reach.
     if owner_idx not in state.locations[target_location_idx].accessible:
         return state
+    # Stack caps (e.g. Agamemnon) also stop cards arriving by move.
+    if enemy_stack_capped(state, target_location_idx, target_side_idx):
+        return state
 
     # Protection auras (e.g. Ajax) veto moves forced by enemy effects.
     if source_effect_owner_idx is not None and source_effect_owner_idx != owner_idx and catalog.is_being(card_id):
@@ -438,6 +455,8 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
 def revive_from_underworld(state: GameState, player_idx: int, location_idx: int, predicate) -> GameState:
     if player_idx not in state.locations[location_idx].accessible:
         return state
+    if enemy_stack_capped(state, location_idx, player_idx):
+        return state
     underworld = list(state.underworlds[player_idx])
     candidates = [card_id for card_id in underworld if predicate(card_id)]
     if not candidates:
@@ -453,6 +472,8 @@ def revive_from_underworld(state: GameState, player_idx: int, location_idx: int,
 
 def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: int, name: str) -> GameState:
     if player_idx not in state.locations[location_idx].accessible:
+        return state
+    if enemy_stack_capped(state, location_idx, player_idx):
         return state
     chosen_zone = None
     chosen_card = None
@@ -494,18 +515,23 @@ def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: in
 # --------------------------------------------------------------------------
 
 def _apply_on_enter(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
+    # The flood clock is checked the moment the card stands on the board, so
+    # the 8th human still triggers it when its on-enter effect halts the
+    # pipeline with a PendingChoice.
+    state = _maybe_schedule_flood(state)
     enter_hook = effects.behavior_of(card_id).on_enter
     if enter_hook is not None:
         result = enter_hook(RT, state, player_idx, card_id, location_idx)
         if isinstance(result, Halt):
             return result.state
         state = result
-    state = _resolve_monster_rewards(state, location_idx, player_idx)
-    return _maybe_schedule_flood(state)
+    return _resolve_monster_rewards(state, location_idx, player_idx)
 
 
 def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
     state = replace(state, action_history=state.action_history + (f"revive:{state.player_ids[player_idx]}:{card_id}",))
+    # A revived human counts toward the flood threshold just like a played one.
+    state = _maybe_schedule_flood(state)
     revive_hook = effects.behavior_of(card_id).on_revive
     if revive_hook is not None:
         result = revive_hook(RT, state, player_idx, card_id, location_idx)
@@ -578,7 +604,28 @@ def _maybe_schedule_flood(state: GameState) -> GameState:
     return state
 
 
+def flood_protected(state: GameState, owner_idx: int, location_idx: int) -> bool:
+    """Whether `owner_idx`'s humans at `location_idx` are shielded from the
+    flood. The Ark's shield is "While on top": it only holds while the
+    protector still tops one of its owner's stacks."""
+    if state.protected_locations[owner_idx] != location_idx:
+        return False
+    for location in state.locations:
+        top = prim.top_card(location, owner_idx)
+        if top is not None and effects.behavior_of(top).flood_protector_while_top:
+            return True
+    return False
+
+
 def _resolve_flood(state: GameState) -> GameState:
+    # The flood hits everyone at once: protection is judged on the pre-flood
+    # board, so a banish cannot re-expose a buried Ark mid-flood.
+    protected = {
+        (owner_idx, location_idx)
+        for owner_idx in range(state.n_players)
+        for location_idx in range(len(state.locations))
+        if flood_protected(state, owner_idx, location_idx)
+    }
     for location_idx, location in enumerate(state.locations):
         for side_idx in range(state.n_players):
             for card_id in list(location.stacks[side_idx]):
@@ -587,7 +634,7 @@ def _resolve_flood(state: GameState) -> GameState:
                 if catalog.is_hero(card_id):
                     continue
                 owner_idx = _card_owner_idx(state, card_id)
-                if state.protected_locations[owner_idx] == location_idx:
+                if (owner_idx, location_idx) in protected:
                     continue
                 if is_immortal(state, card_id, location_idx):
                     continue
@@ -732,16 +779,7 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
                     continue
                 if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in own_stack):
                     continue
-                blocked = False
-                for enemy_side in prim.other_side_indices(state, idx):
-                    enemy_top = prim.top_card(location, enemy_side)
-                    if enemy_top is None:
-                        continue
-                    stack_limit = effects.behavior_of(enemy_top).max_enemy_stack_while_top
-                    if stack_limit is not None and len(own_stack) >= stack_limit:
-                        blocked = True
-                        break
-                if blocked:
+                if enemy_stack_capped(state, location_idx, idx):
                     continue
                 actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
         # "While on top" abilities can also be used proactively during MAIN
@@ -815,6 +853,8 @@ def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
     location = state.locations[action.location_id]
     if prim.location_total_cards(location) >= location.capacity:
         raise ValueError("Location is full")
+    if enemy_stack_capped(state, action.location_id, idx):
+        raise ValueError("An enemy card caps this side of the location")
     hand.remove(action.card_id)
     mana_pool[idx] -= mana_cost
     state = prim.append_to_stack(state, action.card_id, action.location_id, idx)
@@ -1174,6 +1214,14 @@ class _Runtime:
     @staticmethod
     def dynamic_power(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
         return dynamic_card_power(state, card_id, location_idx, side_idx)
+
+    @staticmethod
+    def flood_protected(state: GameState, owner_idx: int, location_idx: int) -> bool:
+        return flood_protected(state, owner_idx, location_idx)
+
+    @staticmethod
+    def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:
+        return enemy_stack_capped(state, location_idx, side_idx)
 
     @staticmethod
     def power_before_overrides(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:

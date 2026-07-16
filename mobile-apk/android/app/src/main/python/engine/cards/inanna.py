@@ -32,7 +32,7 @@ GESHTINANNA = "Geshtinanna, Dumuzid's Sister"
 
 # --- Inanna and her rescuers -------------------------------------------------
 
-def _inanna_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+def _inanna_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
@@ -208,7 +208,7 @@ register_choice("namtar_send_to_underworld", _handle_namtar_send)
 
 # --- Anunnaki: judges witnessing every revival --------------------------------
 
-def _anunnaki_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int):
+def _anunnaki_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)

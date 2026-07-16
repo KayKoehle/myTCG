@@ -96,6 +96,8 @@ class CardBehavior:
     on_friendly_revive_while_top: ReviveWitnessHook | None = None
     # While on top: friendly beings here cannot be moved by enemy effects.
     blocks_enemy_move_while_top: bool = False
+    # While on top: the owner's chosen location stays protected from the flood.
+    flood_protector_while_top: bool = False
     # While on top: the enemy side of this location holds at most N cards.
     max_enemy_stack_while_top: int | None = None
     # While on top: flat discount on artifacts the owner plays.
@@ -380,9 +382,9 @@ def defect_to_enemy_side() -> EnterHook:
 
 OPP_CHAIN_MARKER = "OPP_CHAIN"
 
-# chain_kind -> spec(rt, state, actor_idx, opp_idx) ->
+# chain_kind -> spec(rt, state, actor_idx, opp_idx, source_card_id, location_idx) ->
 #   (chooser: "actor"|"opponent", choice_kind, options, prompt) | None (skip this opponent)
-_OPP_CHAIN_SPECS: dict[str, Callable[[Any, GameState, int, int], "tuple[str, str, list[str], str] | None"]] = {}
+_OPP_CHAIN_SPECS: dict[str, Callable[[Any, GameState, int, int, str, "int | None"], "tuple[str, str, list[str], str] | None"]] = {}
 
 
 def register_opponent_chain(chain_kind: str, spec) -> None:
@@ -414,7 +416,7 @@ def start_opponent_chain(
         remaining = [(actor_idx + offset) % n for offset in range(1, n)]
     while remaining:
         opp_idx, remaining = remaining[0], remaining[1:]
-        step = spec(rt, state, actor_idx, opp_idx)
+        step = spec(rt, state, actor_idx, opp_idx, source_card_id, location_idx)
         if step is None:
             continue
         chooser, choice_kind, options, prompt = step

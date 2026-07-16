@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from .. import catalog, primitives as prim
-from ..catalog import card, is_human, named
+from ..catalog import card, is_human
 from ..effects import CardBehavior, EffectResult, Halt, behavior_of, register, register_choice, tutor
 from ..state import GameState, PendingChoice
 
@@ -35,6 +35,7 @@ def _farmer_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
         if is_human(cid) and card(cid).cost <= 1
         for loc_idx, loc in enumerate(state.locations)
         if prim.location_total_cards(loc) < loc.capacity
+        and not rt.enemy_stack_capped(state, loc_idx, player_idx)
     ]
     if options:
         return Halt(
@@ -100,15 +101,17 @@ register("Weeping Mother Goddess", CardBehavior(on_enter=_weeping_mother_enter))
 # --- Scheduling and delaying the flood -----------------------------------------
 
 def _sacrificer_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
+    # "It happens at the end of your next turn instead": one full round later,
+    # not merely the next player's turn.
     if state.flood_pending_turn == state.turn_number:
-        return replace(state, flood_pending_turn=state.turn_number + 1)
+        return replace(state, flood_pending_turn=state.turn_number + state.n_players)
     return state
 
 
 def _enlil_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
     # "If there are two or more humans here, you may unleash the flood at
-    # this location" — optional, and local to this location.
-    if sum(1 for cid in state.locations[location_idx].stacks[player_idx] if is_human(cid)) >= 2:
+    # this location" — optional, local, and counting humans on every side.
+    if sum(1 for stack in state.locations[location_idx].stacks for cid in stack if is_human(cid)) >= 2:
         return Halt(
             prim.with_pending_choice(
                 state, player_idx, "enlil_unleash_flood", card_id, location_idx,
@@ -127,7 +130,7 @@ def _handle_enlil_unleash(rt: Any, state: GameState, chooser_idx: int, option: s
             if catalog.is_hero(card_id):
                 continue
             owner_idx = catalog.card_owner_idx(state, card_id)
-            if state.protected_locations[owner_idx] == location_idx:
+            if rt.flood_protected(state, owner_idx, location_idx):
                 continue
             state = rt.banish_card(state, card_id)
     return state
@@ -160,50 +163,8 @@ def _handle_choose_ark_location(rt: Any, state: GameState, chooser_idx: int, opt
     return replace(state, protected_locations=tuple(protected))
 
 
-register(ARK, CardBehavior(base_cost=_ark_base_cost, on_enter=_ark_enter, indestructible=True))
+register(ARK, CardBehavior(base_cost=_ark_base_cost, on_enter=_ark_enter, indestructible=True, flood_protector_while_top=True))
 register_choice("choose_ark_location", _handle_choose_ark_location)
-
-
-def _cuneiform_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
-    # "Search your deck for 'The Ark' and add it to your hand."
-    return prim.draw_from_deck(state, player_idx, 1, named(ARK))
-
-
-def _cuneiform_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
-    # "While on top: You may discard a card to look at the top 3 cards of
-    # your deck and arrange them in any order."
-    if state.hands[player_idx] and len(state.decks[player_idx]) >= 2:
-        return prim.with_pending_choice(
-            state, player_idx, "cuneiform_discard_for_peek", card_id, location_idx,
-            ["PASS", *state.hands[player_idx]], "You may discard a card to reorder the top 3 cards of your deck",
-        )
-    return None
-
-
-def _handle_cuneiform_discard(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    state = prim.discard_specific_from_hand(state, chooser_idx, option)
-    top_three = list(state.decks[chooser_idx])[:3]
-    if len(top_three) >= 2:
-        return prim.with_pending_choice(
-            state, chooser_idx, "cuneiform_rearrange", pending.source_card_id, pending.location_id,
-            prim.permutations(top_three), "Reorder the top cards of your deck",
-        )
-    return state
-
-
-def _handle_cuneiform_rearrange(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    order = option.split("|")
-    deck = list(state.decks[chooser_idx])
-    visible = deck[: len(order)]
-    if sorted(visible) != sorted(order):
-        return state
-    deck = order + deck[len(order) :]
-    return replace(state, decks=prim.replace_tuple_index(state.decks, chooser_idx, tuple(deck)))
-
-
-register("Cuneiform Tablets of Ea", CardBehavior(on_enter=_cuneiform_enter, top_ability=_cuneiform_top_ability))
-register_choice("cuneiform_discard_for_peek", _handle_cuneiform_discard)
-register_choice("cuneiform_rearrange", _handle_cuneiform_rearrange)
 
 register("Shipbuilder", CardBehavior(artifact_discount_while_top=1))
 
