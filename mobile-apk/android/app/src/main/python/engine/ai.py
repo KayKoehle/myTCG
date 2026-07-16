@@ -20,6 +20,7 @@ import random
 
 from .actions import Action, ChooseOptionAction
 from .catalog import card, is_being, is_hero, is_human, is_monster
+from .effects import behavior_of, revealed_deck_cards
 from .state import GameState
 from .transitions import (
     FLOOD_THRESHOLD,
@@ -98,6 +99,14 @@ _W_FLOOD_RISK = 1.6
 _TROJAN_HORSE = "The Trojan Horse"
 _W_HORSE_PAYLOAD = 1.0
 
+# The revealed-top-card engine (Odin's High Seat): a live reveal is worth a
+# little on its own (deck knowledge / manipulation), and considerably more
+# when it exposes a card the player can actually play from the deck — that
+# is effectively an extra card in hand. Priced via generic behavior flags,
+# not card names, so any future reveal deck gets the same treatment.
+_W_REVEALED_CARD = 1.0
+_W_DECK_PLAYABLE_REVEALED = 3.0
+
 
 def _flood_exposure(state: GameState, idx: int) -> float:
     """Human power `idx` would lose to the flood right now (own side only)."""
@@ -163,6 +172,13 @@ def _strategy_score(state: GameState, idx: int) -> float:
         if trophies > 0:
             growers_to_come = sum(1 for name in _MONSTER_GROWERS if name in available)
             score += _W_MONSTER_TROPHY * trophies * growers_to_come
+
+    revealed = revealed_deck_cards(state, idx)
+    if revealed:
+        score += _W_REVEALED_CARD * len(revealed)
+        score += _W_DECK_PLAYABLE_REVEALED * sum(
+            1 for cid in revealed if behavior_of(cid).playable_from_deck_when_revealed
+        )
 
     if any(card(cid).name == _TROJAN_HORSE for cid in hand):
         best_payload = 0

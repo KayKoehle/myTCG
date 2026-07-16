@@ -686,6 +686,44 @@ def play_cost(state: GameState, player_idx: int, card_id: str) -> int:
     return _play_cost(state, player_idx, card_id)
 
 
+def _top_deck_play_granter(state: GameState, player_idx: int) -> str | None:
+    """Name of an unused friendly top card that lets the player play their
+    revealed top deck card this turn (e.g. Odin), or None."""
+    for location in state.locations:
+        top = prim.top_card(location, player_idx)
+        if top is None:
+            continue
+        if not effects.behavior_of(top).plays_top_deck_card_while_top:
+            continue
+        if _card_owner_idx(state, top) != player_idx:
+            continue
+        name = _card(top).name
+        if name not in state.used_top_abilities[player_idx]:
+            return name
+    return None
+
+
+def deck_play_details(state: GameState, player_idx: int, card_id: str) -> tuple[int, str | None] | None:
+    """(mana cost, granter name to mark used) if `card_id` may be played from
+    the player's deck right now, or None.
+
+    Two ways in: the card plays itself while revealed (Frigg, Fenrir — the
+    granter slot stays None), or an unused top card grants the play of the
+    revealed TOP card (Odin, once per turn — his name is returned so the
+    play can consume the grant)."""
+    revealed = effects.revealed_deck_cards(state, player_idx)
+    if card_id not in revealed:
+        return None
+    behavior = effects.behavior_of(card_id)
+    if behavior.playable_from_deck_when_revealed:
+        return (max(0, _play_cost(state, player_idx, card_id) - behavior.deck_play_discount), None)
+    if revealed[0] == card_id:
+        granter = _top_deck_play_granter(state, player_idx)
+        if granter is not None:
+            return (_play_cost(state, player_idx, card_id), granter)
+    return None
+
+
 def _artifact_top_discount(state: GameState, player_idx: int) -> int:
     total = 0
     for location in state.locations:
@@ -750,6 +788,21 @@ def _consume_play_bonuses(state: GameState, player_idx: int, card_id: str) -> Ga
 # Legal actions
 # --------------------------------------------------------------------------
 
+def _can_play_at(state: GameState, player_idx: int, card_id: str, location_idx: int) -> bool:
+    """Whether `card_id` may be placed at this location by a play right now
+    (reachability, capacity, monster/hero exclusion, enemy stack caps)."""
+    location = state.locations[location_idx]
+    if player_idx not in location.accessible:
+        return False
+    if prim.location_total_cards(location) >= location.capacity:
+        return False
+    if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in location.stacks[player_idx]):
+        return False
+    if enemy_stack_capped(state, location_idx, player_idx):
+        return False
+    return True
+
+
 def legal_actions(state: GameState) -> tuple[Action, ...]:
     _load_data_if_needed()
     if state.phase == "GAME_OVER":
@@ -771,17 +824,27 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
                 can_use_sacrifice = catalog.is_artifact(card_id) and bool(_affordable_sacrifice_banishes(state, idx, card_id))
                 if not can_use_sacrifice:
                     continue
-            for location_idx, location in enumerate(state.locations):
-                if idx not in location.accessible:
-                    continue
-                own_stack = location.stacks[idx]
-                if prim.location_total_cards(location) >= location.capacity:
-                    continue
-                if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in own_stack):
-                    continue
-                if enemy_stack_capped(state, location_idx, idx):
-                    continue
-                actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
+            for location_idx in range(len(state.locations)):
+                if _can_play_at(state, idx, card_id, location_idx):
+                    actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
+        # Revealed deck cards can be played from the deck (Frigg, Fenrir play
+        # themselves; a top card like Odin grants the revealed top card).
+        for card_id in effects.revealed_deck_cards(state, idx):
+            details = deck_play_details(state, idx, card_id)
+            if details is None or details[0] > state.mana_pool[idx]:
+                continue
+            for location_idx in range(len(state.locations)):
+                if _can_play_at(state, idx, card_id, location_idx):
+                    actions.append(PlayCardAction(player_id=current_player_id, card_id=card_id, location_id=location_idx))
+        # Abilities of revealed deck cards (e.g. Kvasir's swap into the hand).
+        for card_id in effects.revealed_deck_cards(state, idx):
+            deck_hook = effects.behavior_of(card_id).deck_ability
+            if deck_hook is None:
+                continue
+            if _card(card_id).name in state.used_top_abilities[idx]:
+                continue
+            if deck_hook(RT, state, idx, card_id) is not None:
+                actions.append(UseAbilityAction(player_id=current_player_id, card_id=card_id))
         # "While on top" abilities can also be used proactively during MAIN
         # (e.g. moving Enkidu to Gilgamesh), not only at end of turn.
         for location_idx, location in enumerate(state.locations):
@@ -831,12 +894,19 @@ def _apply_draw(state: GameState, action: DrawCardAction) -> GameState:
 def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
     idx = _active_index(state, action.player_id)
     hand = list(state.hands[idx])
-    if action.card_id not in hand:
-        raise ValueError("Card not in hand")
-    mana_cost = _play_cost(state, idx, action.card_id)
+    deck = list(state.decks[idx])
+    from_deck = action.card_id not in hand
+    deck_granter: str | None = None
+    if from_deck:
+        details = deck_play_details(state, idx, action.card_id)
+        if details is None:
+            raise ValueError("Card not in hand")
+        mana_cost, deck_granter = details
+    else:
+        mana_cost = _play_cost(state, idx, action.card_id)
     mana_pool = list(state.mana_pool)
     if mana_cost > mana_pool[idx]:
-        if catalog.is_artifact(action.card_id):
+        if not from_deck and catalog.is_artifact(action.card_id):
             affordable_sacrifices = _affordable_sacrifice_banishes(state, idx, action.card_id)
             if affordable_sacrifices:
                 return prim.with_pending_choice(
@@ -855,15 +925,23 @@ def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
         raise ValueError("Location is full")
     if enemy_stack_capped(state, action.location_id, idx):
         raise ValueError("An enemy card caps this side of the location")
-    hand.remove(action.card_id)
+    if from_deck:
+        deck.remove(action.card_id)
+    else:
+        hand.remove(action.card_id)
     mana_pool[idx] -= mana_cost
     state = prim.append_to_stack(state, action.card_id, action.location_id, idx)
     state = replace(
         state,
         hands=prim.replace_tuple_index(state.hands, idx, tuple(hand)),
+        decks=prim.replace_tuple_index(state.decks, idx, tuple(deck)),
         mana_pool=tuple(mana_pool),
         action_history=state.action_history + (f"play_card:{action.player_id}:{action.card_id}:{action.location_id}",),
     )
+    if deck_granter is not None:
+        used = [list(v) for v in state.used_top_abilities]
+        used[idx].append(deck_granter)
+        state = replace(state, used_top_abilities=tuple(tuple(v) for v in used))
     state = _consume_play_bonuses(state, idx, action.card_id)
     return _apply_on_enter(state, idx, action.card_id, action.location_id)
 
@@ -871,13 +949,19 @@ def _apply_play(state: GameState, action: PlayCardAction) -> GameState:
 def _apply_use_ability(state: GameState, action: UseAbilityAction) -> GameState:
     idx = _active_index(state, action.player_id)
     found = prim.find_card_in_play(state, action.card_id)
-    if found is None:
+    if found is not None:
+        location_idx, _, _ = found
+        ability_hook = effects.behavior_of(action.card_id).top_ability
+        if ability_hook is None:
+            raise ValueError("Card has no top ability")
+        result = ability_hook(RT, state, idx, location_idx, action.card_id)
+    elif action.card_id in effects.revealed_deck_cards(state, idx):
+        deck_hook = effects.behavior_of(action.card_id).deck_ability
+        if deck_hook is None:
+            raise ValueError("Card has no deck ability")
+        result = deck_hook(RT, state, idx, action.card_id)
+    else:
         raise ValueError("Card is not in play")
-    location_idx, _, _ = found
-    ability_hook = effects.behavior_of(action.card_id).top_ability
-    if ability_hook is None:
-        raise ValueError("Card has no top ability")
-    result = ability_hook(RT, state, idx, location_idx, action.card_id)
     if result is None:
         raise ValueError("Ability is not available right now")
     used = [list(v) for v in state.used_top_abilities]
@@ -1226,6 +1310,12 @@ class _Runtime:
     @staticmethod
     def power_before_overrides(state: GameState, card_id: str, location_idx: int, side_idx: int) -> int:
         return power_before_overrides(state, card_id, location_idx, side_idx)
+
+    @staticmethod
+    def apply_on_enter(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
+        """Run a card's enter pipeline after placing it outside a normal play
+        (e.g. Hlidskjalf putting the top deck card straight into play)."""
+        return _apply_on_enter(state, player_idx, card_id, location_idx)
 
 
 RT = _Runtime()

@@ -56,3 +56,9 @@ def put_in_hand(state: GameState, card_id: str, player_idx: int) -> GameState:
     hand = list(state.hands[player_idx])
     hand.append(card_id)
     return replace(state, hands=prim.replace_tuple_index(state.hands, player_idx, tuple(hand)))
+
+
+def put_on_deck_top(state: GameState, card_id: str, player_idx: int) -> GameState:
+    state = remove_everywhere(state, card_id)
+    deck = [card_id, *state.decks[player_idx]]
+    return replace(state, decks=prim.replace_tuple_index(state.decks, player_idx, tuple(deck)))

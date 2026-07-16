@@ -140,6 +140,8 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
     if (optionId === 'KEEP') return 'Keep current hand';
     if (optionId === 'BOTTOM') return 'Move top card to bottom';
     if (optionId === 'NONE') return 'None';
+    if (optionId === 'SWAP') return 'Swap top and bottom';
+    if (optionId === 'PLAY_ODIN') return 'Play Odin for free';
 
     const directName = cardNameById.get(optionId);
     if (directName) return directName;
@@ -160,6 +162,11 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
 
         if (parts.length === 2 && zone === 'BOTTOM') {
             return `Put on bottom: ${cardDisplayName(parts[1], cardNameById)}`;
+        }
+
+        // Hlidskjalf: play the top deck card for free at a chosen lane.
+        if (parts.length === 2 && zone === 'PLAY') {
+            return `Play top card at ${laneLabel(Number(parts[1]))}`;
         }
 
         // Dolon in multiplayer: first pick whose deck to scout ("OPP|<side>").
@@ -235,6 +242,12 @@ export function findCardById(snapshot, cardId) {
 
     const inOppHand = scan(snapshot.opponent_hand);
     if (inOppHand) return inOppHand;
+
+    // Revealed top deck cards (Odin's High Seat) carry live cost info.
+    for (const cards of Object.values(snapshot.revealed_decks || {})) {
+        const found = scan(cards);
+        if (found) return found;
+    }
 
     // Cards revealed by a deck peek (Calchas, Dolon) never sit in an exposed
     // zone; fall back to the full-detail map of every card in both decks.

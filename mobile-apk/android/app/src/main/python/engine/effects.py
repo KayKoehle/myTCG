@@ -52,6 +52,9 @@ ImmortalHook = Callable[[Any, GameState, str, "int | None"], bool]
 MonsterRewardHook = Callable[[Any, GameState, int, int, str, list[str]], "EffectResult | None"]
 # (rt, state, player_idx, location_idx, card_id) -> GameState | None (None: not offered)
 TopAbilityHook = Callable[[Any, GameState, int, int, str], "GameState | None"]
+# (rt, state, player_idx, card_id) -> GameState | None (None: not offered)
+# Offered while the card sits *in its owner's deck* and is revealed (Kvasir).
+DeckAbilityHook = Callable[[Any, GameState, int, str], "GameState | None"]
 # (rt, state, owner_idx, card_id, source_loc, source_side, target_loc, target_side) -> GameState
 MovedHook = Callable[[Any, GameState, int, str, int, int, int, int], GameState]
 # (rt, state, owner_idx, moved_card_id, source_location_idx, trigger_card_id) -> GameState | None (None: nothing happened)
@@ -114,6 +117,23 @@ class CardBehavior:
     synergy_partners: SynergyHook | None = None
     # Set aside at game start (scenario cards like the Deluge).
     set_aside_at_start: bool = False
+    # --- The revealed-top-card mechanic (Odin's High Seat) ------------------
+    # While on top: the owner plays with the top card of their deck revealed.
+    reveals_own_top_while_top: bool = False
+    # While on top: ALL players play with their top deck card revealed.
+    reveals_all_tops_while_top: bool = False
+    # While on top: if the owner's top card is revealed, the card beneath it
+    # is also revealed (Muninn deepens the reveal by one).
+    extends_reveal_while_top: bool = False
+    # While in the owner's deck and revealed: may be played as though it were
+    # in hand (Frigg, Fenrir), optionally at a discount.
+    playable_from_deck_when_revealed: bool = False
+    deck_play_discount: int = 0
+    # While on top: once per turn the owner may play their revealed top deck
+    # card as though it were in hand (Odin's High One ability).
+    plays_top_deck_card_while_top: bool = False
+    # Offered while this card is in its owner's deck and revealed (Kvasir).
+    deck_ability: DeckAbilityHook | None = None
 
 
 BEHAVIORS: dict[str, CardBehavior] = {}
@@ -142,6 +162,43 @@ def behavior_of(card_id: str) -> CardBehavior:
 
 def behavior_named(name: str) -> CardBehavior:
     return BEHAVIORS.get(name, _INERT)
+
+
+# --------------------------------------------------------------------------
+# The revealed-top-card mechanic (Odin's High Seat)
+#
+# "Revealed" is derived state, never stored: a player's top deck card is
+# revealed while a revealer tops one of that player's stacks (Huginn, Odin)
+# or a global revealer tops any stack (Heimdall). Muninn on top deepens the
+# owner's reveal by one card. Revealed cards are public information.
+# --------------------------------------------------------------------------
+
+def reveal_depth(state: GameState, player_idx: int) -> int:
+    """How many cards from the top of `player_idx`'s deck are revealed."""
+    revealed = False
+    extra_depth = 0
+    for location in state.locations:
+        for side_idx in range(state.n_players):
+            top = prim.top_card(location, side_idx)
+            if top is None:
+                continue
+            behavior = behavior_of(top)
+            if behavior.reveals_all_tops_while_top:
+                revealed = True
+            if catalog.card_owner_idx(state, top) != player_idx:
+                continue
+            if behavior.reveals_own_top_while_top:
+                revealed = True
+            if behavior.extends_reveal_while_top:
+                extra_depth += 1
+    if not revealed:
+        return 0
+    return 1 + extra_depth
+
+
+def revealed_deck_cards(state: GameState, player_idx: int) -> tuple[str, ...]:
+    """The revealed prefix of `player_idx`'s deck (empty when nothing reveals)."""
+    return tuple(state.decks[player_idx][: reveal_depth(state, player_idx)])
 
 
 # --------------------------------------------------------------------------
