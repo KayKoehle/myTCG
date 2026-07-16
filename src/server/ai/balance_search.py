@@ -27,9 +27,13 @@ Why guided and not a blind +-1 sweep over every card: a full sweep is
 4 decks x 15 cards x 2 directions = 120 arena runs per step, almost all of
 them wasted on cards that do not matter. The impact table already ranks
 which cards carry or drag their deck, so a few candidates per iteration
-capture nearly all of the signal. Screening uses the fast one-ply search
-agent by default — deck rankings under search and minimax agree closely
-(measured 2026-07-10), and the end result is re-validated with minimax.
+capture nearly all of the signal. Screening uses minimax by default — the
+same agent the final validation runs under, so screening and validation
+never disagree. Deck rankings under the fast one-ply search agent usually
+track minimax closely, but not always (a 2026-07-16 run had Epic of
+Gilgamesh at 51% under search screening and 40% under minimax validation
+for the same tweaked card set), so pass --agent search only when you want
+faster, approximate iteration and plan to sanity-check the result.
 
 Usage (from the repository root):
     uv run python -m src.server.ai.balance_search --iterations 8 --games 1000
@@ -276,8 +280,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Hill-climb card power numbers toward even deck AND card win rates")
     parser.add_argument("--iterations", type=int, default=8, help="hill-climbing steps (each accepts at most one tweak)")
     parser.add_argument("--games", type=int, default=1000, help="games per screening evaluation")
-    parser.add_argument("--agent", choices=["search", "minimax"], default="search",
-                        help="screening agent (search is ~20x faster; rankings match minimax closely)")
+    parser.add_argument("--agent", choices=["search", "minimax"], default="minimax",
+                        help="screening agent (minimax matches validation exactly; "
+                             "search is ~20x faster but can disagree with minimax on some decks)")
     parser.add_argument("--validate-games", type=int, default=1000, help="final minimax validation batch (0 = skip)")
     parser.add_argument("--breadth", type=int, default=4, help="candidate tweaks per angle (nerf/buff/outlier) per iteration")
     parser.add_argument("--max-delta", type=int, default=2, help="max total power change from the CSV value per card")
