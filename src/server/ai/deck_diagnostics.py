@@ -15,10 +15,10 @@ Separates two very different reasons a deck loses in the arena — because
      it are paying stats for an effect that then has to earn its keep.
 
 The vanilla line is `power = slope*cost + intercept`. This game's one true
-vanilla card — Craftsmen of the Ark (cost 3, power 6) — pins it at 2*cost,
-which is the default. `--fit` instead reads the line your existing cards
-already imply (the power frontier per cost) so you can see the curve you
-actually shipped versus the one you think you designed.
+vanilla card — Craftsmen of the Ark (cost 3, power 7) — pins it at
+2*cost + 1, which is the default. `--fit` instead reads the line your
+existing cards already imply (the power frontier per cost) so you can see
+the curve you actually shipped versus the one you think you designed.
 
 For each deck the report prints:
   - the cost curve and where it is thin (no early bodies / no top end);
@@ -32,7 +32,7 @@ For each deck the report prints:
 Usage (from the repository root):
     uv run python -m src.server.ai.deck_diagnostics
     uv run python -m src.server.ai.deck_diagnostics --fit
-    uv run python -m src.server.ai.deck_diagnostics --slope 2 --intercept 1 \
+    uv run python -m src.server.ai.deck_diagnostics --slope 2 --intercept 0 \
         --arena stats/arena_results.json
 """
 from __future__ import annotations
@@ -345,7 +345,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Separate deck construction weakness from card-power weakness")
     parser.add_argument("--decks", default=",".join(DEFAULT_DECKS))
     parser.add_argument("--slope", type=float, default=2.0, help="vanilla line: power per unit cost")
-    parser.add_argument("--intercept", type=float, default=0.0, help="vanilla line: power at cost 0")
+    parser.add_argument("--intercept", type=float, default=1.0, help="vanilla line: power at cost 0")
     parser.add_argument("--fit", action="store_true",
                         help="ignore --slope/--intercept and fit the line your cards already imply")
     parser.add_argument("--arena", default="stats/arena_results.json",
@@ -361,7 +361,7 @@ def main() -> None:
     else:
         slope, intercept = args.slope, args.intercept
         print(f"Vanilla line: power = {slope:.2f} * cost + {intercept:.2f}   "
-              f"(Craftsmen of the Ark, 3-cost/6-power, pins this at 2*cost)")
+              f"(Craftsmen of the Ark, 3-cost/7-power, pins this at 2*cost + 1)")
 
     print("\nWhat the vanilla line implies per cost:")
     print("   cost   " + "".join(f"{c:>6}" for c in range(1, MANA_CAP + 1)))
