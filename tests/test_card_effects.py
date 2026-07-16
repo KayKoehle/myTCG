@@ -75,7 +75,7 @@ def test_gilgamesh_power_scales_with_underworld_monsters():
 
     bull = by_name(GIL, "Bull of Heaven")
     state = put_in_underworld(state, bull, 0)
-    assert dynamic_card_power(state, gil, 0, 0) == 1 + CARD_LIBRARY[bull].power
+    assert dynamic_card_power(state, gil, 0, 0) == 1 + CARD_LIBRARY[bull].cost
 
 
 def test_enkidu_power_scales_with_underworld_monsters_without_gilgamesh():
@@ -86,7 +86,7 @@ def test_enkidu_power_scales_with_underworld_monsters_without_gilgamesh():
 
     bull = by_name(GIL, "Bull of Heaven")
     state = put_in_underworld(state, bull, 0)
-    assert dynamic_card_power(state, enk, 0, 0) == 1 + CARD_LIBRARY[bull].power
+    assert dynamic_card_power(state, enk, 0, 0) == 1 + CARD_LIBRARY[bull].cost
 
 
 # --- Mandatory banishes chosen by the opponent ---------------------------------

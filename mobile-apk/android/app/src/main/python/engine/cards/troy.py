@@ -112,7 +112,7 @@ register("Camp Guard at the Ships", CardBehavior(on_enter=_camp_guard_enter))
 
 def _greek_soldiers_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
-        weaklings = [cid for cid in state.locations[target_loc].stacks[target_side] if rt.dynamic_power(state, cid, target_loc, target_side) <= 1]
+        weaklings = [cid for cid in state.locations[target_loc].stacks[target_side] if rt.dynamic_power(state, cid, target_loc, target_side) <= 2]
         if weaklings:
             return prim.with_pending_choice(
                 state, owner_idx, "greek_soldiers_destroy_weaklings", card_id, target_loc,

@@ -37,7 +37,7 @@ def _gilgamesh_enkidu_immortal(rt: Any, state: GameState, card_id: str, location
 
 def _gilgamesh_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
     owner_idx = catalog.card_owner_idx(state, card_id)
-    return 1 + sum(card(cid).power for cid in state.underworlds[owner_idx] if is_monster(cid))
+    return 1 + sum(card(cid).cost for cid in state.underworlds[owner_idx] if is_monster(cid))
 
 
 def _enkidu_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
