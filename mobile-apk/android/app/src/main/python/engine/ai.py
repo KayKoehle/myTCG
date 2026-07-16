@@ -81,7 +81,7 @@ _W_CHEAP_REVIVE_TARGET = 1.5
 _FISHERMAN = "Fisherman"
 _W_FISHABLE_HUMAN = 0.5
 
-# Gilgamesh and Enkidu each have power 1 + the cost of all monsters in the
+# Gilgamesh and Enkidu each have power 1 + the power of all monsters in the
 # owner's underworld: every trophy point pays off once per grower still to
 # come (the ones already in play collect it in the lane totals directly).
 _MONSTER_GROWERS = ("Gilgamesh", "Enkidu")
@@ -159,7 +159,7 @@ def _strategy_score(state: GameState, idx: int) -> float:
             fishable = sum(1 for cid in underworld if is_human(cid))
             score += _W_FISHABLE_HUMAN * min(fishable, 4)
 
-        trophies = sum(card(cid).cost for cid in underworld if is_monster(cid))
+        trophies = sum(card(cid).power for cid in underworld if is_monster(cid))
         if trophies > 0:
             growers_to_come = sum(1 for name in _MONSTER_GROWERS if name in available)
             score += _W_MONSTER_TROPHY * trophies * growers_to_come
