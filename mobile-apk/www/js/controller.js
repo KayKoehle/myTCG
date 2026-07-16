@@ -45,7 +45,14 @@ export function createGameController(ui, cardStack) {
         bindLaneDots();
         layoutHand(ui);
         runHistoryAnimations(snapshot);
-        maybeAutoAdvance();
+        // Deferred: a round-boundary crown can hand the round-starter role to
+        // the player who's already active (they just ended the winning turn),
+        // in which case this fires the new round's auto-draw. Calling it
+        // synchronously here would nest inside the doAction() that produced
+        // this snapshot — its actionPending guard is still set until that
+        // call's own finally runs, so the auto-draw would be silently
+        // dropped and the player stuck in DRAW with nothing to click.
+        setTimeout(maybeAutoAdvance, 0);
         // Top-left slot: surrender flag while the match runs, home once it
         // ends — or before the player's mulligan, when leaving is still free.
         const gameOver = snapshot.phase === 'GAME_OVER';
