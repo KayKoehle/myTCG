@@ -449,3 +449,159 @@ def test_snapshot_side_power_includes_elders_doubling():
     per_card_sum = sum(c["power"] for c in loc["stacks"][viewer_key])
     humans_power = sum(CARD_LIBRARY[c].power for c in (farmer, shepherd, elders))
     assert loc["side_power"][viewer_key] == per_card_sum + humans_power, "humans count double with Elders on top"
+
+
+# --- The flood clock ---------------------------------------------------------------
+
+
+def _board_with_seven_humans(state):
+    """Seven humans in play (four flood-side, three gilgamesh-side)."""
+    flood_humans = ["Slave", "Shepherd", "Citizen of Shruppak", "Sacrificer at the Altar"]
+    gil_humans = ["Shamhat", "Trapper", "Alewife Siduri"]
+    for name in flood_humans:
+        state = put_in_play(state, by_name(FLOOD, name), 0, 0)
+    for name in gil_humans:
+        state = put_in_play(state, by_name(GIL, name), 1, 1)
+    return state
+
+
+def test_flood_scheduled_when_eighth_human_enters_with_a_pending_choice():
+    state = start_game(FLOOD, GIL)
+    state = _board_with_seven_humans(state)
+    fisherman = by_name(FLOOD, "Fisherman")
+    # A human in the underworld makes Fisherman's on-enter halt with a choice.
+    state = put_in_underworld(state, by_name(FLOOD, "Farmer"), 0)
+    state = put_in_play(state, fisherman, 2, 0)
+
+    after = _apply_on_enter(state, 0, fisherman, 2)
+    assert after.pending_choice is not None, "Fisherman's choice is open"
+    assert after.flood_pending_turn == after.turn_number, "the 8th human still starts the flood clock"
+
+
+def test_flood_scheduled_when_eighth_human_is_revived():
+    state = start_game(FLOOD, GIL)
+    state = _board_with_seven_humans(state)
+    farmer = by_name(FLOOD, "Farmer")
+    state = put_in_underworld(state, farmer, 0)
+
+    after = rules.revive_from_underworld(state, 0, 2, lambda cid: cid == farmer)
+    assert farmer in after.locations[2].stacks[0]
+    assert after.flood_pending_turn == after.turn_number, "a revived human counts toward the flood"
+
+
+def test_sacrificer_delays_the_flood_to_the_owners_next_turn():
+    state = start_game(FLOOD, GIL)
+    state = replace(state, flood_pending_turn=state.turn_number)
+    sacrificer = by_name(FLOOD, "Sacrificer at the Altar")
+    state = put_in_play(state, sacrificer, 0, 0)
+
+    after = _apply_on_enter(state, 0, sacrificer, 0)
+    assert after.flood_pending_turn == state.turn_number + state.n_players, "one full round later, not the opponent's turn"
+
+
+def test_ark_protects_only_while_on_top():
+    state = start_game(FLOOD, GIL)
+    ark = by_name(FLOOD, "The Ark")
+    state = put_in_play(state, ark, 0, 0)
+    state = replace(state, protected_locations=(1, None))
+    assert rules.flood_protected(state, 0, 1), "the Ark on top protects the chosen location"
+
+    buried = put_in_play(state, by_name(FLOOD, "Shepherd"), 0, 0)
+    assert not rules.flood_protected(buried, 0, 1), "a buried Ark protects nothing"
+
+    banished = rules.banish_card(state, ark)
+    assert ark in banished.underworlds[0]
+    assert not rules.flood_protected(banished, 0, 1), "a banished Ark protects nothing"
+
+
+def test_flood_spares_only_humans_protected_by_a_topping_ark():
+    state = start_game(FLOOD, GIL)
+    ark = by_name(FLOOD, "The Ark")
+    protected_human = by_name(FLOOD, "Shepherd")
+    doomed_human = by_name(FLOOD, "Slave")
+    state = put_in_play(state, protected_human, 1, 0)
+    state = put_in_play(state, doomed_human, 2, 0)
+    state = put_in_play(state, ark, 0, 0)
+    state = replace(state, protected_locations=(1, None), flood_pending_turn=state.turn_number)
+
+    after = rules._resolve_flood(state)
+    assert protected_human in after.locations[1].stacks[0]
+    assert doomed_human not in after.locations[2].stacks[0]
+
+    # With the Ark buried, the same flood takes everyone.
+    buried = put_in_play(state, by_name(FLOOD, "Farmer"), 0, 0)
+    after = rules._resolve_flood(buried)
+    assert protected_human not in after.locations[1].stacks[0]
+
+
+# --- Agamemnon's stack cap on every arrival path ---------------------------------
+
+
+def test_agamemnon_cap_blocks_moves_and_revives_too():
+    state = start_game(GIL, TROY)
+    agamemnon = by_name(TROY, "Agamemnon, King of Mycenae")
+    state = put_in_play(state, agamemnon, 0, 1)
+    for name in ("Clay", "Trapper", "Alewife Siduri"):
+        state = put_in_play(state, by_name(GIL, name), 0, 0)
+
+    # A move onto the capped side stays put.
+    mover = by_name(GIL, "Shamhat")
+    state = put_in_play(state, mover, 1, 0)
+    after = rules.move_card(state, mover, 0, 0)
+    assert mover in after.locations[1].stacks[0], "the capped side admits no fourth card by move"
+
+    # A revive onto the capped side fizzles.
+    dead = by_name(GIL, "Gilgamesh")
+    state = put_in_underworld(state, dead, 0)
+    after = rules.revive_from_underworld(state, 0, 0, lambda cid: cid == dead)
+    assert dead in after.underworlds[0], "the capped side admits no fourth card by revive"
+
+
+# --- Enlil counts every side's humans ----------------------------------------------
+
+
+def test_enlil_counts_enemy_humans_toward_his_condition():
+    state = start_game(FLOOD, GIL)
+    enlil = by_name(FLOOD, "Enlil, Storm God")
+    state = put_in_play(state, by_name(FLOOD, "Shepherd"), 0, 0)   # one own human
+    state = put_in_play(state, by_name(GIL, "Trapper"), 0, 1)      # one enemy human
+    state = put_in_play(state, enlil, 0, 0)
+
+    after = _apply_on_enter(state, 0, enlil, 0)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "enlil_unleash_flood"
+
+
+# --- Achilles and Patroclus: one kill per opponent -----------------------------------
+
+
+def test_achilles_destroys_one_being_of_each_opponent():
+    from server.engine.transitions import create_initial_state
+
+    state = create_initial_state(seed=11, decks=[TROY, GIL, INA])
+    while state.pending_choice is not None:
+        chooser_id = state.player_ids[state.pending_choice.chooser_idx]
+        state = apply_action(state, ChooseOptionAction(player_id=chooser_id, option_id="KEEP"))
+
+    achilles = by_name(TROY, "Achilles")
+    victim_1 = by_name(GIL, "Clay")
+    victim_2 = by_name(INA, "Šara, Inanna's Beautician")
+    center = 3  # the shared FFA location is reachable by all three seats
+    state = put_in_play(state, victim_1, center, 1)
+    state = put_in_play(state, victim_2, center, 2)
+    state = put_in_play(state, achilles, center, 0)
+
+    after = _apply_on_enter(state, 0, achilles, center)
+    pending = after.pending_choice
+    assert pending is not None and pending.chooser_idx == 0
+    assert list(pending.options) == [victim_1], "first opponent's being is targeted first"
+
+    after = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id=victim_1))
+    pending = after.pending_choice
+    assert pending is not None and pending.chooser_idx == 0
+    assert list(pending.options) == [victim_2], "then the second opponent's being"
+
+    done = apply_action(after, ChooseOptionAction(player_id=after.player_ids[0], option_id=victim_2))
+    assert victim_1 in done.underworlds[1]
+    assert victim_2 in done.underworlds[2]
+    assert done.pending_choice is None

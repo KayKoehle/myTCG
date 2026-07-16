@@ -28,6 +28,7 @@ from .transitions import (
     apply_action,
     count_humans_in_play,
     dynamic_card_power,
+    flood_protected,
     is_immortal,
     is_terminal,
     legal_actions,
@@ -100,10 +101,9 @@ _W_HORSE_PAYLOAD = 1.0
 
 def _flood_exposure(state: GameState, idx: int) -> float:
     """Human power `idx` would lose to the flood right now (own side only)."""
-    protected = state.protected_locations[idx]
     exposed = 0.0
     for location in state.locations:
-        if location.location_id == protected or idx not in location.accessible:
+        if flood_protected(state, idx, location.location_id) or idx not in location.accessible:
             continue
         for cid in location.stacks[idx]:
             if not is_human(cid) or is_hero(cid):

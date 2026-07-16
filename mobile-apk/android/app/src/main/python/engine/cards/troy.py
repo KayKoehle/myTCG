@@ -6,7 +6,20 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_being, is_deity, is_human, named
-from ..effects import CardBehavior, EffectResult, Halt, defect_to_enemy_side, next_opponent_at, partners_in_play, partners_in_underworld, register, register_choice, tutor_named
+from ..effects import (
+    CardBehavior,
+    EffectResult,
+    Halt,
+    defect_to_enemy_side,
+    next_opponent_at,
+    partners_in_play,
+    partners_in_underworld,
+    register,
+    register_choice,
+    register_opponent_chain,
+    start_opponent_chain,
+    tutor_named,
+)
 from ..state import GameState, LocationState, PendingChoice
 
 TROJAN_HORSE = "The Trojan Horse"
@@ -117,7 +130,7 @@ def _greek_soldiers_moved(rt: Any, state: GameState, owner_idx: int, card_id: st
             return prim.with_pending_choice(
                 state, owner_idx, "greek_soldiers_destroy_weaklings", card_id, target_loc,
                 prim.subset_choice_options(weaklings, max_size=5, include_none=True),
-                "Choose up to five enemy beings with power 1 or less to destroy",
+                "Choose up to five enemy beings with power 2 or less to destroy",
             )
     return state
 
@@ -205,49 +218,64 @@ register("Odysseus", CardBehavior(top_ability=_odysseus_top_ability))
 register_choice("odysseus_move", _handle_odysseus_move)
 
 
+def _opponent_beings_here(rt: Any, state: GameState, actor_idx: int, opp_idx: int, location_idx: int) -> list[tuple[str, int]]:
+    """One opponent's beings on their side of this location (the actor's own
+    smuggled cards standing there are not that opponent's beings)."""
+    return [
+        (cid, rt.dynamic_power(state, cid, location_idx, opp_idx))
+        for cid in state.locations[location_idx].stacks[opp_idx]
+        if is_being(cid) and catalog.card_owner_idx(state, cid) != actor_idx
+    ]
+
+
+def _patroclus_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
+    if location_idx is None or prim.find_card_in_play(state, source_card_id) is None:
+        return None
+    own_power = rt.dynamic_power(state, source_card_id, location_idx, actor_idx)
+    options = [cid for cid, power in _opponent_beings_here(rt, state, actor_idx, opp_idx, location_idx) if power <= own_power]
+    if not options:
+        return None
+    return ("actor", "destroy_enemy_here", prim.choose_options_for_cards(options), "Choose one of this opponent's beings here to destroy")
+
+
+def _achilles_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
+    if location_idx is None:
+        return None
+    beings = _opponent_beings_here(rt, state, actor_idx, opp_idx, location_idx)
+    if not beings:
+        return None
+    if any(card(cid).name == "Patroclus" for cid in state.underworlds[actor_idx]):
+        strongest_power = max(power for _, power in beings)
+        options = [cid for cid, power in beings if power == strongest_power]
+    else:
+        if prim.find_card_in_play(state, source_card_id) is None:
+            return None
+        own_power = rt.dynamic_power(state, source_card_id, location_idx, actor_idx)
+        options = [cid for cid, power in beings if power <= own_power]
+    if not options:
+        return None
+    return ("actor", "destroy_enemy_here", prim.choose_options_for_cards(options), "Choose one of this opponent's beings here to destroy")
+
+
 def _patroclus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "Destroy one Being of each opponent here": one kill per opponent, the
+    # actor picking each target, resolved as an opponent chain.
     if any(card(cid).name == "Achilles" and side_idx == player_idx for _, side_idx, cid in prim.find_cards_in_play(state, named("Achilles"))):
-        own_power = rt.dynamic_power(state, card_id, location_idx, player_idx)
-        options = [
-            cid
-            for side in prim.other_side_indices(state, player_idx)
-            for cid in state.locations[location_idx].stacks[side]
-            if is_being(cid) and rt.dynamic_power(state, cid, location_idx, side) <= own_power
-        ]
-        if options:
-            return Halt(
-                prim.with_pending_choice(
-                    state, player_idx, "destroy_enemy_here", card_id, location_idx,
-                    prim.choose_options_for_cards(options), "Choose an enemy being here to destroy",
-                )
-            )
+        chained = start_opponent_chain(rt, state, player_idx, "patroclus_destroy", card_id, location_idx)
+        if chained is not None:
+            return Halt(chained)
     return state
 
 
 def _achilles_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    enemy_beings_with_power = [
-        (cid, rt.dynamic_power(state, cid, location_idx, side))
-        for side in prim.other_side_indices(state, player_idx)
-        for cid in state.locations[location_idx].stacks[side]
-        if is_being(cid)
-    ]
-    if any(card(cid).name == "Patroclus" for cid in state.underworlds[player_idx]):
-        if enemy_beings_with_power:
-            strongest_power = max(power for _, power in enemy_beings_with_power)
-            options = [cid for cid, power in enemy_beings_with_power if power == strongest_power]
-        else:
-            options = []
-    else:
-        own_power = rt.dynamic_power(state, card_id, location_idx, player_idx)
-        options = [cid for cid, power in enemy_beings_with_power if power <= own_power]
-    if options:
-        return Halt(
-            prim.with_pending_choice(
-                state, player_idx, "destroy_enemy_here", card_id, location_idx,
-                prim.choose_options_for_cards(options), "Choose an enemy being here to destroy",
-            )
-        )
+    chained = start_opponent_chain(rt, state, player_idx, "achilles_destroy", card_id, location_idx)
+    if chained is not None:
+        return Halt(chained)
     return state
+
+
+register_opponent_chain("patroclus_destroy", _patroclus_chain_step)
+register_opponent_chain("achilles_destroy", _achilles_chain_step)
 
 
 def _menelaus_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .actions import Action
+from .snapshot import hand_is_revealed
 from .transitions import _card_owner_idx, action_to_string, all_card_ids, apply_action, create_initial_state, is_terminal, legal_actions, returns
 
 try:
@@ -117,12 +118,10 @@ def build_open_spiel_game(seed: int = 42, deck_a: str = "epic_of_gilgamesh", dec
 
         def observation_string(self, player):
             state = self._state
-            reveal_hand = False
-            for location in state.locations:
-                top = location.stacks[player][-1] if location.stacks[player] else None
-                if top is not None and self._card_name(top) == "Sinon the Deceiver":
-                    reveal_hand = True
-                    break
+            # Sinon exposes the hand of the player whose stack he tops — so
+            # this observer sees the opponent's hand when the OPPONENT is the
+            # infiltrated one, not when Sinon sits on the observer's own stack.
+            reveal_hand = hand_is_revealed(state, 1 - player)
 
             own_hand = ",".join(state.hands[player])
             opponent_hand = ",".join(state.hands[1 - player]) if reveal_hand else f"size={len(state.hands[1 - player])}"
@@ -144,12 +143,6 @@ def build_open_spiel_game(seed: int = 42, deck_a: str = "epic_of_gilgamesh", dec
 
         def information_state_string(self, player):
             return self.observation_string(player)
-
-        @staticmethod
-        def _card_name(card_id: str) -> str:
-            from .transitions import CARD_LIBRARY
-
-            return CARD_LIBRARY[card_id].name
 
         @staticmethod
         def _public_card_id(state, viewer_idx: int, card_id: str) -> str:
