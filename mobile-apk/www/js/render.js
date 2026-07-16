@@ -65,6 +65,8 @@ const CHOICE_VERB_BY_KIND = {
     tutor_from_deck: 'Draw',
     calchas_pick: 'Draw',
     dolon_bottom_top_card: 'Put on bottom',
+    gondul_swap_with_top: 'Swap',
+    swap_hand_with_deck_card: 'Swap',
 };
 
 // Decide whether a pending choice is a simple "pick one card" selection that
@@ -223,6 +225,22 @@ function renderOpponentHand(cardCount, revealedCards) {
     const count = Math.max(0, Number(cardCount) || 0);
     if (count === 0) return '<div class="tiny">No cards</div>';
     return Array.from({ length: count }, () => '<div class="opp-card-back" aria-hidden="true"></div>').join('');
+}
+
+// The deck pile, plus any revealed top cards (Odin's High Seat mechanic):
+// revealed cards render face-up on the pile — tap to inspect, and the owner
+// can play a playable one like a hand card (drag or tap-select).
+function renderDeckStack(revealedCards) {
+    const base = '<span class="deck-card"></span><span class="deck-card"></span><span class="deck-card"></span>';
+    const list = Array.isArray(revealedCards) ? revealedCards : [];
+    if (!list.length) return base;
+    return base + list.map((c, i) => `
+        <span class="deck-revealed-card ${c.playable_from_deck ? 'deck-revealed-playable' : ''}"
+            data-deck-card-id="${c.id}" style="--reveal-idx: ${i};" title="${escapeHtml(c.name)}">
+            ${cardArtTag(c.name, 'deck-revealed-art', { eager: true })}
+            <span class="deck-revealed-name">${escapeHtml(displayCardTitle(c.name))}</span>
+        </span>
+    `).join('');
 }
 
 function renderUnderworldStack(cards, isOpp) {
@@ -647,6 +665,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
 
     ui.oppDeckCount.textContent = String(deckSizes[opp] ?? 0);
     ui.yourDeckCount.textContent = String(deckSizes[human] ?? 0);
+
+    // Revealed top deck cards (Odin's High Seat) render face-up on the piles.
+    const revealedDecks = snapshot.revealed_decks || {};
+    if (ui.yourDeckStack) ui.yourDeckStack.innerHTML = renderDeckStack(revealedDecks[human]);
+    if (ui.oppDeckStack) ui.oppDeckStack.innerHTML = renderDeckStack(revealedDecks[opp]);
 
     // A simple "pick one card" choice for the human is presented in the card
     // stack popup (tap to inspect, then a confirm button like "Banish Achilles").

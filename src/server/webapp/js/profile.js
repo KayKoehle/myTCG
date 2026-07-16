@@ -10,6 +10,7 @@ export const DECK_META = {
     siege_of_troy: { defaultName: 'The Trojan Siege Deck', mainCard: 'The Trojan Horse' },
     epic_of_gilgamesh: { defaultName: 'The Gilgamesh Deck', mainCard: 'Gilgamesh' },
     inannas_descent: { defaultName: 'The Inanna Deck', mainCard: 'Inanna, Goddess of Love and War' },
+    odins_high_seat: { defaultName: 'The Odin Deck', mainCard: 'Odin, the High One' },
 };
 
 export const DECK_IDS = Object.keys(DECK_META);

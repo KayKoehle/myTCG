@@ -9,7 +9,7 @@ import pytest
 from server.engine.catalog import DECK_LIBRARY
 from server.engine.transitions import apply_action, create_initial_state, is_terminal, legal_actions
 
-FINISHED = ["epic_of_gilgamesh", "inannas_descent", "the_flood", "siege_of_troy"]
+FINISHED = ["epic_of_gilgamesh", "inannas_descent", "the_flood", "siege_of_troy", "odins_high_seat"]
 MAX_STEPS = 2000
 
 

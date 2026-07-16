@@ -41,6 +41,7 @@ export function createGameController(ui, cardStack) {
         bindBoardMoveChoices(snapshot);
         bindMulliganSelection(snapshot);
         bindTapControls(snapshot);
+        bindRevealedDeckCards(snapshot);
         bindOpponentChips(snapshot);
         bindLaneDots();
         layoutHand(ui);
@@ -353,6 +354,7 @@ export function createGameController(ui, cardStack) {
     function clearTapSelection() {
         app.selectedCardId = null;
         ui.hand.querySelectorAll('.hand-card.selected').forEach((el) => el.classList.remove('selected'));
+        document.querySelectorAll('.deck-revealed-card.selected').forEach((el) => el.classList.remove('selected'));
         ui.lanes.querySelectorAll('.lane-row.tap-target').forEach((el) => el.classList.remove('tap-target'));
     }
 
@@ -515,6 +517,40 @@ export function createGameController(ui, cardStack) {
                 }
                 clearTapSelection();
                 await doAction({ kind: 'play_card', card_id: cardId, location_id: loc });
+            });
+        });
+    }
+
+    // Revealed top deck cards (Odin's High Seat): tapping inspects; the
+    // owner plays a playable one like a hand card (drag or tap-select).
+    function bindRevealedDeckCards(snapshot) {
+        const clickFollowsDrag = () => Date.now() - (app.dragEndedAt || 0) < 350;
+        const openingMulligan = isOpeningMulligan(snapshot);
+        [ui.yourDeckStack, ui.oppDeckStack].forEach((stackEl) => {
+            if (!stackEl) return;
+            stackEl.querySelectorAll('.deck-revealed-card[data-deck-card-id]').forEach((cardEl) => {
+                const cardId = cardEl.dataset.deckCardId;
+                if (!cardId) return;
+                const playable = !openingMulligan && app.playableCardSet.has(cardId);
+                if (playable) {
+                    cardEl.classList.add('draggable');
+                    cardEl.addEventListener('pointerdown', (event) => {
+                        beginPointerDrag(event, cardEl, { type: 'play', cardId });
+                    });
+                }
+                cardEl.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    if (clickFollowsDrag()) return;
+                    if (playable) {
+                        if (app.selectedCardId === cardId) {
+                            clearTapSelection();
+                            return;
+                        }
+                        selectHandCard(cardEl, cardId);
+                        return;
+                    }
+                    openInspector(findCardById(snapshot, cardId));
+                });
             });
         });
     }

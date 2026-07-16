@@ -85,6 +85,8 @@ export function getUiElements() {
         oppUnderworld: document.getElementById('oppUnderworld'),
         yourDeckCount: document.getElementById('yourDeckCount'),
         oppDeckCount: document.getElementById('oppDeckCount'),
+        yourDeckStack: document.getElementById('yourDeckStack'),
+        oppDeckStack: document.getElementById('oppDeckStack'),
         yourUnderworldCount: document.getElementById('yourUnderworldCount'),
         oppUnderworldCount: document.getElementById('oppUnderworldCount'),
         cardInspector: document.getElementById('cardInspector'),

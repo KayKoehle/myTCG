@@ -19,6 +19,7 @@ from .transitions import (
     available_decks,
     count_humans_in_play,
     deck_card_ids,
+    deck_play_details,
     dynamic_card_power,
     legal_actions,
     play_cost,
@@ -145,6 +146,15 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
     ):
         return True
 
+    # Revealers (Huginn, Heimdall, Odin) are doing something while a deck
+    # still has a top card to show; Muninn only once a reveal is live to deepen.
+    if behavior.reveals_own_top_while_top or behavior.plays_top_deck_card_while_top:
+        return bool(state.decks[card_owner_idx(state, card_id)])
+    if behavior.reveals_all_tops_while_top:
+        return any(state.decks)
+    if behavior.extends_reveal_while_top:
+        return len(effects.revealed_deck_cards(state, card_owner_idx(state, card_id))) > 1
+
     if behavior.friendly_power_bonus_while_top is not None:
         powers = {cid: dynamic_card_power(state, cid, location.location_id, side_idx) for cid in location.stacks[side_idx]}
         return bool(behavior.friendly_power_bonus_while_top(RT, state, location, side_idx, powers))
@@ -255,6 +265,18 @@ def build_state_snapshot(
             "while_top_active": while_top_active,
         }
 
+    def _revealed_deck_cards(owner_idx: int) -> list[dict[str, Any]]:
+        """The owner's revealed top deck cards (public info — a revealer like
+        Huginn or Heimdall shows them to everyone). Each entry carries whether
+        the owner could play it from the deck right now, and at what cost."""
+        entries: list[dict[str, Any]] = []
+        for card_id in effects.revealed_deck_cards(state, owner_idx):
+            details = deck_play_details(state, owner_idx, card_id)
+            entry = _hand_card(card_id, details[0] if details is not None else None)
+            entry["playable_from_deck"] = details is not None
+            entries.append(entry)
+        return entries
+
     hand_revealed = {i: hand_is_revealed(state, i) for i in range(n)}
     # 2-player compatibility fields keep pointing at "the" opponent; in FFA
     # the per-player dicts below carry every seat.
@@ -279,6 +301,9 @@ def build_state_snapshot(
         "mana_pool": per_player(lambda i: state.mana_pool[i]),
         "mana_cap": per_player(lambda i: min(7, state.player_turn_counts[i])),
         "deck_sizes": per_player(lambda i: len(state.decks[i])),
+        # Revealed top deck cards (Odin's High Seat mechanic) — public for
+        # every seat; the owner's entries say whether they can play them.
+        "revealed_decks": per_player(_revealed_deck_cards),
         "available_checkpoints": available_checkpoints or [],
         "hand": [_hand_card(c, play_cost(state, viewer_idx, c)) for c in state.hands[viewer_idx]],
         "hand_synergies": hand_synergies(state, viewer_idx),

@@ -17,7 +17,7 @@ src/
       primitives.py          Generic zone/board operations (no card names!)
       effects.py             CardBehavior registry + reusable effect factories
       cards/                 One module per finished deck (gilgamesh, inanna,
-                             flood, troy) registering each card's behavior
+                             flood, troy, odin) registering each card's behavior
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
       ai.py                  Search AI: greedy one-ply + positional evaluation
@@ -131,7 +131,7 @@ it.
 
 ## Training the AI & balancing the decks
 
-The four finished decks and their registry ids:
+The five finished decks and their registry ids:
 
 | Deck                                 | Registry id         |
 | ------------------------------------ | ------------------- |
@@ -139,6 +139,7 @@ The four finished decks and their registry ids:
 | Inanna's Descent to the Underworld   | `inannas_descent`   |
 | Siege of Troy                        | `siege_of_troy`     |
 | The Great Sumerian Deluge            | `the_flood`         |
+| Odin's High Seat                     | `odins_high_seat`   |
 
 ### 1. Train the AI
 
@@ -149,7 +150,7 @@ uv sync --group ai        # once — installs torch + training dependencies
 
 uv run python -m src.server.ai.train_distributed \
     --episodes 2000 --num-actors 8 --episodes-per-update 32 \
-    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy \
+    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy,odins_high_seat \
     --pipeline-mode shared_memory \
     --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 \
     --elo-csv stats/ai_training_elo_distributed.csv \
@@ -160,7 +161,7 @@ uv run python -m src.server.ai.train_distributed \
 ```powershell
 uv run python -m src.server.ai.train_distributed `
     --episodes 2000 --num-actors 8 --episodes-per-update 32 `
-    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy `
+    --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy,odins_high_seat `
     --pipeline-mode shared_memory `
     --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 `
     --elo-csv stats/ai_training_elo_distributed.csv `
@@ -375,7 +376,7 @@ uv run uvicorn src.server.main:app --reload
 uv sync --group dev
 
 # Train distributed neural AI (module entrypoint under src)
-uv run python -m src.server.ai.train_distributed --episodes 2000 --num-actors 8 --episodes-per-update 32 --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy --pipeline-mode shared_memory --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 --elo-csv stats/ai_training_elo_distributed.csv --checkpoint-path stats/checkpoints/ai_nn_distributed_latest.pt --device auto
+uv run python -m src.server.ai.train_distributed --episodes 2000 --num-actors 8 --episodes-per-update 32 --decks epic_of_gilgamesh,inannas_descent,the_flood,siege_of_troy,odins_high_seat --pipeline-mode shared_memory --league-sample-prob 0.5 --league-pool-size 16 --league-add-every-updates 5 --elo-csv stats/ai_training_elo_distributed.csv --checkpoint-path stats/checkpoints/ai_nn_distributed_latest.pt --device auto
 ```
 
 Training artifacts are written to `stats/` by default.
