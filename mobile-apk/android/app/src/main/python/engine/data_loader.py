@@ -15,6 +15,7 @@ FINISHED_DECK_FILES: dict[str, str] = {
     "the_flood": "tables/religion/mesopotamia/The_Flood.csv",
     "siege_of_troy": "tables/religion/greek/siege_of_troy.csv",
     "odins_high_seat": "tables/religion/norse/odins_high_seat.csv",
+    "the_osiris_myth": "tables/religion/egypt/the_osiris_myth.csv",
 }
 
 

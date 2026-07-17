@@ -377,6 +377,127 @@ def banish_card(state: GameState, card_id: str) -> GameState:
     )
 
 
+def _underworld_entries_this_turn(state: GameState, player_idx: int) -> int:
+    """How many cards `player_idx` has sent to their underworld from hand or
+    deck (discarded or silently buried) since the current turn began."""
+    count = 0
+    discard_prefix = f"discard:{state.player_ids[player_idx]}:"
+    bury_prefix = f"bury:{state.player_ids[player_idx]}:"
+    for entry in reversed(state.action_history):
+        if entry.startswith("draw_card:") or entry.startswith("end_turn:"):
+            break
+        if entry.startswith(discard_prefix) or entry.startswith(bury_prefix):
+            count += 1
+    return count
+
+
+def _fire_first_underworld_entry_witness(state: GameState, player_idx: int, first_card_id: str) -> GameState:
+    """Wake the owner's `on_first_underworld_entry_while_top` watcher (Nephthys)."""
+    for location_idx, location in enumerate(state.locations):
+        top = prim.top_card(location, player_idx)
+        if top is None or _card_owner_idx(state, top) != player_idx:
+            continue
+        witness_hook = effects.behavior_of(top).on_first_underworld_entry_while_top
+        if witness_hook is None:
+            continue
+        result = witness_hook(RT, state, player_idx, first_card_id, top, location_idx)
+        if result is not None:
+            state = result
+        break
+    return state
+
+
+def _fire_entered_underworld_self_hooks(state: GameState, player_idx: int, moved: list[str]) -> GameState:
+    """Wake each moved card's own `on_entered_underworld_from_hand_or_deck`
+    hook (Wepwawet, Sacred Scarab)."""
+    for card_id in moved:
+        if state.pending_choice is not None:
+            break
+        self_hook = effects.behavior_of(card_id).on_entered_underworld_from_hand_or_deck
+        if self_hook is None:
+            continue
+        result = self_hook(RT, state, player_idx, card_id)
+        if result is not None:
+            state = result
+    return state
+
+
+def discard_cards(state: GameState, player_idx: int, zone: str, card_ids: Iterable[str]) -> GameState:
+    """Trigger-aware discard: cards leave `zone` ("hand" or "deck") for their
+    owner's underworld.
+
+    All cards move first, then the triggers fire — so a watcher's draw
+    (Nephthys) can never pick up a card that is itself about to be discarded.
+    """
+    entries_before = _underworld_entries_this_turn(state, player_idx)
+    moved: list[str] = []
+    for card_id in card_ids:
+        after = prim.put_specific_zone_card_to_underworld(state, player_idx, zone, card_id)
+        if after is state:
+            continue
+        state = replace(after, action_history=after.action_history + (f"discard:{state.player_ids[player_idx]}:{card_id}",))
+        moved.append(card_id)
+    if not moved:
+        return state
+    if entries_before == 0:
+        state = _fire_first_underworld_entry_witness(state, player_idx, moved[0])
+    state = _fire_entered_underworld_self_hooks(state, player_idx, moved)
+    # A discarded card may answer from the underworld (Bennu Bird) — only from
+    # the hand, and only while no other choice is already waiting.
+    if zone == "hand":
+        for card_id in moved:
+            if state.pending_choice is not None:
+                break
+            self_hook = effects.behavior_of(card_id).on_discarded_from_hand
+            if self_hook is None:
+                continue
+            result = self_hook(RT, state, player_idx, card_id)
+            if result is not None:
+                state = result
+    return state
+
+
+def discard_from_hand(state: GameState, player_idx: int, card_id: str) -> GameState:
+    return discard_cards(state, player_idx, "hand", (card_id,))
+
+
+def put_cards_to_underworld(state: GameState, player_idx: int, zone: str, card_ids: Iterable[str]) -> GameState:
+    """Silent zone move ("put", not "discard") that still wakes the
+    entered-underworld triggers: self hooks (Wepwawet, Sacred Scarab) and the
+    first-per-turn witness (Nephthys). Cards move first, then triggers fire —
+    same ordering guarantee as discard_cards.
+    """
+    entries_before = _underworld_entries_this_turn(state, player_idx)
+    moved: list[str] = []
+    for card_id in card_ids:
+        after = prim.put_specific_zone_card_to_underworld(state, player_idx, zone, card_id)
+        if after is state:
+            continue
+        state = replace(after, action_history=after.action_history + (f"bury:{state.player_ids[player_idx]}:{card_id}",))
+        moved.append(card_id)
+    if not moved:
+        return state
+    if entries_before == 0:
+        state = _fire_first_underworld_entry_witness(state, player_idx, moved[0])
+    return _fire_entered_underworld_self_hooks(state, player_idx, moved)
+
+
+def banish_from_underworld(state: GameState, player_idx: int, card_id: str) -> GameState:
+    """The second death: remove a card from `player_idx`'s underworld
+    entirely (Ammit's devouring, Isis's price). Unlike a normal banish there
+    is nowhere lower to go — the card leaves the game and nothing can revive
+    it."""
+    underworld = list(state.underworlds[player_idx])
+    if card_id not in underworld:
+        return state
+    underworld.remove(card_id)
+    return replace(
+        state,
+        underworlds=prim.replace_tuple_index(state.underworlds, player_idx, tuple(underworld)),
+        action_history=state.action_history + (f"second_death:{state.player_ids[player_idx]}:{card_id}",),
+    )
+
+
 def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:
     found = prim.find_card_in_play(state, card_id)
     if found is None:
@@ -546,6 +667,15 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
             if result is not None:
                 return result
             break
+    # Underworld dwellers can ride along on a revival (Sacred Scarab).
+    if state.pending_choice is None:
+        for witness_id in state.underworlds[player_idx]:
+            underworld_hook = effects.behavior_of(witness_id).on_friendly_revive_from_underworld
+            if underworld_hook is None:
+                continue
+            result = underworld_hook(RT, state, player_idx, card_id, witness_id, location_idx)
+            if result is not None:
+                return result
     return _resolve_monster_rewards(state, location_idx, player_idx)
 
 
@@ -994,12 +1124,24 @@ def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameSt
         return _apply_mulligan_choice(state, chooser_idx, option)
 
     if option == "PASS":
+        # Even a passed choice may carry an "each opponent" chain marker
+        # (a trigger's choice that interrupted the chain): resume it.
+        if pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
+            state = effects.continue_opponent_chain(RT, state, pending)
+        if state.pending_choice is not None:
+            return state
         return _resolve_all_monster_rewards(state)
 
     handler = effects.CHOICE_HANDLERS.get(kind)
     if handler is None:
         raise ValueError(f"Unhandled choice kind: {kind}")
     state = handler(RT, state, chooser_idx, option, pending)
+    # A trigger inside the handler may have opened a fresh choice (e.g. a
+    # discarded Bennu Bird offering to fly back). When the resolved choice
+    # belonged to an "each opponent" chain, hand the chain marker on so the
+    # chain resumes once that new choice settles.
+    if state.pending_choice is not None and not state.pending_choice.follow_up and pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
+        state = replace(state, pending_choice=replace(state.pending_choice, follow_up=pending.follow_up))
     # "Each opponent ..." effects resolve one opponent at a time; open the
     # next opponent's step of the chain before anything else continues.
     if state.pending_choice is None and pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
@@ -1282,6 +1424,22 @@ class _Runtime:
     @staticmethod
     def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:
         return return_from_play_to_hand(state, card_id)
+
+    @staticmethod
+    def discard_from_hand(state: GameState, player_idx: int, card_id: str) -> GameState:
+        return discard_from_hand(state, player_idx, card_id)
+
+    @staticmethod
+    def discard_cards(state: GameState, player_idx: int, zone: str, card_ids: Iterable[str]) -> GameState:
+        return discard_cards(state, player_idx, zone, card_ids)
+
+    @staticmethod
+    def put_cards_to_underworld(state: GameState, player_idx: int, zone: str, card_ids: Iterable[str]) -> GameState:
+        return put_cards_to_underworld(state, player_idx, zone, card_ids)
+
+    @staticmethod
+    def banish_from_underworld(state: GameState, player_idx: int, card_id: str) -> GameState:
+        return banish_from_underworld(state, player_idx, card_id)
 
     @staticmethod
     def revive_from_underworld(state: GameState, player_idx: int, location_idx: int, predicate) -> GameState:

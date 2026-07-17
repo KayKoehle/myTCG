@@ -60,6 +60,12 @@ def format_action_history_entry(entry: str) -> str:
         return f"P{parts[1]} lost {_card_name(parts[2])} (banished)"
     if kind == "revive" and len(parts) >= 3:
         return f"P{parts[1]} revived {_card_name(parts[2])}"
+    if kind == "discard" and len(parts) >= 3:
+        return f"P{parts[1]} discarded {_card_name(parts[2])}"
+    if kind == "bury" and len(parts) >= 3:
+        return f"P{parts[1]} buried {_card_name(parts[2])}"
+    if kind == "second_death" and len(parts) >= 3:
+        return f"P{parts[1]}'s {_card_name(parts[2])} died the second death (gone forever)"
     if kind == "move_card" and len(parts) >= 4:
         return f"P{parts[1]} moved {_card_name(parts[2])} to {_lane_name(int(parts[3]))}"
     if kind == "monster_defeated" and len(parts) >= 3:
@@ -143,6 +149,7 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
         or behavior.sacrifice_artifact_discount_while_top
         or behavior.on_friendly_hero_left_while_top is not None
         or behavior.on_friendly_revive_while_top is not None
+        or behavior.on_first_underworld_entry_while_top is not None
     ):
         return True
 

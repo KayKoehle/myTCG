@@ -164,9 +164,10 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
             return `Put on bottom: ${cardDisplayName(parts[1], cardNameById)}`;
         }
 
-        // Hlidskjalf: play the top deck card for free at a chosen lane.
+        // A free play at a chosen lane (Hlidskjalf's top deck card, the
+        // Bennu Bird rising from the underworld).
         if (parts.length === 2 && zone === 'PLAY') {
-            return `Play top card at ${laneLabel(Number(parts[1]))}`;
+            return `Play for free at ${laneLabel(Number(parts[1]))}`;
         }
 
         // Dolon in multiplayer: first pick whose deck to scout ("OPP|<side>").

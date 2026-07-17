@@ -11,6 +11,7 @@ export const DECK_META = {
     epic_of_gilgamesh: { defaultName: 'The Gilgamesh Deck', mainCard: 'Gilgamesh' },
     inannas_descent: { defaultName: 'The Inanna Deck', mainCard: 'Inanna, Goddess of Love and War' },
     odins_high_seat: { defaultName: 'The Odin Deck', mainCard: 'Odin, the High One' },
+    the_osiris_myth: { defaultName: 'The Osiris Deck', mainCard: 'Osiris, the Slain King' },
 };
 
 export const DECK_IDS = Object.keys(DECK_META);

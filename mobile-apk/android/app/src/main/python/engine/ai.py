@@ -83,6 +83,18 @@ _W_CHEAP_REVIVE_TARGET = 1.5
 _FISHERMAN = "Fisherman"
 _W_FISHABLE_HUMAN = 0.5
 
+# The Osiris Myth: Osiris's revival brings back every cost<=2 being in the
+# underworld, so both halves of the plan are priced — Osiris banked below
+# while a reviver is still available, plus the cheap beings his return would
+# raise. Horus's upgrade (destroy the strongest, not just power<=4) is a
+# small extra while he is still to come.
+_OSIRIS = "Osiris, the Slain King"
+_OSIRIS_REVIVERS = ("Isis, Mistress of Magic",)
+_HORUS = "Horus, the Avenger"
+_W_OSIRIS_BANKED = 8.0
+_W_OSIRIS_MASS_TARGET = 1.5
+_W_HORUS_VENGEANCE = 2.0
+
 # Gilgamesh and Enkidu each have power 1 + the power of all monsters in the
 # owner's underworld: every trophy point pays off once per grower still to
 # come (the ones already in play collect it in the lane totals directly).
@@ -167,6 +179,14 @@ def _strategy_score(state: GameState, idx: int) -> float:
         if _FISHERMAN in available:
             fishable = sum(1 for cid in underworld if is_human(cid))
             score += _W_FISHABLE_HUMAN * min(fishable, 4)
+
+        if any(name == _OSIRIS for name in below):
+            if any(name in available for name in _OSIRIS_REVIVERS):
+                score += _W_OSIRIS_BANKED
+                mass_targets = sum(1 for cid in underworld if is_being(cid) and card(cid).cost <= 2)
+                score += _W_OSIRIS_MASS_TARGET * min(mass_targets, 4)
+            if _HORUS in available:
+                score += _W_HORUS_VENGEANCE
 
         trophies = sum(card(cid).power for cid in underworld if is_monster(cid))
         if trophies > 0:

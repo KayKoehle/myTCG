@@ -67,6 +67,11 @@ EnemyPowerOverrideHook = Callable[[Any, GameState, LocationState, int, str, int]
 SynergyHook = Callable[[Any, GameState, int, str], list[str]]
 # (rt, state, reviver_idx, revived_card_id, trigger_card_id, trigger_location_idx) -> GameState | None (None: nothing to do)
 ReviveWitnessHook = Callable[[Any, GameState, int, str, str, int], "GameState | None"]
+# (rt, state, owner_idx, card_id) -> GameState | None (None: nothing to do)
+# Fired right after this card was discarded from its owner's hand (Bennu Bird).
+DiscardedSelfHook = Callable[[Any, GameState, int, str], "GameState | None"]
+# (rt, state, owner_idx, discarded_card_id, witness_card_id, witness_location_idx) -> GameState | None
+DiscardWitnessHook = Callable[[Any, GameState, int, str, str, int], "GameState | None"]
 # (rt, state, chooser_idx, option, pending) -> GameState
 ChoiceHandler = Callable[[Any, GameState, int, str, PendingChoice], GameState]
 
@@ -134,6 +139,22 @@ class CardBehavior:
     plays_top_deck_card_while_top: bool = False
     # Offered while this card is in its owner's deck and revealed (Kvasir).
     deck_ability: DeckAbilityHook | None = None
+    # --- The discard/second-death mechanic (The Osiris Myth) ----------------
+    # Fired after this card is discarded from its owner's hand (Bennu Bird).
+    # Discards are trigger-aware zone moves (transitions.discard_cards);
+    # plain "put into your underworld" effects do not count as discards.
+    on_discarded_from_hand: DiscardedSelfHook | None = None
+    # Fired on this card itself the moment it enters its owner's underworld
+    # from hand or deck — whether by a discard or a silent "put" (Wepwawet,
+    # Sacred Scarab). Both transitions.discard_cards and
+    # transitions.put_cards_to_underworld wake this hook.
+    on_entered_underworld_from_hand_or_deck: DiscardedSelfHook | None = None
+    # While on top: witnesses the owner's first card entering their underworld
+    # from hand or deck each turn — discard or silent put alike (Nephthys).
+    on_first_underworld_entry_while_top: DiscardWitnessHook | None = None
+    # While in the owner's underworld: witnesses the owner reviving a being
+    # (Sacred Scarab rides along on any revival).
+    on_friendly_revive_from_underworld: ReviveWitnessHook | None = None
 
 
 BEHAVIORS: dict[str, CardBehavior] = {}
@@ -548,7 +569,9 @@ def _handle_destroy(rt: Any, state: GameState, chooser_idx: int, option: str, pe
 
 
 def _handle_discard_from_hand(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    return prim.discard_specific_from_hand(state, chooser_idx, option)
+    # Trigger-aware: a discard — chosen or forced — wakes discard watchers
+    # (Nephthys) and the discarded card itself (Bennu Bird).
+    return rt.discard_from_hand(state, chooser_idx, option)
 
 
 def _handle_banish(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:

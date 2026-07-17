@@ -67,6 +67,9 @@ const CHOICE_VERB_BY_KIND = {
     dolon_bottom_top_card: 'Put on bottom',
     gondul_swap_with_top: 'Swap',
     swap_hand_with_deck_card: 'Swap',
+    isis_revive: 'Revive',
+    isis_price: 'Banish',
+    thoth_take_one: 'Take',
 };
 
 // Decide whether a pending choice is a simple "pick one card" selection that
