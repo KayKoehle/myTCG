@@ -143,6 +143,11 @@ export function createCardStackPopup(ui) {
 
         ui.stackConfirm.classList.toggle('hidden', mode !== 'select' && mode !== 'multi-select');
         ui.stackExtras.classList.toggle('hidden', !(opts.extras && opts.extras.length) && !opts.note);
+        // The ✕ only closes a read-only view. A 'select'/'multi-select' popup is
+        // a mandatory decision resolved by confirming (or an explicit skip
+        // option), so hide ✕ there — dismissing it would strand the pending
+        // choice and freeze the game.
+        if (ui.stackClose) ui.stackClose.classList.toggle('hidden', mode !== 'view');
 
         const tiles = ui.stackList.querySelectorAll('.stackpop-card');
         if (opts.expandAll) {
@@ -210,10 +215,21 @@ export function createCardStackPopup(ui) {
         if (cb) cb(chosen);
     });
 
-    ui.stackClose.addEventListener('click', close);
+    ui.stackClose.addEventListener('click', () => {
+        // The ✕ is only shown for read-only views (see open()); ignore stray
+        // clicks in a mandatory 'select'/'multi-select' so the choice can't be
+        // stranded (which would freeze the game).
+        if (mode === 'view') close();
+    });
     ui.stackModal.addEventListener('click', (event) => {
         // Solo card view: any tap that isn't an action button dismisses it.
-        if (event.target === ui.stackModal || (soloView && !event.target.closest('.stackpop-extra'))) close();
+        if (soloView && !event.target.closest('.stackpop-extra')) { close(); return; }
+        // A tap on the backdrop dismisses a read-only view, but must NOT
+        // dismiss a mandatory 'select'/'multi-select' decision: closing it
+        // leaves the pending choice unresolved with no UI to resolve it, which
+        // freezes the game (e.g. Clay's "choose a card to draw"). The player
+        // uses the 👁 Board button to study the board without dismissing.
+        if (event.target === ui.stackModal && mode === 'view') close();
     });
 
     return { open, close, isOpen };
