@@ -176,7 +176,8 @@ function renderCards(cards, options = {}) {
 }
 
 function renderVpTrack(vpValue) {
-    const totalDots = Math.max(3, Number(vpValue) || 0);
+    // The game ends at 4 crowns, so always show at least 4 slots as placeholders.
+    const totalDots = Math.max(4, Number(vpValue) || 0);
     const filled = Number(vpValue) || 0;
     const crownIcon = (isFilled) => {
         const fill = isFilled ? '#ffc84f' : 'rgba(255,255,255,0.12)';
