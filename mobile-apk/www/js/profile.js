@@ -10,11 +10,17 @@ export const DECK_META = {
     siege_of_troy: { defaultName: 'The Trojan Siege Deck', mainCard: 'The Trojan Horse' },
     epic_of_gilgamesh: { defaultName: 'The Gilgamesh Deck', mainCard: 'Gilgamesh' },
     inannas_descent: { defaultName: 'The Inanna Deck', mainCard: 'Inanna, Goddess of Love and War' },
-    odins_high_seat: { defaultName: 'The Odin Deck', mainCard: 'Odin, the High One' },
-    the_osiris_myth: { defaultName: 'The Osiris Deck', mainCard: 'Osiris, the Slain King' },
+    // Odin and Osiris aren't finished yet: kept defined (so any historical
+    // stats/names still resolve) but marked hidden so they never surface in
+    // the deck list, deck builder, AI opponents, or pass-and-play seats.
+    // Drop the `hidden` flag to re-enable them once they're ready.
+    odins_high_seat: { defaultName: 'The Odin Deck', mainCard: 'Odin, the High One', hidden: true },
+    the_osiris_myth: { defaultName: 'The Osiris Deck', mainCard: 'Osiris, the Slain King', hidden: true },
 };
 
-export const DECK_IDS = Object.keys(DECK_META);
+// Deck ids that players can actually see and pick. Hidden (unfinished) decks
+// stay out of every list while remaining defined in DECK_META.
+export const DECK_IDS = Object.keys(DECK_META).filter((id) => !DECK_META[id].hidden);
 
 // Playable game modes. The menu's Play button always starts the favorite
 // mode directly; the chips under it change (and persist) the favorite.
@@ -368,15 +374,21 @@ export function allDeckIds() {
     return [...DECK_IDS, ...Object.keys(profile.customDecks)];
 }
 
+// A stock deck the player is allowed to see and pick (excludes hidden,
+// unfinished decks). Custom decks are always the player's own.
+function isSelectableDeck(deckId) {
+    return (Boolean(DECK_META[deckId]) && !DECK_META[deckId].hidden) || isCustomDeck(deckId);
+}
+
 export function getSelectedDeckId() {
-    if (DECK_META[profile.selectedDeck] || isCustomDeck(profile.selectedDeck)) {
+    if (isSelectableDeck(profile.selectedDeck)) {
         return profile.selectedDeck;
     }
     return DECK_IDS[0];
 }
 
 export function selectDeck(deckId) {
-    if (!DECK_META[deckId] && !isCustomDeck(deckId)) return;
+    if (!isSelectableDeck(deckId)) return;
     profile.selectedDeck = deckId;
     save();
 }
