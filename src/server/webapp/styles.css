@@ -1638,9 +1638,19 @@ select {
 }
 
 .hand-card.unplayable {
-    opacity: 0.72;
-    filter: saturate(0.8);
+    opacity: 0.5;
+    filter: saturate(0.7);
     cursor: default;
+}
+
+/* In mulligan mode every card must read as fully solid — you are judging what
+   to keep, not what is playable — so no dimming ever applies here. The render
+   already withholds the "unplayable" class during a mulligan; this guard keeps
+   the cards opaque even if any other state briefly tries to fade them. */
+.hand-card.mulligan-mode,
+.hand-card.mulligan-mode.unplayable {
+    opacity: 1;
+    filter: none;
 }
 
 .hand-card:active {
@@ -2083,6 +2093,76 @@ select {
     border: 1px solid rgba(255, 255, 255, 0.24);
     background: var(--card-back-opponent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* --- Board event effects -------------------------------------------------- */
+/* Ghosts, labels and bursts spawned for defeat / banish / revive / discard /
+   bury / move / effect-trigger events. Each is a throwaway element appended to
+   <body>, animated via the Web Animations API, then removed on finish. */
+
+.fx-ghost {
+    position: fixed;
+    z-index: 385;
+    pointer-events: none;
+    border-radius: 8px;
+    will-change: transform, opacity, filter;
+}
+
+.fx-ghost .card,
+.fx-ghost .hand-card {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    position: static;
+}
+
+.fx-defeat { box-shadow: 0 0 26px rgba(255, 74, 60, 0.7); }
+.fx-banish { box-shadow: 0 0 30px rgba(178, 116, 255, 0.75); }
+.fx-second-death { box-shadow: 0 0 30px rgba(120, 60, 200, 0.85); }
+.fx-discard { box-shadow: 0 12px 24px rgba(0, 0, 0, 0.55); }
+.fx-bury { box-shadow: 0 14px 26px rgba(0, 0, 0, 0.62); }
+.fx-revive { box-shadow: 0 0 30px rgba(120, 255, 180, 0.8); }
+
+.fx-label {
+    position: fixed;
+    z-index: 387;
+    pointer-events: none;
+    font-family: "Barlow", "Segoe UI", sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #f3f9ff;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 12px currentColor;
+}
+
+.fx-label-defeat { color: #ff6a5a; }
+.fx-label-banish { color: #cba6ff; }
+.fx-label-discard { color: #cfe0ef; }
+.fx-label-revive { color: #8effc0; }
+.fx-label-move { color: #7fd4ff; }
+
+.fx-burst {
+    position: fixed;
+    z-index: 388;
+    pointer-events: none;
+    font-size: 40px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+.fx-burst-defeat { text-shadow: 0 0 18px rgba(255, 90, 60, 0.9); }
+.fx-burst-banish { text-shadow: 0 0 18px rgba(178, 116, 255, 0.9); }
+.fx-burst-revive { text-shadow: 0 0 18px rgba(120, 255, 180, 0.9); }
+
+.fx-ring {
+    position: fixed;
+    z-index: 384;
+    pointer-events: none;
+    border-radius: 12px;
+    border: 3px solid rgba(255, 214, 120, 0.9);
+    box-shadow: 0 0 18px rgba(255, 214, 120, 0.7), inset 0 0 14px rgba(255, 214, 120, 0.5);
 }
 
 /* --- Matchup statistics (settings sheet) ---------------------------------- */

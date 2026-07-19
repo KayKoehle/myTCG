@@ -63,6 +63,9 @@ export function createAppState() {
         // entries added after these markers; reset per match.
         animMatchId: null,
         historySeen: 0,
+        // Board card rects captured before each re-render, so removal effects
+        // (defeat, banish, discard, bury, move) can animate at the old slot.
+        prevBoardRects: new Map(),
     };
 }
 
