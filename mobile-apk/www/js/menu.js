@@ -104,7 +104,6 @@ export function createMenuController(ui, game, cardStack) {
     // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
     // my_pid, num_players, seats, started }.
     let lanLobby = null;
-    let lanHostCount = 2;
 
     // Embedding models, fitted once on the loaded collection.
     let cardSearch = null; // (query) -> [{card, score}] | null
@@ -680,11 +679,12 @@ export function createMenuController(ui, game, cardStack) {
             return;
         }
         try {
+            // No headcount is sent: the lobby stays open and the match starts
+            // with whoever has joined (>= 2 players) when the host is ready.
             const data = await lanPost('', '/api/lan/host', {
                 name: lanPlayerName(),
                 deck_name: deck.name,
                 deck_cards: deck.cards,
-                num_players: lanHostCount,
             });
             const lobby = data.lobby;
             lanLobby = {
@@ -790,17 +790,22 @@ export function createMenuController(ui, game, cardStack) {
             const rows = seats.map((s) => `
                 <div class="lan-seat"><span>${escapeHtml(s.name)}</span>
                     <span class="tiny">seat ${s.player_id}</span></div>`).join('');
-            const empty = Math.max(0, lanLobby.num_players - seats.length);
-            const emptyRows = Array.from({ length: empty }, () =>
-                '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for a player…</span></div>').join('');
+            // The lobby has no fixed size: show a single "waiting" hint while
+            // there's still room, rather than padding to a chosen headcount.
+            const hasRoom = seats.length < (lanLobby.num_players || 5);
+            const waitingRow = hasRoom
+                ? '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for players to join…</span></div>'
+                : '';
             const canStart = lanLobby.is_host && seats.length >= 2;
+            const startLabel = seats.length >= 2 ? `Start ${seats.length}-player game` : 'Need at least 2 players';
             ui.lanBody.innerHTML = `
                 <div class="lan-section-title">${lanLobby.is_host ? 'Your lobby' : 'Joined lobby'}
-                    (${seats.length}/${lanLobby.num_players})</div>
-                <div class="lan-seats">${rows}${emptyRows}</div>
+                    (${seats.length} in)</div>
+                <div class="lan-seats">${rows}${waitingRow}</div>
                 ${lanLobby.is_host
                     ? `<button class="btn" id="lanStartBtn" ${canStart ? '' : 'disabled'} style="width:100%;margin-top:12px;">
-                            ${canStart ? 'Start Game' : 'Need at least 2 players'}</button>`
+                            ${startLabel}</button>
+                       <p class="tiny" style="margin-top:8px;">The game starts with everyone in the lobby. Start whenever you're ready.</p>`
                     : '<p class="tiny" style="margin-top:12px;">Waiting for the host to start…</p>'}
                 <button class="btn ghost" id="lanLeaveBtn" style="width:100%;margin-top:8px;">Leave lobby</button>`;
             const startBtn = document.getElementById('lanStartBtn');
@@ -814,22 +819,13 @@ export function createMenuController(ui, game, cardStack) {
             <label class="lan-label">Your name</label>
             <input id="lanNameInput" class="lan-input" value="${escapeHtml(name)}" maxlength="20" />
             <div class="lan-section-title">Host a game</div>
-            <div class="passplay-count" id="lanHostCount"></div>
+            <p class="tiny" style="margin:0 0 8px;">Open a lobby and start once others join — 2 to 5 players.</p>
             <button class="btn" id="lanHostBtn" style="width:100%;">Host game</button>
             <div class="lan-section-title">Join a game ${lanEnabled ? '' : '(starting discovery…)'}</div>
             <div class="lan-peers" id="lanPeers"></div>`;
         const nameInput = document.getElementById('lanNameInput');
         // Persist on every keystroke so a later re-render never loses in-progress text.
         nameInput.addEventListener('input', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
-        const countRow = document.getElementById('lanHostCount');
-        for (let n = 2; n <= 5; n += 1) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = `passplay-count-chip ${n === lanHostCount ? 'active' : ''}`;
-            btn.textContent = `${n}P`;
-            btn.addEventListener('click', () => { lanHostCount = n; renderLan(); });
-            countRow.appendChild(btn);
-        }
         document.getElementById('lanHostBtn').addEventListener('click', hostLan);
         renderLanPeers();
     }
@@ -840,7 +836,7 @@ export function createMenuController(ui, game, cardStack) {
             ? openPeers.map((p, i) => `
                 <div class="lan-peer" data-peer-idx="${i}">
                     <div><div class="lan-peer-name">${escapeHtml(p.name)}</div>
-                        <div class="tiny">${escapeHtml(p.lobby.host_name)}'s game · ${p.lobby.joined}/${p.lobby.num_players}</div></div>
+                        <div class="tiny">${escapeHtml(p.lobby.host_name)}'s game · ${p.lobby.joined} ${p.lobby.joined === 1 ? 'player' : 'players'} in</div></div>
                     <button class="btn small" data-join-idx="${i}">Join</button>
                 </div>`).join('')
             : '<p class="tiny">No open games found yet. Make sure everyone is on the same Wi‑Fi.</p>';
