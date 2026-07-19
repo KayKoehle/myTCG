@@ -178,7 +178,9 @@ def register_ws_routes(app: FastAPI):
             lobby = lan_service.host_game(
                 host_name=request.get("name", "Host"),
                 deck_name=deck_name,
-                num_players=request.get("num_players", 2),
+                # Optional: a host may leave the size open and start with
+                # whoever has joined (>= 2). Defaults to the full seat cap.
+                num_players=request.get("num_players"),
                 deck_cards=request.get("deck_cards"),
                 seed=request.get("seed"),
             )
