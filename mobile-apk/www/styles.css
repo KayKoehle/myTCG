@@ -1638,8 +1638,7 @@ select {
 }
 
 .hand-card.unplayable {
-    opacity: 0.5;
-    filter: saturate(0.7);
+    opacity: 1;
     cursor: default;
 }
 
