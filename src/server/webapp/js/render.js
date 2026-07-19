@@ -281,9 +281,11 @@ function renderActionHistory(snapshot, ui, config) {
     // now, so the shared history names every seat instead.
     const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
 
+    const localNames = Array.isArray(config.local_seat_names) ? config.local_seat_names : [];
+    const localSeatName = (i) => (localNames[i] && String(localNames[i]).trim()) || `Player ${i + 1}`;
     const nameByPid = new Map(players.map((pid, i) => [
         pid,
-        isLocal ? `Player ${i + 1}` : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
+        isLocal ? localSeatName(i) : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
     ]));
     const relabelPlayers = (text) => {
         let out = String(text);
@@ -450,7 +452,12 @@ export function updateEndTurnButton(ui, app, config) {
 
     if (opponentTurn) {
         ui.btnEndTurn.disabled = true;
-        ui.btnEndTurn.textContent = "Opponent's Turn";
+        // Distinguish "it's simply their turn" from "they've been handed a
+        // decision and everyone is waiting on it" so a remote/AI choice doesn't
+        // look like a stall.
+        const opponentChoosing = Boolean(snapshot.pending_choice)
+            && Number(snapshot.pending_choice.player_id) !== config.player_id;
+        ui.btnEndTurn.textContent = opponentChoosing ? 'Opponent choosing…' : "Opponent's Turn";
     } else {
         ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
         ui.btnEndTurn.textContent = isGameOver ? 'Rematch' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
@@ -498,7 +505,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     // Local pass-and-play: several humans share the screen, so sides are named
     // by seat ("Player 2") instead of You/Opp, and no one carries an Elo tag.
     const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
-    const seatName = (pid) => `Player ${players.indexOf(String(pid)) + 1}`;
+    const localSeatNames = Array.isArray(config.local_seat_names) ? config.local_seat_names : [];
+    const seatName = (pid) => {
+        const idx = players.indexOf(String(pid));
+        const custom = idx >= 0 ? (localSeatNames[idx] || '').trim() : '';
+        return custom || `Player ${idx + 1}`;
+    };
     // Per-rival display info: short name, seat color class, engine side index.
     const rivalInfo = new Map(opponents.map((pid, i) => [pid, {
         name: isLocal ? seatName(pid) : (isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp'),
