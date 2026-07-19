@@ -26,6 +26,10 @@ export function createGameController(ui, cardStack) {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     function rerender(snapshot) {
+        // Snapshot the board's current card positions *before* renderSnapshot
+        // rebuilds the DOM, so history-driven effects (defeat, banish, discard,
+        // bury, move) can still animate at the spot a card just vacated.
+        app.prevBoardRects = captureBoardRects();
         renderSnapshot({
             snapshot,
             ui,
@@ -706,6 +710,9 @@ export function createGameController(ui, cardStack) {
         // The fourth crown ends the game: the game-over animation replaces the
         // regular round-crown animation for that final round.
         const gameEnded = fresh.some((e) => String(e || '').startsWith('game_result:'));
+        // Cap simultaneous removal effects so a chain (e.g. the flood banishing
+        // a whole board) can't spawn dozens of ghosts at once on mobile.
+        let fxBudget = 8;
         for (const entry of fresh) {
             const raw = String(entry || '');
             const parts = raw.split(':');
@@ -742,12 +749,28 @@ export function createGameController(ui, cardStack) {
                 // "Banish X enemy beings": a rival losing a being counts.
                 const ctx = cardTypeCtx(knownCard(snapshot, parts[2]));
                 if (Number(parts[1]) !== you && ctx.isBeing && app.statsMeta) questOnCardBanished();
+                if (fxBudget-- > 0) animateBanish(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('second_death:')) {
+                if (fxBudget-- > 0) {
+                    animateBanish(parts[2], Number(parts[1]), { label: 'DESTROYED', glyph: '☠', cls: 'fx-banish fx-second-death' });
+                }
+            } else if (raw.startsWith('discard:')) {
+                if (fxBudget-- > 0) animateToUnderworld(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('bury:')) {
+                if (fxBudget-- > 0) {
+                    animateToUnderworld(parts[2], Number(parts[1]), { label: 'BURIED', cls: 'fx-bury' });
+                }
             } else if (raw.startsWith('revive:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardRevived();
+                animateRevive(parts[2], Number(parts[1]));
             } else if (raw.startsWith('move_card:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardMoved();
+                animateMove(parts[2]);
             } else if (raw.startsWith('monster_defeated:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnMonsterDefeated();
+                if (fxBudget-- > 0) animateDefeat(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('use_ability:')) {
+                animateEffect(parts[2]);
             } else if (raw.startsWith('mulligan_keep:')) {
                 if (aiIds().includes(Number(parts[1])) && Number(parts[2]) > 0) {
                     animateOpponentMulligan(Number(parts[2]));
@@ -953,6 +976,251 @@ export function createGameController(ui, cardStack) {
         const done = () => ghost.remove();
         anim.addEventListener('finish', done);
         anim.addEventListener('cancel', done);
+    }
+
+    // --- Board event animations -------------------------------------------
+    // Defeat / banish / revive / discard / bury / move / effect-trigger all
+    // read from action_history and play a short throwaway animation. Events
+    // that *remove* a card lean on the rects captured in rerender(); events
+    // that keep or add one (revive, move, effect) use the live DOM element.
+
+    function captureBoardRects() {
+        const map = new Map();
+        if (!ui.lanes) return map;
+        ui.lanes.querySelectorAll('.card[data-board-card-id]').forEach((el) => {
+            const id = el.getAttribute('data-board-card-id');
+            if (!id) return;
+            const rect = el.getBoundingClientRect();
+            if (rect.width) map.set(id, { rect, node: el.cloneNode(true) });
+        });
+        return map;
+    }
+
+    // A card's current (or just-vacated) board slot, plus a clonable node.
+    function boardCardFx(cardId) {
+        const live = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (live) {
+            const rect = live.getBoundingClientRect();
+            if (rect.width) return { rect, node: live.cloneNode(true) };
+        }
+        const prev = app.prevBoardRects && app.prevBoardRects.get(cardId);
+        if (prev) return { rect: prev.rect, node: prev.node.cloneNode(true) };
+        return null;
+    }
+
+    // Where departing cards drift: the owner's underworld pile.
+    function underworldRect(playerId) {
+        const el = Number(playerId) === cfg().player_id ? ui.yourUnderworld : ui.oppUnderworld;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return rect.width ? rect : null;
+    }
+
+    function fxGhost(rect, node, cls) {
+        const ghost = document.createElement('div');
+        ghost.className = `fx-ghost ${cls || ''}`.trim();
+        ghost.style.left = `${rect.left}px`;
+        ghost.style.top = `${rect.top}px`;
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+        if (node) {
+            node.style.visibility = '';
+            ghost.appendChild(node);
+        }
+        document.body.appendChild(ghost);
+        return ghost;
+    }
+
+    function fxLabel(rect, text, cls) {
+        const label = document.createElement('div');
+        label.className = `fx-label ${cls || ''}`.trim();
+        label.textContent = text;
+        label.style.left = `${rect.left + rect.width / 2}px`;
+        label.style.top = `${rect.top + rect.height / 2}px`;
+        document.body.appendChild(label);
+        const anim = label.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 },
+                { transform: 'translate(-50%, -95%) scale(1)', opacity: 1, offset: 0.28 },
+                { transform: 'translate(-50%, -150%) scale(1)', opacity: 1, offset: 0.72 },
+                { transform: 'translate(-50%, -195%) scale(0.92)', opacity: 0 },
+            ],
+            { duration: 1150, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' }
+        );
+        const done = () => label.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    function fxBurst(rect, glyph, cls) {
+        const burst = document.createElement('div');
+        burst.className = `fx-burst ${cls || ''}`.trim();
+        burst.textContent = glyph;
+        burst.style.left = `${rect.left + rect.width / 2}px`;
+        burst.style.top = `${rect.top + rect.height / 2}px`;
+        document.body.appendChild(burst);
+        const anim = burst.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.2) rotate(-12deg)', opacity: 0 },
+                { transform: 'translate(-50%, -50%) scale(1.5) rotate(6deg)', opacity: 1, offset: 0.4 },
+                { transform: 'translate(-50%, -50%) scale(1.15) rotate(0deg)', opacity: 0 },
+            ],
+            { duration: 720, easing: 'ease-out' }
+        );
+        const done = () => burst.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A monster is defeated: the card flares, shudders, then collapses away.
+    function animateDefeat(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, 'fx-defeat');
+        fxBurst(fx.rect, '💥', 'fx-burst-defeat');
+        fxLabel(fx.rect, 'DEFEATED', 'fx-label-defeat');
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1)', opacity: 1 },
+                { transform: 'translate(-5px,0) rotate(-4deg) scale(1.05)', filter: 'brightness(2) saturate(1.5)', opacity: 1, offset: 0.14 },
+                { transform: 'translate(5px,0) rotate(4deg) scale(1.02)', filter: 'brightness(1.6) saturate(1.3)', opacity: 1, offset: 0.28 },
+                { transform: 'translate(-3px,4px) rotate(-2deg) scale(0.96)', filter: 'brightness(0.7) grayscale(0.5)', opacity: 0.85, offset: 0.45 },
+                { transform: 'translate(0,44px) rotate(10deg) scale(0.55)', filter: 'brightness(0.2) grayscale(1)', opacity: 0 },
+            ],
+            { duration: 900, easing: 'ease-in' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A being is banished/exiled: it lifts, spins and dissolves in a haze.
+    function animateBanish(cardId, ownerId, opts = {}) {
+        if (!window.Element.prototype.animate) return;
+        const { label = 'BANISHED', glyph = '✦', cls = 'fx-banish' } = opts;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, cls);
+        fxBurst(fx.rect, glyph, 'fx-burst-banish');
+        fxLabel(fx.rect, label, 'fx-label-banish');
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1) blur(0)', opacity: 1 },
+                { transform: 'translate(0,-16px) rotate(4deg) scale(1.04)', filter: 'brightness(1.5) blur(0)', opacity: 0.95, offset: 0.3 },
+                { transform: 'translate(0,-52px) rotate(-6deg) scale(0.7)', filter: 'brightness(1.2) blur(3px)', opacity: 0.4, offset: 0.7 },
+                { transform: 'translate(0,-84px) rotate(-12deg) scale(0.4)', filter: 'brightness(1) blur(8px)', opacity: 0 },
+            ],
+            { duration: 850, easing: 'cubic-bezier(0.3, 0.1, 0.2, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A card is discarded or buried: it tumbles toward the owner's underworld.
+    function animateToUnderworld(cardId, ownerId, opts = {}) {
+        if (!window.Element.prototype.animate) return;
+        const { label = 'DISCARDED', cls = 'fx-discard', labelCls = 'fx-label-discard' } = opts;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, cls);
+        fxLabel(fx.rect, label, labelCls);
+        const uw = underworldRect(ownerId);
+        const cx = fx.rect.left + fx.rect.width / 2;
+        const cy = fx.rect.top + fx.rect.height / 2;
+        const dx = uw ? (uw.left + uw.width / 2 - cx) : 0;
+        const dy = uw ? (uw.top + uw.height / 2 - cy) : 64;
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
+                { transform: `translate(${dx * 0.3}px, ${dy * 0.3 - 8}px) rotate(8deg) scale(0.9)`, opacity: 0.95, offset: 0.35 },
+                { transform: `translate(${dx}px, ${dy}px) rotate(22deg) scale(0.4)`, opacity: 0 },
+            ],
+            { duration: 780, easing: 'cubic-bezier(0.4, 0.1, 0.6, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A being is revived: it rises from the underworld onto its slot, aglow.
+    function animateRevive(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const target = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (!target) return;
+        const endRect = target.getBoundingClientRect();
+        if (!endRect.width) return;
+        const uw = underworldRect(ownerId);
+        const ghost = fxGhost(endRect, target.cloneNode(true), 'fx-revive');
+        target.style.visibility = 'hidden';
+        fxBurst(endRect, '✨', 'fx-burst-revive');
+        fxLabel(endRect, 'REVIVED', 'fx-label-revive');
+        const startX = uw ? (uw.left + uw.width / 2 - (endRect.left + endRect.width / 2)) : 0;
+        const startY = uw ? (uw.top + uw.height / 2 - (endRect.top + endRect.height / 2)) : 64;
+        const anim = ghost.animate(
+            [
+                { transform: `translate(${startX}px, ${startY}px) scale(0.4)`, filter: 'brightness(0.6) drop-shadow(0 0 0 rgba(120,255,180,0))', opacity: 0 },
+                { transform: `translate(${startX * 0.4}px, ${startY * 0.4}px) scale(0.8)`, filter: 'brightness(1.6) drop-shadow(0 0 14px rgba(120,255,180,0.8))', opacity: 1, offset: 0.5 },
+                { transform: 'translate(0,0) scale(1.06)', filter: 'brightness(1.4) drop-shadow(0 0 18px rgba(120,255,180,0.7))', opacity: 1, offset: 0.8 },
+                { transform: 'translate(0,0) scale(1)', filter: 'brightness(1) drop-shadow(0 0 0 rgba(120,255,180,0))', opacity: 1 },
+            ],
+            { duration: 820, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' }
+        );
+        const done = () => { target.style.visibility = ''; ghost.remove(); };
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A card is moved to another lane: it slides from its old slot to the new one.
+    function animateMove(cardId) {
+        if (!window.Element.prototype.animate) return;
+        const prev = app.prevBoardRects && app.prevBoardRects.get(cardId);
+        if (!prev) return;
+        const target = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (!target) return;
+        const endRect = target.getBoundingClientRect();
+        if (!endRect.width) return;
+        // Only worth a slide if the slot actually changed.
+        if (Math.abs(prev.rect.left - endRect.left) < 4 && Math.abs(prev.rect.top - endRect.top) < 4) return;
+        fxLabel(endRect, 'MOVED', 'fx-label-move');
+        animateCardPlay(cardId, prev.rect);
+    }
+
+    // An effect triggers: the source card pulses with an expanding ring.
+    function animateEffect(cardId) {
+        if (!window.Element.prototype.animate) return;
+        const el = (ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`))
+            || (ui.hand && ui.hand.querySelector(`.hand-card[data-card-id="${CSS.escape(cardId)}"]`));
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) return;
+        const ring = document.createElement('div');
+        ring.className = 'fx-ring';
+        ring.style.left = `${rect.left + rect.width / 2}px`;
+        ring.style.top = `${rect.top + rect.height / 2}px`;
+        ring.style.width = `${rect.width}px`;
+        ring.style.height = `${rect.height}px`;
+        ring.style.transform = 'translate(-50%, -50%)';
+        document.body.appendChild(ring);
+        const ringAnim = ring.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.55)', opacity: 0.9 },
+                { transform: 'translate(-50%, -50%) scale(1.5)', opacity: 0 },
+            ],
+            { duration: 620, easing: 'ease-out' }
+        );
+        const doneRing = () => ring.remove();
+        ringAnim.addEventListener('finish', doneRing);
+        ringAnim.addEventListener('cancel', doneRing);
+        el.animate(
+            [
+                { filter: 'brightness(1)' },
+                { filter: 'brightness(1.7) drop-shadow(0 0 10px rgba(255, 214, 120, 0.9))', offset: 0.4 },
+                { filter: 'brightness(1)' },
+            ],
+            { duration: 620, easing: 'ease-in-out' }
+        );
     }
 
     // Game over: a full-screen animation distinct from the round-crown one,
