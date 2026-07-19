@@ -11,6 +11,9 @@ export function createAppState() {
         // holding the device — it drives both the controller identity and the
         // viewer perspective, and swaps on a "pass the device" hand-off.
         localSeatIds: null,
+        // Editable display name per local seat (index 0 = seat 1); null outside
+        // pass-and-play, where blank entries fall back to "Player N".
+        localSeatNames: null,
         activeSeatId: 1,
         // LAN multiplayer: when true, other seats are remote humans on the
         // network. lanHostBase is the authoritative host's URL (null = we are
@@ -81,6 +84,7 @@ export function buildConfig(ui, app) {
         ai_player_ids: aiIds,
         viewer_player_id: youId,
         local_seat_ids: localSeats,
+        local_seat_names: localSeats && app.localSeatNames && app.localSeatNames.length ? app.localSeatNames : null,
         seed: app.seed,
         deck_a: app.deckAName || ui.deckA.value.trim() || app.defaultDeckA,
         deck_b: app.deckBName || ui.deckB.value.trim() || app.defaultDeckB,

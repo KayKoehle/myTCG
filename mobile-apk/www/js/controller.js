@@ -592,6 +592,18 @@ export function createGameController(ui, cardStack) {
         });
     }
 
+    // A remote player just played a card (LAN): fly it in from their side, the
+    // same face-down-then-flip motion the AI uses. Origin is the 2P opponent
+    // hand, or that rival's chip in an FFA game.
+    function animateOpponentPlay(actorId, cardId) {
+        const chipEl = ui.oppChips && ui.oppChips.querySelector(`.opp-chip[data-player-id="${actorId}"]`);
+        const originEl = (chipEl && chipEl.offsetParent) ? chipEl : ui.oppHand;
+        if (!originEl) return;
+        const rect = originEl.getBoundingClientRect();
+        if (!rect.width) return;
+        animateCardPlay(cardId, rect, { flip: true });
+    }
+
     // Fly a copy of the played card from the source rect onto its new spot on
     // the board. Opponent plays start face down and flip up mid-flight.
     function animateCardPlay(cardId, fromRect, { flip = false } = {}) {
@@ -709,9 +721,16 @@ export function createGameController(ui, cardStack) {
                 }
                 if (!gameEnded) animateRoundResult(raw);
             } else if (raw.startsWith('play_card:')) {
-                if (Number(parts[1]) === you && app.statsMeta) {
+                const actor = Number(parts[1]);
+                if (actor === you && app.statsMeta) {
                     if (parts[2]) playedCardIds.add(parts[2]);
                     questOnCardPlayed(cardTypeCtx(knownCard(snapshot, parts[2])));
+                } else if (actor !== you && isLanGame() && parts[2]) {
+                    // A remote player's card arrives via a background state poll
+                    // with no animation of its own; fly it in from their side so
+                    // the opponent's turn reads as live (the AI path animates in
+                    // aiMove — this is the LAN equivalent).
+                    animateOpponentPlay(actor, parts[2]);
                 }
             } else if (raw.startsWith('game_result:')) {
                 recordFinishedGame(raw, snapshot);
@@ -1483,7 +1502,10 @@ export function createGameController(ui, cardStack) {
     function seatLabel(seatId) {
         const order = seatOrder();
         const idx = order.indexOf(String(seatId));
-        return `Player ${idx >= 0 ? idx + 1 : seatId}`;
+        const seatNo = idx >= 0 ? idx + 1 : seatId;
+        const names = cfg().local_seat_names;
+        const custom = Array.isArray(names) && idx >= 0 ? (names[idx] || '').trim() : '';
+        return custom || `Player ${seatNo}`;
     }
 
     // Full-screen opaque hand-off: hides the outgoing player's board until the
@@ -1533,13 +1555,16 @@ export function createGameController(ui, cardStack) {
                 if (app.lanPollFails >= 2) startReconnect();
                 else scheduleLanPoll();
             }
-        }, 1500);
+        }, 900);
     }
     async function lanTick() {
         const snap = app.snapshot;
-        if (!snap || snap.phase === 'GAME_OVER') { clearLanPoll(); return; }
+        if (!snap || snap.phase === 'GAME_OVER') { setOpponentTurn(false); clearLanPoll(); return; }
         const you = cfg().player_id;
         if (actorSeat(snap) === you) {
+            // Our turn (or a choice aimed at us): drop the waiting indicator and
+            // stop polling; the board is now ours to drive.
+            setOpponentTurn(false);
             clearLanPoll();
             if (!snap.pending_choice) {
                 const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
@@ -1547,6 +1572,10 @@ export function createGameController(ui, cardStack) {
             }
             return;
         }
+        // A remote seat is acting. Unlike an AI game there's no local loop to flip
+        // the End Turn button, so do it here: show the disabled "Opponent's Turn"
+        // (or "Opponent choosing…") state and keep polling the host for plays.
+        setOpponentTurn(true);
         scheduleLanPoll();
     }
 
@@ -1676,7 +1705,7 @@ export function createGameController(ui, cardStack) {
     // edited) deck against the given AI deck(s), in a fresh match. statsMeta
     // identifies the profile deck so the result can be recorded. `decks`
     // (one deck name per seat, human first) switches the match to FFA.
-    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null }) {
+    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null, localSeatNames = null }) {
         // Starting any non-LAN match tears down lingering LAN state first —
         // releases the host Wi-Fi lock, clears the rejoin session, stops polling.
         endLanGame();
@@ -1687,6 +1716,11 @@ export function createGameController(ui, cardStack) {
         // Local pass-and-play: all seats are human, no AI to drive. Otherwise
         // seats 2..n are AI rivals.
         app.localSeatIds = Array.isArray(localSeatIds) && localSeatIds.length ? localSeatIds.map(Number) : null;
+        // Player display names for the local seats (index 0 = seat 1), used by
+        // the hand-off overlay, score panel, and history. Null outside hotseat.
+        app.localSeatNames = app.localSeatIds && Array.isArray(localSeatNames) && localSeatNames.length
+            ? localSeatNames.map((n) => String(n))
+            : null;
         app.activeSeatId = app.localSeatIds ? Number(app.localSeatIds[0]) : app.humanPlayerId;
         app.aiPlayerIds = app.localSeatIds
             ? []

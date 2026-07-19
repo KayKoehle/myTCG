@@ -92,6 +92,9 @@ export function createMenuController(ui, game, cardStack) {
     // pick from stock decks so their card lists resolve from the catalog.
     let passPlayCount = 2;
     let passPlaySeatDecks = [];
+    // Editable display name per seat (index 0 = seat 1). Empty entries fall back
+    // to "Player N" so a name is never required.
+    let passPlaySeatNames = [];
 
     // LAN multiplayer setup: discovery + lobby state while the LAN sheet is open.
     let lanEnabled = false;
@@ -519,9 +522,14 @@ export function createMenuController(ui, game, cardStack) {
         for (let i = 0; i < passPlayCount; i += 1) {
             const row = document.createElement('div');
             row.className = 'passplay-seat';
-            const label = document.createElement('span');
-            label.className = 'passplay-seat-label';
-            label.textContent = `Player ${i + 1}`;
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.className = 'passplay-seat-name';
+            name.maxLength = 20;
+            name.placeholder = `Player ${i + 1}`;
+            name.value = passPlaySeatNames[i] || '';
+            name.setAttribute('aria-label', `Name for player ${i + 1}`);
+            name.addEventListener('input', () => { passPlaySeatNames[i] = name.value; });
             const select = document.createElement('select');
             select.className = 'passplay-deck';
             for (const deckId of seatDeckChoices(i)) {
@@ -532,7 +540,7 @@ export function createMenuController(ui, game, cardStack) {
                 select.appendChild(opt);
             }
             select.addEventListener('change', () => { passPlaySeatDecks[i] = select.value; });
-            row.appendChild(label);
+            row.appendChild(name);
             row.appendChild(select);
             ui.passPlaySeats.appendChild(row);
         }
@@ -551,6 +559,12 @@ export function createMenuController(ui, game, cardStack) {
         }
         const names = [seat0.name, ...seatIds.slice(1)];
         const localSeatIds = Array.from({ length: count }, (_, i) => i + 1);
+        // Player display names for the hand-off overlay, history, and score
+        // panel. Blank entries default to "Player N" at render time.
+        const localSeatNames = Array.from({ length: count }, (_, i) => {
+            const entered = (passPlaySeatNames[i] || '').trim();
+            return entered || `Player ${i + 1}`;
+        });
         applyCosmetics(seatIds[0]);
         closePassPlay();
         pushNav({ screen: 'game' });
@@ -561,6 +575,7 @@ export function createMenuController(ui, game, cardStack) {
             deckBName: names[1],
             decks: count > 2 ? names : null,
             localSeatIds,
+            localSeatNames,
         });
     }
 
