@@ -415,7 +415,9 @@ uv run uvicorn src.server.main:app --host 0.0.0.0 --port 8000 --reload
 
 - Set `checkpoint_path` to a model file you want to use.
 - Click `Start / Refresh`.
-- Drag cards from your hand onto your side of a location to play them.
+- Drag cards from your hand onto your side of a location to play them. Dragging
+  is the only way to play a card; tapping one opens it full size instead, so a
+  stray tap can never commit a play.
 - Card visuals are rendered from SVG assets in `output_svgs/` (served at `/assets/cards`).
 - Use `Run AI Move` (single action) or `Run AI Turn` (AI continues until your turn).
 

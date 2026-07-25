@@ -605,3 +605,141 @@ def test_achilles_destroys_one_being_of_each_opponent():
     assert victim_1 in done.underworlds[1]
     assert victim_2 in done.underworlds[2]
     assert done.pending_choice is None
+
+
+# --- Ownership: whose heroes, whose monsters, whose beings --------------------
+
+
+def test_enemy_hero_on_your_side_does_not_defeat_your_monster():
+    """"Defeated when you have heroes here" means heroes *you own*: a hero
+    smuggled onto your side by a rival is theirs, not yours."""
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    enemy_hero = by_name(TROY, "Odysseus")
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, enemy_hero, 0, 0)  # p1's hero standing on p0's side
+
+    after = _resolve_monster_rewards(state, 0, 0)
+    assert lions in after.locations[0].stacks[0]
+    assert lions not in after.underworlds[0]
+    assert after.pending_choice is None
+
+
+def test_monster_may_be_played_where_only_an_enemy_hero_stands():
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    state = put_in_play(state, by_name(TROY, "Odysseus"), 0, 0)
+    assert rules._can_play_at(state, 0, lions, 0)
+
+    # Your own hero at that location still bars the monster, on either side.
+    with_own_hero = put_in_play(state, by_name(GIL, "Gilgamesh"), 0, 1)
+    assert not rules._can_play_at(with_own_hero, 0, lions, 0)
+
+
+def test_mountain_lions_reward_only_offers_your_own_heroes():
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    own_hero = by_name(GIL, "Gilgamesh")
+    enemy_hero = by_name(TROY, "Odysseus")
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, enemy_hero, 0, 0)
+    state = put_in_play(state, own_hero, 0, 0)
+
+    after = _resolve_monster_rewards(state, 0, 0)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "move_hero_after_monster"
+    moved_cards = {option.split("|")[0] for option in pending.options if option != "PASS"}
+    assert moved_cards == {own_hero}
+
+
+def test_greek_soldiers_spare_the_raiders_own_smuggled_humans():
+    state = start_game(TROY, GIL)
+    soldiers = by_name(TROY, "Greek Soldiers")
+    own_weakling = by_name(TROY, "Sinon the Deceiver")     # power -2, already defected
+    enemy_weakling = by_name(GIL, "Clay")                  # power 1, the real target
+    state = put_in_play(state, own_weakling, 0, 1)
+    state = put_in_play(state, enemy_weakling, 0, 1)
+    state = put_in_play(state, soldiers, 0, 0)
+
+    after = rules.move_card(state, soldiers, 0, 1)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "greek_soldiers_destroy_weaklings"
+    targets = {cid for option in pending.options if option != "NONE" for cid in option.split("|")}
+    assert targets == {enemy_weakling}
+
+
+# --- Immortality ---------------------------------------------------------------
+
+
+def test_gilgamesh_and_enkidu_immortal_across_sides_of_one_location():
+    """"While Enkidu is at the same location as Gilgamesh" is about the
+    location: a smuggled Enkidu on a rival's half still keeps the pair alive."""
+    state = start_game(GIL, TROY)
+    gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
+    state = put_in_play(state, gil, 0, 0)
+    state = put_in_play(state, enk, 0, 1)
+
+    assert rules.is_immortal(state, gil, 0)
+    assert rules.is_immortal(state, enk, 0)
+    assert gil in rules.banish_card(state, gil).locations[0].stacks[0]
+    assert enk in rules.banish_card(state, enk).locations[0].stacks[1]
+
+
+def test_mandatory_banish_skips_immortal_beings():
+    """"Banish one of their beings if possible" must not be dodgeable by
+    naming an immortal: an untouchable board offers no options at all."""
+    state = start_game(INA, GIL)
+    inanna = by_name(INA, "Inanna, Goddess of Love and War")
+    gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
+    state = put_in_underworld(state, inanna, 0)
+    state = put_in_play(state, gil, 0, 1)
+    state = put_in_play(state, enk, 0, 1)
+
+    after = rules.revive_from_underworld(state, 0, 0, lambda cid: cid == inanna)
+    assert after.pending_choice is None, "no legal victim, so no choice to make"
+
+    # Break the bond and the mortal half is a legal target again.
+    apart = rules.move_card(state, enk, 2)
+    after = rules.revive_from_underworld(apart, 0, 0, lambda cid: cid == inanna)
+    pending = after.pending_choice
+    assert pending is not None and set(pending.options) == {gil, enk}
+
+
+# --- Trigger ordering -----------------------------------------------------------
+
+
+def test_monster_reward_does_not_overwrite_a_pending_choice():
+    """Ninsun's move wakes Ishtar *and* hands Gilgamesh to a waiting monster;
+    the monster's reward must queue behind Ishtar's demand, not replace it."""
+    state = start_game(GIL, TROY)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")
+    gil, ishtar = by_name(GIL, "Gilgamesh"), by_name(GIL, "Ishtar")
+    lions = by_name(GIL, "Mountain Lions")
+    state = put_in_play(state, gil, 1, 0)
+    state = put_in_play(state, ishtar, 1, 0)          # Ishtar tops p0's stack at lane 1
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, by_name(TROY, "Greek Soldiers"), 0, 1)
+    state = put_in_play(state, ninsun, 0, 0)
+
+    after = _apply_on_enter(state, 0, ninsun, 0)
+    assert after.pending_choice is not None
+    assert after.pending_choice.choice_kind == "ishtar_banish_small_enemy"
+    assert lions in after.locations[0].stacks[0], "the monster waits for the choice to settle"
+
+    # Once Ishtar is paid, the monster sweep still runs.
+    resolved = apply_action(after, ChooseOptionAction(
+        player_id=after.player_ids[1], option_id=after.pending_choice.options[0],
+    ))
+    assert lions in resolved.underworlds[0]
+
+
+def test_ninsun_brings_gilgamesh_home_to_her_own_side():
+    state = start_game(GIL, TROY)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")
+    gil = by_name(GIL, "Gilgamesh")
+    state = put_in_play(state, gil, 1, 1)   # Gilgamesh stranded on the enemy side
+    state = put_in_play(state, ninsun, 0, 0)
+
+    after = _apply_on_enter(state, 0, ninsun, 0)
+    assert gil in after.locations[0].stacks[0]
+    assert gil not in after.locations[0].stacks[1]

@@ -98,6 +98,7 @@ export function getUiElements() {
         inspectorMedia: document.getElementById('inspectorMedia'),
         inspectorEffect: document.getElementById('inspectorEffect'),
         inspectorAnecdote: document.getElementById('inspectorAnecdote'),
+        inspectorHint: document.getElementById('inspectorHint'),
         inspectorAction: document.getElementById('inspectorAction'),
         choiceModal: document.getElementById('choiceModal'),
         choiceTitle: document.getElementById('choiceTitle'),

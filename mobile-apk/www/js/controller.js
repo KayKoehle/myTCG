@@ -40,7 +40,6 @@ export function createGameController(ui, cardStack) {
                 doAction({ kind: 'choose_option', option_id: optionId });
             },
         });
-        app.selectedCardId = null;
         bindDragAndDrop(snapshot);
         bindBoardMoveChoices(snapshot);
         bindMulliganSelection(snapshot);
@@ -210,10 +209,9 @@ export function createGameController(ui, cardStack) {
             if (!dragging) {
                 if (Math.hypot(dx, dy) < 9) return;
                 dragging = true;
-                clearTapSelection();
                 const rect = cardEl.getBoundingClientRect();
                 ghost = cardEl.cloneNode(true);
-                ghost.classList.remove('selected', 'playable', 'unplayable', 'movable-choice');
+                ghost.classList.remove('playable', 'unplayable', 'movable-choice');
                 ghost.classList.add('drag-ghost');
                 ghost.style.width = `${rect.width}px`;
                 ghost.style.height = `${rect.height}px`;
@@ -243,7 +241,8 @@ export function createGameController(ui, cardStack) {
                     flashLaneFull(target.loc);
                 } else {
                     const verb = payload.type === 'play' ? 'play' : 'move';
-                    flashStatus(`Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc)} right now.`);
+                    const laneCount = ((app.snapshot && app.snapshot.locations) || []).length;
+                    flashStatus(`Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc, laneCount)} right now.`);
                 }
                 return;
             }
@@ -355,25 +354,6 @@ export function createGameController(ui, cardStack) {
         });
     }
 
-    function clearTapSelection() {
-        app.selectedCardId = null;
-        ui.hand.querySelectorAll('.hand-card.selected').forEach((el) => el.classList.remove('selected'));
-        document.querySelectorAll('.deck-revealed-card.selected').forEach((el) => el.classList.remove('selected'));
-        ui.lanes.querySelectorAll('.lane-row.tap-target').forEach((el) => el.classList.remove('tap-target'));
-    }
-
-    function selectHandCard(cardEl, cardId) {
-        clearTapSelection();
-        app.selectedCardId = cardId;
-        cardEl.classList.add('selected');
-        ui.lanes.querySelectorAll('.lane-row.lane-drop[data-location-id]').forEach((zone) => {
-            const loc = Number(zone.dataset.locationId);
-            if (app.legalPlaySet.has(`${cardId}|${loc}`)) {
-                zone.classList.add('tap-target');
-            }
-        });
-    }
-
     // Activate a card's "while on top" ability from the inspector (e.g. move
     // Enkidu to Gilgamesh). A single-target Enkidu move confirms itself.
     async function useCardAbility(cardId) {
@@ -404,6 +384,13 @@ export function createGameController(ui, cardStack) {
         const anecdote = anecdoteText(card);
         ui.inspectorAnecdote.textContent = anecdote;
         ui.inspectorAnecdote.classList.toggle('hidden', !anecdote);
+        // Cards are played by dragging them onto a lane — nothing else. Say so
+        // on the cards that can actually be played right now.
+        if (ui.inspectorHint) {
+            const canPlay = Boolean(card.id) && app.playableCardSet.has(card.id);
+            ui.inspectorHint.textContent = canPlay ? 'Drag this card onto a lane to play it.' : '';
+            ui.inspectorHint.classList.toggle('hidden', !canPlay);
+        }
         const abilityAction = (card.id && app.snapshot)
             ? humanLegalActions(app.snapshot, cfg().player_id).find((a) => a.kind === 'use_ability' && a.card_id === card.id)
             : null;
@@ -427,9 +414,10 @@ export function createGameController(ui, cardStack) {
         ui.cardInspector.setAttribute('aria-hidden', 'true');
     }
 
-    // Tap-first controls: touch devices cannot use HTML5 drag-and-drop or
-    // hover, so playable cards select on tap and lanes confirm the play,
-    // while any other card opens the full-size inspector.
+    // Tap controls: a tap is always "show me this card" — it opens the
+    // full-size inspector, for playable and unplayable cards alike. Playing a
+    // card is a drag onto a lane and nothing else, so a tap can never commit a
+    // move by accident (see bindDragAndDrop).
     function bindTapControls(snapshot) {
         const clickFollowsDrag = () => Date.now() - (app.dragEndedAt || 0) < 350;
 
@@ -440,24 +428,14 @@ export function createGameController(ui, cardStack) {
                     if (clickFollowsDrag()) return;
                     const cardId = cardEl.dataset.cardId;
                     if (!cardId) return;
-                    if (!app.playableCardSet.has(cardId)) {
-                        openInspector(findCardById(snapshot, cardId));
-                        return;
-                    }
-                    if (app.selectedCardId === cardId) {
-                        clearTapSelection();
-                        return;
-                    }
-                    selectHandCard(cardEl, cardId);
+                    openInspector(findCardById(snapshot, cardId));
                 });
             });
         }
 
         ui.lanes.querySelectorAll('.card[data-board-card-id]').forEach((cardEl) => {
             cardEl.addEventListener('click', (event) => {
-                // With a hand card selected, a tap on a lane's stack counts as
-                // playing to that lane; the lane handler takes it.
-                if (app.selectedCardId) return;
+                if (clickFollowsDrag()) return;
                 event.stopPropagation();
                 openInspector(findCardById(snapshot, cardEl.dataset.boardCardId));
             });
@@ -502,31 +480,10 @@ export function createGameController(ui, cardStack) {
                 openInspector(card);
             });
         });
-
-        ui.lanes.querySelectorAll('.lane').forEach((laneEl) => {
-            const zone = laneEl.querySelector('.lane-row.lane-drop[data-location-id]');
-            if (!zone) return;
-            laneEl.addEventListener('click', async () => {
-                if (clickFollowsDrag()) return;
-                const cardId = app.selectedCardId;
-                if (!cardId) return;
-                const loc = Number(zone.dataset.locationId);
-                if (!app.legalPlaySet.has(`${cardId}|${loc}`)) {
-                    if (laneIsFull(loc)) {
-                        flashLaneFull(loc);
-                    } else {
-                        flashStatus(`Cannot play ${cardDisplayName(cardId, app.cardNameById)} to ${laneLabel(loc)} right now.`);
-                    }
-                    return;
-                }
-                clearTapSelection();
-                await doAction({ kind: 'play_card', card_id: cardId, location_id: loc });
-            });
-        });
     }
 
-    // Revealed top deck cards (Odin's High Seat): tapping inspects; the
-    // owner plays a playable one like a hand card (drag or tap-select).
+    // Revealed top deck cards (Odin's High Seat): tapping inspects; the owner
+    // drags a playable one onto a lane exactly like a hand card.
     function bindRevealedDeckCards(snapshot) {
         const clickFollowsDrag = () => Date.now() - (app.dragEndedAt || 0) < 350;
         const openingMulligan = isOpeningMulligan(snapshot);
@@ -535,8 +492,7 @@ export function createGameController(ui, cardStack) {
             stackEl.querySelectorAll('.deck-revealed-card[data-deck-card-id]').forEach((cardEl) => {
                 const cardId = cardEl.dataset.deckCardId;
                 if (!cardId) return;
-                const playable = !openingMulligan && app.playableCardSet.has(cardId);
-                if (playable) {
+                if (!openingMulligan && app.playableCardSet.has(cardId)) {
                     cardEl.classList.add('draggable');
                     cardEl.addEventListener('pointerdown', (event) => {
                         beginPointerDrag(event, cardEl, { type: 'play', cardId });
@@ -545,14 +501,6 @@ export function createGameController(ui, cardStack) {
                 cardEl.addEventListener('click', (event) => {
                     event.stopPropagation();
                     if (clickFollowsDrag()) return;
-                    if (playable) {
-                        if (app.selectedCardId === cardId) {
-                            clearTapSelection();
-                            return;
-                        }
-                        selectHandCard(cardEl, cardId);
-                        return;
-                    }
                     openInspector(findCardById(snapshot, cardId));
                 });
             });
@@ -2252,12 +2200,6 @@ export function createGameController(ui, cardStack) {
                 });
             });
         });
-        document.addEventListener('click', (event) => {
-            if (!app.selectedCardId) return;
-            if (event.target.closest('.hand-card') || event.target.closest('.lane')) return;
-            clearTapSelection();
-        });
-
         // No initial refresh: the app opens on the main menu and the first
         // match is created by its Play button.
     }

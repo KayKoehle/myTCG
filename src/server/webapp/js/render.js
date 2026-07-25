@@ -10,7 +10,7 @@ import {
     findCardById,
     handTitleScale,
     humanLegalActions,
-    laneLabel,
+    laneNumberLabel,
     ordinalLabel,
     preloadCardArt,
     stackPower,
@@ -720,7 +720,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const canChoose = Number(p.player_id) === config.player_id && p.choice_kind !== 'opening_mulligan';
         const listedOptions = (p.options || []).map((opt) => ({
             value: opt,
-            label: describeChoiceOption(opt, app.cardNameById, humanSideIdx),
+            label: describeChoiceOption(opt, app.cardNameById, humanSideIdx, (snapshot.locations || []).length),
         }));
         // The old orange "Pending choice ..." banner is gone: the human sees
         // the choice modal / card-stack popup, the opponent's choices resolve
@@ -849,9 +849,17 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             }).join('<span class="lane-score-sep">·</span>')}${youCanReach ? ` / <span class="you">${yourPower}</span>` : ''}</span>`
             : `<span class="lane-score ${laneLeadClass}"><span class="opp">${oppPowers.length ? oppPowers[0].power : 0}</span> / <span class="you">${yourPower}</span></span>`;
 
+        // FFA lanes are a ring, not a left/middle/right row, so each one wears
+        // its number (the shared center is named rather than numbered) — the
+        // same label choices and prompts use.
+        const laneTag = isFfa
+            ? `<span class="lane-number ${isCenter ? 'lane-number-center' : ''}">${escapeHtml(laneNumberLabel(loc.location_id, orderedLocations.length))}</span>`
+            : '';
+
         return `
             <article class="lane ${isFfa && !youCanReach ? 'lane-locked' : ''} ${isFfa && isCenter ? 'lane-center' : ''}" data-location-id="${loc.location_id}">
                 <div class="lane-head">
+                    ${laneTag}
                     <div class="lane-head-left">${renderLaneSlots(laneSlotSegments, Number(loc.capacity) || 7)}</div>
                     ${isFfa && isCenter ? '<span class="lane-value-badge" title="Worth more when scoring">★</span>' : ''}
                     ${isFfa && !youCanReach ? '<span class="lane-lock" title="Out of your reach">🔒</span>' : ''}
@@ -870,8 +878,10 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const accessibleIds = Array.isArray(loc.accessible) && loc.accessible.length ? loc.accessible : players;
             const youCanReach = accessibleIds.includes(human);
             const isCenter = Number(loc.weight) > 1;
+            const label = laneNumberLabel(loc.location_id, orderedLocations.length);
             return `<button class="lane-dot ${youCanReach ? 'reachable' : ''} ${isCenter ? 'center' : ''}"
-                data-location-id="${loc.location_id}" aria-label="Scroll to lane"></button>`;
+                data-location-id="${loc.location_id}" aria-label="Scroll to ${escapeHtml(label)}"
+                title="${escapeHtml(label)}">${escapeHtml(isCenter ? '★' : String(Number(loc.location_id) + 1))}</button>`;
         }).join('') : '';
     }
 
@@ -904,9 +914,6 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                     ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
                     <div class="hand-media">
                         ${cardArtTag(c.name, 'hand-art')}
-                    </div>
-                    <div class="hand-body">
-                        <div class="tiny">${effectLabel(c)}</div>
                     </div>
                     <div class="mulligan-x">X</div>
                     ${canActMulligan ? `<button type="button" class="mull-toggle">${app.mulliganSelected.has(c.id) ? 'Redraw' : 'Keep'}</button>` : ''}
