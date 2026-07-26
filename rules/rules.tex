@@ -145,10 +145,12 @@ The players can only play on the three locations closest to them (see Figure \re
 \textbf{Graveyard} A face up pile of cards with all your destroyed or discarded cards. Every player has their own graveyard.\\
 \textbf{Additional cost:} Must be paid to play the card.\\
 \textbf{On Play:} Triggers when you play this creature from your hand. Entering the battlefield through other means like revive do not trigger this.\\
+\textbf{Owner} The player whose deck a card came from. Ownership never changes: whenever a card leaves the battlefield it goes to its owner's graveyard, hand or deck, no matter who was commanding it.\\
+\textbf{Controller} The player whose creature stack a card is standing on. Gaining control of a creature or gifting one away changes its controller, and every \emph{you}, \emph{your} and \emph{friendly} printed on a card is read from its current controller --- including \emph{your graveyard} in a power calculation. A creature that changed sides therefore fights for its new controller, counts towards their location power, and is no longer a legal target for effects that ask for one of its owner's creatures.\\
 \textbf{Friendly creature} A creature under your control.\\
 \textbf{Destroy a creature} Select a creature and put it into their owner's graveyard.\\
 \textbf{Discard a card} Select a card in your hand and put it in your graveyard.\\
-\textbf{Move a creature} Select a creature and move it on top of the creature stack of another location accessible to the creature's owner.\\
+\textbf{Move a creature} Select a creature and move it on top of the creature stack of another location accessible to the creature's controller.\\
 \textbf{Return a creature} Select a creature in play and return it to their owner's hand.\\
 \textbf{Revive a creature} Select a creature in your graveyard and place it on top of your creature stack of a location accessible to you.\\
 \textbf{Get an extra mana crystal} Get an extra mana crystal. You can use it immediately.\\

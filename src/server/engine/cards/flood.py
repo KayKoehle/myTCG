@@ -129,8 +129,7 @@ def _handle_enlil_unleash(rt: Any, state: GameState, chooser_idx: int, option: s
                 continue
             if catalog.is_hero(card_id):
                 continue
-            owner_idx = catalog.card_owner_idx(state, card_id)
-            if rt.flood_protected(state, owner_idx, location_idx):
+            if rt.flood_protected(state, side_idx, location_idx):
                 continue
             state = rt.banish_card(state, card_id)
     return state
@@ -145,7 +144,7 @@ register_choice("enlil_unleash_flood", _handle_enlil_unleash)
 
 def _ark_base_cost(rt: Any, state: GameState, player_idx: int, card_id: str) -> int:
     cost = card(card_id).cost
-    return max(0, cost - sum(1 for cid in prim.find_cards_owned_in_play(state, player_idx) if is_human(cid)))
+    return max(0, cost - sum(1 for cid in prim.find_cards_controlled_in_play(state, player_idx) if is_human(cid)))
 
 
 def _ark_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
