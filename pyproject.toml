@@ -30,3 +30,6 @@ ai = [
   "torch>=2.4.0",
   "tqdm>=4.66.0",
 ]
+desktop = [
+  "pyinstaller>=6.11.0",
+]
