@@ -1,22 +1,32 @@
-name: Build Android APK
+name: Build Android APK & Windows exe
 
-# Builds the MyTCG Android APK (Capacitor + Chaquopy) on every push to main,
-# and on demand via the "Run workflow" button. Each main build is stamped with
-# a monotonic version and published as the "latest" GitHub Release; installed
-# apps poll that release (js/update.js) and prompt the user to download the new
-# APK. The APK is also uploaded as a workflow artifact.
+# Builds the MyTCG Android APK (Capacitor + Chaquopy) and a Windows desktop
+# .exe (PyInstaller-packaged FastAPI server + webapp) on every push to main,
+# and on demand via the "Run workflow" button. Each main build is stamped
+# with a monotonic version and both artifacts are published together to the
+# "latest" GitHub Release; installed apps poll that release (js/update.js)
+# and prompt the user to download the new APK. Both files are also uploaded
+# as workflow artifacts.
 on:
   push:
     branches: [main]
-    # Only rebuild when something that ends up in the APK changes.
+    # Only rebuild when something that ends up in the APK or the exe changes.
     paths:
       - "mobile-apk/**"
       - "src/server/engine/**"
       - "src/server/webapp/**"
+      - "src/server/api/**"
+      - "src/server/services/**"
+      - "src/server/main.py"
       - "src/server/model/policy_weights.json"
+      - "images/color/**"
       - "tables/**"
       - "decklists/**"
       - "scripts/sync_mobile.py"
+      - "scripts/desktop_app.py"
+      - "scripts/make_windows_icon.py"
+      - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
@@ -25,7 +35,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -107,16 +117,88 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # Publish the release the in-app update check polls. Only on real main
-      # builds (and manual dispatch) — not needed for other events. Marked
-      # --latest so the /releases/latest API returns it.
+  build-exe:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.11"
+
+      # Base app dependencies (fastapi/uvicorn/pillow/...) plus pyinstaller,
+      # pinned in uv.lock so the packaged exe matches what `uv run uvicorn
+      # src.server.main:app` runs in dev.
+      - name: Install dependencies
+        run: uv sync --group desktop
+
+      - name: Generate app icon
+        run: uv run python scripts/make_windows_icon.py
+
+      # --paths . puts the repo root on PyInstaller's analysis path so it can
+      # follow `from src.server.main import app` (see scripts/desktop_app.py).
+      # --add-data mirrors the on-disk layout the app's Path(__file__)-based
+      # lookups expect (main.py, api/endpoints.py, engine/data_loader.py,
+      # engine/policy.py) so REPO_ROOT/WEBAPP_DIR/model/table lookups resolve
+      # the same way inside the frozen bundle as they do in the repo.
+      - name: Build MyTCG.exe
+        run: >-
+          uv run pyinstaller --noconfirm --onefile --name MyTCG
+          --icon build/icon.ico
+          --paths .
+          --add-data "tables;tables"
+          --add-data "decklists;decklists"
+          --add-data "images/color;images/color"
+          --add-data "src/server/webapp;src/server/webapp"
+          --add-data "src/server/model;src/server/model"
+          --collect-all uvicorn
+          --collect-all fastapi
+          --collect-all starlette
+          scripts/desktop_app.py
+
+      - name: Stage exe
+        run: |
+          mkdir -p dist_release
+          cp "dist/MyTCG.exe" "dist_release/mytcg-v${{ github.run_number }}.exe"
+
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mytcg-windows-exe
+          path: dist_release/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [build-apk, build-exe]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mytcg-debug-apk
+          path: dist
+
+      - name: Download exe artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mytcg-windows-exe
+          path: dist
+
+      # Publish the release the in-app update check polls (js/update.js finds
+      # the APK by its .apk extension, so adding the .exe alongside it is
+      # safe). Marked --latest so the /releases/latest API returns it.
       - name: Publish GitHub Release
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "v${{ github.run_number }}"
-          "dist/mytcg-v${{ github.run_number }}.apk"
+          dist/*.apk dist/*.exe
           --repo "${{ github.repository }}"
           --title "MyTCG v1.0.${{ github.run_number }}"
           --notes "Automated build from ${{ github.sha }}."

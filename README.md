@@ -96,6 +96,30 @@ Known limitation: mirror matches (both players using the same deck) are not
 supported — card ownership is derived from decklists, so both sides would
 resolve to player 1.
 
+## Windows desktop build
+
+Every push to `main` also packages a standalone `MyTCG.exe` (PyInstaller +
+the FastAPI server, built by `.github/workflows/build-apk.yml`) and attaches
+it to the same GitHub Release as the APK. Double-clicking it starts the
+server and opens `/play` in your default browser — no Python install needed.
+
+To build it locally on Windows:
+
+```powershell
+uv sync --group desktop
+uv run python scripts/make_windows_icon.py
+uv run pyinstaller --noconfirm --onefile --name MyTCG `
+    --icon build/icon.ico --paths . `
+    --add-data "tables;tables" --add-data "decklists;decklists" `
+    --add-data "images/color;images/color" `
+    --add-data "src/server/webapp;src/server/webapp" `
+    --add-data "src/server/model;src/server/model" `
+    --collect-all uvicorn --collect-all fastapi --collect-all starlette `
+    scripts/desktop_app.py
+```
+
+-> `dist/MyTCG.exe`
+
 ## AI opponents
 
 The mobile app and the server share the same AI code in the engine:
