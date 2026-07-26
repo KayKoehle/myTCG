@@ -15,13 +15,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from engine import sandbox
 from engine.ai import choose_heuristic_action
 from engine.matchup_stats import MatchupStats
 from engine.openspiel_adapter import parse_action
 from engine.policy import PurePolicy, find_default_weights
 from engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from engine.state import GameState
-from engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
+from engine.transitions import (
+    apply_action,
+    available_decks,
+    create_initial_state,
+    legal_actions,
+    register_custom_deck,
+    returns,
+)
 from lan_service import LanService
 
 
@@ -327,6 +335,86 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
     return None
 
 
+def _handle_sandbox(url: str, body: dict[str, Any]) -> str | None:
+    """Dispatch the testing-mode endpoints. Returns None if `url` isn't one.
+
+    Mirrors `src/server/api/endpoints.py` so the sandbox screen of the webapp
+    behaves identically on-device and against the FastAPI server; all the logic
+    lives in the shared `engine.sandbox` module.
+    """
+    if not url.startswith("/api/sandbox/"):
+        return None
+
+    def ok(match: Any, **extra: Any) -> str:
+        return _response_ok({"ok": True, "sandbox": sandbox.sandbox_view(match), **extra})
+
+    try:
+        if url == "/api/sandbox/create":
+            return ok(sandbox.REGISTRY.create(
+                match_id=str(body.get("match_id") or "sandbox"),
+                decks=body.get("decks"),
+                seed=int(body.get("seed", 42)),
+                skip_mulligan=bool(body.get("skip_mulligan", True)),
+            ))
+        if url == "/api/sandbox/state":
+            return ok(sandbox.REGISTRY.get(str(body["match_id"])))
+        if url == "/api/sandbox/action":
+            return ok(sandbox.REGISTRY.submit_action(
+                match_id=str(body["match_id"]),
+                player_id=int(body["player_id"]),
+                action_kind=str(body["action_kind"]),
+                card_id=body.get("card_id"),
+                location_id=body.get("location_id"),
+                option_id=body.get("option_id"),
+            ))
+        if url == "/api/sandbox/mutate":
+            ops = body.get("ops") or ([body["op"]] if isinstance(body.get("op"), dict) else [])
+            return ok(sandbox.REGISTRY.mutate(str(body["match_id"]), list(ops)))
+        if url == "/api/sandbox/undo":
+            return ok(sandbox.REGISTRY.undo(str(body["match_id"]), int(body.get("steps", 1))))
+        if url == "/api/sandbox/redo":
+            return ok(sandbox.REGISTRY.redo(str(body["match_id"]), int(body.get("steps", 1))))
+        if url == "/api/sandbox/goto":
+            return ok(sandbox.REGISTRY.goto(str(body["match_id"]), int(body["index"])))
+        if url == "/api/sandbox/reset":
+            return ok(sandbox.REGISTRY.reset(str(body["match_id"])))
+        if url == "/api/sandbox/ai-move":
+            match, played = sandbox.REGISTRY.ai_move(
+                match_id=str(body["match_id"]),
+                player_id=int(body["player_id"]),
+                agent=str(body.get("agent", "search")),
+                elo=body.get("elo"),
+                steps=int(body.get("steps", 1)),
+            )
+            return ok(match, played=played)
+        if url == "/api/sandbox/play-out":
+            match, played = sandbox.REGISTRY.play_out(
+                match_id=str(body["match_id"]),
+                agent=str(body.get("agent", "search")),
+                elo=body.get("elo"),
+                max_actions=int(body.get("max_actions", 200)),
+            )
+            return ok(match, played=played)
+        if url == "/api/sandbox/analyze":
+            match = sandbox.REGISTRY.get(str(body["match_id"]))
+            return _response_ok({"ok": True, "analysis": sandbox.analyze(match.state, int(body["player_id"]))})
+        if url == "/api/sandbox/player-view":
+            match = sandbox.REGISTRY.get(str(body["match_id"]))
+            return _response_ok({"ok": True, "snapshot": sandbox.player_snapshot(match, int(body["player_id"]))})
+        if url == "/api/sandbox/catalog":
+            return _response_ok({"ok": True, "cards": sandbox.catalog_cards(), "decks": list(available_decks())})
+        if url == "/api/sandbox/export":
+            return _response_ok({"ok": True, "scenario": sandbox.REGISTRY.export_scenario(str(body["match_id"]))})
+        if url == "/api/sandbox/import":
+            return ok(sandbox.REGISTRY.import_scenario(str(body.get("match_id") or "sandbox"), body["scenario"]))
+    except (KeyError, ValueError, IndexError) as exc:
+        # KeyError stringifies to its repr; the message alone reads better in
+        # the client's error toast.
+        return _response_error(exc.args[0] if exc.args else str(exc))
+
+    return None
+
+
 def handle_post_json(url: str, body_json: str) -> str:
     with _DISPATCH_LOCK:
         return _dispatch(url, body_json)
@@ -340,6 +428,10 @@ def _dispatch(url: str, body_json: str) -> str:
             lan_response = _handle_lan(url, body)
             if lan_response is not None:
                 return lan_response
+
+        sandbox_response = _handle_sandbox(url, body)
+        if sandbox_response is not None:
+            return sandbox_response
 
         match_id = str(body.get("match_id", "snap-match-local"))
         seed = int(body.get("seed", 42))

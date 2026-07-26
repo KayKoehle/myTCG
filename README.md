@@ -20,6 +20,7 @@ src/
                              flood, troy, odin, osiris) registering each card's behavior
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
+      sandbox.py             Testing mode: editable positions, undo, AI probes
       ai.py                  Search AI: greedy one-ply + positional evaluation
       policy.py              Neural featurization + torch-free inference
       training.py            Neural-network self-play training (PyTorch)
@@ -61,6 +62,8 @@ uv run --group dev pytest
 - `tests/test_playout_invariants.py` — seeded random playouts of all finished
   deck pairings: termination, no crashes, capacity and card-conservation.
 - `tests/test_card_effects.py` — targeted tests for individual card behaviors.
+- `tests/test_sandbox.py` — testing mode: zone edits, undo/redo, AI probes,
+  scenario round-trips.
 - `tests/test_mobile_sync.py` — mobile tree matches the masters.
 
 ## Android APK (fully offline)
@@ -162,6 +165,53 @@ combo evaluation landed in `engine/ai.py`): minimax beats search 68%, search
 beats neural 93% and random 99%. The neural policy is still the weakest
 trained tier — see "Training the AI & balancing the decks" below to improve
 it.
+
+## Testing mode (the playtesting sandbox)
+
+Main menu -> **🧪 Testing Mode**. A workbench over the rules engine for
+playtesters: build any position by hand, drive every seat yourself or hand it
+to an AI, and step backwards whenever a line turns out to be uninteresting.
+
+- **Every zone of every seat is visible and editable** — hand, deck (in draw
+  order), underworld, set-aside, and both sides of every location. Tap a card
+  to move it to any zone of any seat, put it in play on either side, mint a
+  face-down copy, give it a power modifier, or take it out of the game. `+ Card`
+  adds any of the game's printed cards straight into a zone.
+- **Dial the state**: mana, crowns, turns taken (which caps mana), phase, whose
+  turn it is, turn/round counters. The engine keeps validating everything: a
+  full location still refuses a card, an illegal action is still rejected.
+- **Drive any seat**: the panel lists that seat's legal actions (including the
+  options of a pending choice) and applies the one you click — so a card's whole
+  trigger chain runs exactly as it would in a real match.
+- **Watch the AI**: pick a seat and an agent (search, minimax, neural, random,
+  or the rated ladder at a given Elo). *Analyze* scores every legal action one
+  ply deep with the AI's own evaluation, so a decision is explainable; *Play 1
+  move* / *Play turn* / *Auto-play match* let it play, action by action.
+- **Undo everything.** Every action and every edit is a step on one linear
+  stack; undo, redo, or jump straight to any earlier step. `GameState` is
+  immutable, so a step is a pointer, not a copy.
+- **Scenarios**: export the position as JSON (attach it to a bug report) and
+  import it back later — decklists and card ownership travel with it.
+
+Nothing in testing mode touches the profile: no Elo, no crowns, no quests, no
+matchup stats.
+
+Implementation: `engine/sandbox.py` (all the logic, shared with Android),
+`api/endpoints.py` (`/api/sandbox/*`), `webapp/js/sandbox.js` (the screen).
+Headless use — the same registry the endpoints drive:
+
+```python
+from server.engine.sandbox import REGISTRY, analyze, sandbox_view
+
+match = REGISTRY.create("scratch", decks=["epic_of_gilgamesh", "siege_of_troy"], seed=7)
+REGISTRY.mutate("scratch", [
+    {"op": "add_card", "card_name": "Gilgamesh", "zone": "location", "player_id": 1, "location_id": 1},
+    {"op": "set_stat", "stat": "mana_pool", "player_id": 1, "value": 7},
+])
+print(analyze(match.state, player_id=1)["actions"][:3])   # what the AI would do
+REGISTRY.play_out("scratch", agent="minimax")             # and how the game ends
+REGISTRY.undo("scratch", steps=5)
+```
 
 ## Training the AI & balancing the decks
 
