@@ -259,18 +259,21 @@ def register_ws_routes(app: FastAPI):
         except KeyError as exc:
             return {"ok": False, "error": str(exc)}
 
-    # --- Testing mode (sandbox) -----------------------------------------------
-    # A playtester tool, not a game mode: every call returns the full omniscient
-    # view of the position (see engine/sandbox.py). Plain dicts in and out for
-    # the same reason as the LAN routes — the payloads evolve with the client.
+    # --- Sandbox mode ---------------------------------------------------------
+    # Sandbox mode runs *inside* an ordinary match (the game's History sheet
+    # switches it on), so there is no separate match store and no separate view:
+    # every call answers with the same player snapshot /api/state returns, with
+    # the omniscient "sandbox" block attached. Plain dicts in and out for the
+    # same reason as the LAN routes — the payloads evolve with the client.
 
-    def _sandbox_ok(match, **extra):
-        return {"ok": True, "sandbox": sandbox.sandbox_view(match), **extra}
+    def _sandbox_snapshot(match_id: str, player_id: int):
+        return {"ok": True, "snapshot": game_service.state_snapshot(
+            match_id=match_id, viewer_player_id=player_id)}
 
     def _sandbox_call(fn):
         """Run a sandbox operation, turning a rejected edit into a normal
-        error response instead of a 500 — an illegal action is an expected
-        answer here ("no, the engine does not allow that")."""
+        error response instead of a 500 — a refused edit is an expected answer
+        here ("no, the engine does not allow that")."""
         try:
             return fn()
         except (KeyError, ValueError, IndexError) as exc:
@@ -278,106 +281,38 @@ def register_ws_routes(app: FastAPI):
             # quoting bug in the client's toast — use the message itself.
             return {"ok": False, "error": exc.args[0] if exc.args else str(exc)}
 
-    @app.post("/api/sandbox/create")
-    async def sandbox_create(request: dict):
-        match_id = str(request.get("match_id") or "sandbox")
-        return _sandbox_call(lambda: _sandbox_ok(sandbox.REGISTRY.create(
-            match_id=match_id,
-            decks=request.get("decks"),
-            seed=int(request.get("seed", 42)),
-            skip_mulligan=bool(request.get("skip_mulligan", True)),
-        )))
-
-    @app.post("/api/sandbox/state")
-    async def sandbox_state(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(sandbox.REGISTRY.get(str(request["match_id"]))))
-
-    @app.post("/api/sandbox/action")
-    async def sandbox_action(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(sandbox.REGISTRY.submit_action(
-            match_id=str(request["match_id"]),
-            player_id=int(request["player_id"]),
-            action_kind=str(request["action_kind"]),
-            card_id=request.get("card_id"),
-            location_id=request.get("location_id"),
-            option_id=request.get("option_id"),
-        )))
+    @app.post("/api/sandbox/enable")
+    async def sandbox_enable(request: dict):
+        def run():
+            match_id = str(request["match_id"])
+            game_service.enable_sandbox(
+                match_id=match_id,
+                seed=int(request.get("seed", 42)),
+                decks=request.get("decks"),
+            )
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
+        return _sandbox_call(run)
 
     @app.post("/api/sandbox/mutate")
     async def sandbox_mutate(request: dict):
         ops = request.get("ops") or ([request["op"]] if isinstance(request.get("op"), dict) else [])
-        return _sandbox_call(lambda: _sandbox_ok(sandbox.REGISTRY.mutate(str(request["match_id"]), list(ops))))
+        def run():
+            match_id = str(request["match_id"])
+            game_service.apply_sandbox_ops(match_id, list(ops))
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
+        return _sandbox_call(run)
 
     @app.post("/api/sandbox/undo")
     async def sandbox_undo(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(
-            sandbox.REGISTRY.undo(str(request["match_id"]), int(request.get("steps", 1)))))
-
-    @app.post("/api/sandbox/redo")
-    async def sandbox_redo(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(
-            sandbox.REGISTRY.redo(str(request["match_id"]), int(request.get("steps", 1)))))
-
-    @app.post("/api/sandbox/goto")
-    async def sandbox_goto(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(
-            sandbox.REGISTRY.goto(str(request["match_id"]), int(request["index"]))))
-
-    @app.post("/api/sandbox/reset")
-    async def sandbox_reset(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(sandbox.REGISTRY.reset(str(request["match_id"]))))
-
-    @app.post("/api/sandbox/ai-move")
-    async def sandbox_ai_move(request: dict):
         def run():
-            match, played = sandbox.REGISTRY.ai_move(
-                match_id=str(request["match_id"]),
-                player_id=int(request["player_id"]),
-                agent=str(request.get("agent", "search")),
-                elo=request.get("elo"),
-                steps=int(request.get("steps", 1)),
-            )
-            return _sandbox_ok(match, played=played)
-        return _sandbox_call(run)
-
-    @app.post("/api/sandbox/play-out")
-    async def sandbox_play_out(request: dict):
-        def run():
-            match, played = sandbox.REGISTRY.play_out(
-                match_id=str(request["match_id"]),
-                agent=str(request.get("agent", "search")),
-                elo=request.get("elo"),
-                max_actions=int(request.get("max_actions", 200)),
-            )
-            return _sandbox_ok(match, played=played)
-        return _sandbox_call(run)
-
-    @app.post("/api/sandbox/analyze")
-    async def sandbox_analyze(request: dict):
-        def run():
-            match = sandbox.REGISTRY.get(str(request["match_id"]))
-            return {"ok": True, "analysis": sandbox.analyze(match.state, int(request["player_id"]))}
-        return _sandbox_call(run)
-
-    @app.post("/api/sandbox/player-view")
-    async def sandbox_player_view(request: dict):
-        def run():
-            match = sandbox.REGISTRY.get(str(request["match_id"]))
-            return {"ok": True, "snapshot": sandbox.player_snapshot(match, int(request["player_id"]))}
+            match_id = str(request["match_id"])
+            game_service.undo_sandbox(match_id)
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
         return _sandbox_call(run)
 
     @app.post("/api/sandbox/catalog")
     async def sandbox_catalog(request: dict | None = None):
         return {"ok": True, "cards": sandbox.catalog_cards(), "decks": list(available_decks())}
-
-    @app.post("/api/sandbox/export")
-    async def sandbox_export(request: dict):
-        return _sandbox_call(lambda: {"ok": True, "scenario": sandbox.REGISTRY.export_scenario(str(request["match_id"]))})
-
-    @app.post("/api/sandbox/import")
-    async def sandbox_import(request: dict):
-        return _sandbox_call(lambda: _sandbox_ok(
-            sandbox.REGISTRY.import_scenario(str(request.get("match_id") or "sandbox"), request["scenario"])))
 
     @app.websocket("/ws/action")
     async def action_stream(websocket: WebSocket):

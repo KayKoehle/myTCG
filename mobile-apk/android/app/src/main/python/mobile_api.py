@@ -11,7 +11,7 @@ import json
 import os
 import random
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -58,11 +58,20 @@ def _get_neural_policy() -> PurePolicy | None:
     return _NEURAL_POLICY
 
 
+# How many sandbox edits of one match stay undoable (mirrors
+# src/server/services/game_service.py).
+MAX_SANDBOX_UNDO = 60
+
+
 @dataclass
 class Match:
     match_id: str
     state: GameState
     deck_names: list[str]
+    # Sandbox mode: switched on from inside the match (see enable_sandbox). The
+    # undo stack holds the states the sandbox edits replaced, newest last.
+    sandbox: bool = False
+    sandbox_undo: list[GameState] = field(default_factory=list)
 
     @property
     def deck_a(self) -> str:
@@ -116,6 +125,8 @@ class MobileGameService:
         if deck_b_cards:
             register_custom_deck(deck_b, deck_b_cards)
         deck_names = list(decks) if decks else [deck_a, deck_b]
+        # Redealing a match id drops whatever a previous sandbox on it owned.
+        sandbox.release_private_decks(match_id)
         created = Match(
             match_id=match_id,
             state=create_initial_state(seed=seed, decks=deck_names),
@@ -146,6 +157,7 @@ class MobileGameService:
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
         match.state = apply_action(match.state, action)
+        self._push_sandbox_undo(match, previous_state)
         self._record_if_finished(match, previous_state)
         return match.state
 
@@ -191,6 +203,7 @@ class MobileGameService:
             chosen = rng.choice(legal)
 
         match.state = apply_action(state, chosen)
+        self._push_sandbox_undo(match, state)
         self._record_if_finished(match, state)
 
         action_payload = {
@@ -204,7 +217,7 @@ class MobileGameService:
 
     def state_snapshot(self, match_id: str, viewer_player_id: int) -> dict[str, Any]:
         match = self.get_or_create_match(match_id=match_id)
-        return build_state_snapshot(
+        snapshot = build_state_snapshot(
             state=match.state,
             match_id=match_id,
             viewer_player_id=viewer_player_id,
@@ -212,6 +225,51 @@ class MobileGameService:
             deck_b=match.deck_b,
             deck_display_names=match.deck_names,
         )
+        if match.sandbox:
+            snapshot["sandbox"] = {
+                **sandbox.reveal_all(match.state),
+                "can_undo": bool(match.sandbox_undo),
+            }
+        return snapshot
+
+    # --- Sandbox mode ---------------------------------------------------------
+    # Mirrors GameService (src/server/services/game_service.py) so the same
+    # webapp JS drives an on-device sandbox and a server one identically.
+
+    def enable_sandbox(self, match_id: str, **create_kwargs: Any) -> Match:
+        match = self.get_or_create_match(match_id=match_id, **create_kwargs)
+        if not match.sandbox:
+            match.state = sandbox.claim_private_decks(match.state, match_id)
+            match.sandbox = True
+        return match
+
+    def apply_sandbox_ops(self, match_id: str, ops: list[dict[str, Any]]) -> Match:
+        match = self._sandbox_match(match_id)
+        state = sandbox.apply_ops(match.state, ops)
+        self._push_sandbox_undo(match, match.state)
+        match.state = state
+        return match
+
+    def undo_sandbox(self, match_id: str) -> Match:
+        match = self._sandbox_match(match_id)
+        if not match.sandbox_undo:
+            raise ValueError("There is no sandbox edit left to undo.")
+        match.state = match.sandbox_undo.pop()
+        return match
+
+    def _push_sandbox_undo(self, match: Match, previous_state: GameState) -> None:
+        if not match.sandbox:
+            return
+        match.sandbox_undo.append(previous_state)
+        del match.sandbox_undo[:-MAX_SANDBOX_UNDO]
+
+    def _sandbox_match(self, match_id: str) -> Match:
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError(f"No match '{match_id}'.")
+        if not match.sandbox:
+            raise ValueError("Sandbox mode is not active for this match.")
+        return match
 
 
 SERVICE = MobileGameService()
@@ -336,77 +394,40 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
 
 
 def _handle_sandbox(url: str, body: dict[str, Any]) -> str | None:
-    """Dispatch the testing-mode endpoints. Returns None if `url` isn't one.
+    """Dispatch the sandbox endpoints. Returns None if `url` isn't one.
 
-    Mirrors `src/server/api/endpoints.py` so the sandbox screen of the webapp
-    behaves identically on-device and against the FastAPI server; all the logic
-    lives in the shared `engine.sandbox` module.
+    Mirrors `src/server/api/endpoints.py`: sandbox mode runs inside an ordinary
+    match, so every call answers with the same player snapshot /api/state
+    returns, with the omniscient "sandbox" block attached. All the logic lives in
+    the shared `engine.sandbox` module.
     """
     if not url.startswith("/api/sandbox/"):
         return None
 
-    def ok(match: Any, **extra: Any) -> str:
-        return _response_ok({"ok": True, "sandbox": sandbox.sandbox_view(match), **extra})
+    def snapshot(match_id: str) -> str:
+        return _response_ok({"ok": True, "snapshot": SERVICE.state_snapshot(
+            match_id=match_id, viewer_player_id=int(body["player_id"]))})
 
     try:
-        if url == "/api/sandbox/create":
-            return ok(sandbox.REGISTRY.create(
-                match_id=str(body.get("match_id") or "sandbox"),
-                decks=body.get("decks"),
+        if url == "/api/sandbox/enable":
+            match_id = str(body["match_id"])
+            SERVICE.enable_sandbox(
+                match_id=match_id,
                 seed=int(body.get("seed", 42)),
-                skip_mulligan=bool(body.get("skip_mulligan", True)),
-            ))
-        if url == "/api/sandbox/state":
-            return ok(sandbox.REGISTRY.get(str(body["match_id"])))
-        if url == "/api/sandbox/action":
-            return ok(sandbox.REGISTRY.submit_action(
-                match_id=str(body["match_id"]),
-                player_id=int(body["player_id"]),
-                action_kind=str(body["action_kind"]),
-                card_id=body.get("card_id"),
-                location_id=body.get("location_id"),
-                option_id=body.get("option_id"),
-            ))
+                decks=body.get("decks") or None,
+            )
+            return snapshot(match_id)
         if url == "/api/sandbox/mutate":
+            match_id = str(body["match_id"])
             ops = body.get("ops") or ([body["op"]] if isinstance(body.get("op"), dict) else [])
-            return ok(sandbox.REGISTRY.mutate(str(body["match_id"]), list(ops)))
+            SERVICE.apply_sandbox_ops(match_id, list(ops))
+            return snapshot(match_id)
         if url == "/api/sandbox/undo":
-            return ok(sandbox.REGISTRY.undo(str(body["match_id"]), int(body.get("steps", 1))))
-        if url == "/api/sandbox/redo":
-            return ok(sandbox.REGISTRY.redo(str(body["match_id"]), int(body.get("steps", 1))))
-        if url == "/api/sandbox/goto":
-            return ok(sandbox.REGISTRY.goto(str(body["match_id"]), int(body["index"])))
-        if url == "/api/sandbox/reset":
-            return ok(sandbox.REGISTRY.reset(str(body["match_id"])))
-        if url == "/api/sandbox/ai-move":
-            match, played = sandbox.REGISTRY.ai_move(
-                match_id=str(body["match_id"]),
-                player_id=int(body["player_id"]),
-                agent=str(body.get("agent", "search")),
-                elo=body.get("elo"),
-                steps=int(body.get("steps", 1)),
-            )
-            return ok(match, played=played)
-        if url == "/api/sandbox/play-out":
-            match, played = sandbox.REGISTRY.play_out(
-                match_id=str(body["match_id"]),
-                agent=str(body.get("agent", "search")),
-                elo=body.get("elo"),
-                max_actions=int(body.get("max_actions", 200)),
-            )
-            return ok(match, played=played)
-        if url == "/api/sandbox/analyze":
-            match = sandbox.REGISTRY.get(str(body["match_id"]))
-            return _response_ok({"ok": True, "analysis": sandbox.analyze(match.state, int(body["player_id"]))})
-        if url == "/api/sandbox/player-view":
-            match = sandbox.REGISTRY.get(str(body["match_id"]))
-            return _response_ok({"ok": True, "snapshot": sandbox.player_snapshot(match, int(body["player_id"]))})
+            match_id = str(body["match_id"])
+            SERVICE.undo_sandbox(match_id)
+            return snapshot(match_id)
         if url == "/api/sandbox/catalog":
             return _response_ok({"ok": True, "cards": sandbox.catalog_cards(), "decks": list(available_decks())})
-        if url == "/api/sandbox/export":
-            return _response_ok({"ok": True, "scenario": sandbox.REGISTRY.export_scenario(str(body["match_id"]))})
-        if url == "/api/sandbox/import":
-            return ok(sandbox.REGISTRY.import_scenario(str(body.get("match_id") or "sandbox"), body["scenario"]))
     except (KeyError, ValueError, IndexError) as exc:
         # KeyError stringifies to its repr; the message alone reads better in
         # the client's error toast.

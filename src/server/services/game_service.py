@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import random
 
+from ..engine import sandbox
 from ..engine.ai import choose_heuristic_action
 from ..engine.ladder import choose_ladder_action
 from ..engine.matchup_stats import MatchupStats
@@ -15,12 +16,20 @@ from ..engine.state import GameState
 from ..engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
 from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 
+# How many sandbox edits of one match stay undoable. GameState is immutable, so
+# a step on this stack is a pointer, not a copy.
+MAX_SANDBOX_UNDO = 60
+
 
 @dataclass
 class Match:
     match_id: str
     state: GameState
     deck_names: list[str]
+    # Sandbox mode: switched on from inside the match (see enable_sandbox). The
+    # undo stack holds the states the sandbox edits replaced, newest last.
+    sandbox: bool = False
+    sandbox_undo: list[GameState] = field(default_factory=list)
 
     @property
     def deck_a(self) -> str:
@@ -72,6 +81,8 @@ class GameService:
         if deck_b_cards:
             register_custom_deck(deck_b, deck_b_cards)
         deck_names = list(decks) if decks else [deck_a, deck_b]
+        # Redealing a match id drops whatever a previous sandbox on it owned.
+        sandbox.release_private_decks(match_id)
         match = Match(
             match_id=match_id,
             state=create_initial_state(seed=seed, decks=deck_names),
@@ -125,6 +136,7 @@ class GameService:
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
         match.state = apply_action(match.state, action)
+        self._push_sandbox_undo(match, previous_state)
         self._record_if_finished(match, previous_state)
         return match.state
 
@@ -132,7 +144,7 @@ class GameService:
         match = self.get_or_create_match(match_id=match_id)
         checkpoint_dir = Path("stats/checkpoints")
         available_checkpoints = sorted(str(path) for path in checkpoint_dir.glob("*.pt")) if checkpoint_dir.exists() else []
-        return build_state_snapshot(
+        snapshot = build_state_snapshot(
             state=match.state,
             match_id=match_id,
             viewer_player_id=viewer_player_id,
@@ -141,6 +153,67 @@ class GameService:
             available_checkpoints=available_checkpoints,
             deck_display_names=match.deck_names,
         )
+        # Sandbox mode is a property of the match, not of the client: the
+        # omniscient block rides along with every snapshot so the sandbox tools
+        # survive a reload and can never drift from the real state.
+        if match.sandbox:
+            snapshot["sandbox"] = {
+                **sandbox.reveal_all(match.state),
+                "can_undo": bool(match.sandbox_undo),
+            }
+        return snapshot
+
+    # --- Sandbox mode ---------------------------------------------------------
+    # A player can switch a live match into a sandbox (the game's History sheet
+    # offers it). The match keeps running on the real rules and the real AI;
+    # what changes is that every zone becomes visible and editable, and the
+    # match stops counting towards the profile (the client drops its statsMeta).
+
+    def enable_sandbox(self, match_id: str, **create_kwargs: Any) -> Match:
+        """Turn sandbox mode on for a match. Idempotent."""
+        match = self.get_or_create_match(match_id=match_id, **create_kwargs)
+        if not match.sandbox:
+            # Edits append to (and re-own cards in) the seats' decklists, so the
+            # match must stop sharing the stock lists with every other match.
+            match.state = sandbox.claim_private_decks(match.state, match_id)
+            match.sandbox = True
+        return match
+
+    def apply_sandbox_ops(self, match_id: str, ops: list[dict[str, Any]]) -> Match:
+        match = self._sandbox_match(match_id)
+        # apply_ops is all-or-nothing, so a rejected edit leaves match.state and
+        # the undo stack exactly as they were.
+        state = sandbox.apply_ops(match.state, ops)
+        self._push_sandbox_undo(match, match.state)
+        match.state = state
+        return match
+
+    def _push_sandbox_undo(self, match: Match, previous_state: GameState) -> None:
+        """Remember a state the sandbox can step back to.
+
+        Plays and AI moves land on the same stack as the edits, so "undo" always
+        means "take back the last thing that happened" — including a card the
+        playtester played to see what it does.
+        """
+        if not match.sandbox:
+            return
+        match.sandbox_undo.append(previous_state)
+        del match.sandbox_undo[:-MAX_SANDBOX_UNDO]
+
+    def undo_sandbox(self, match_id: str) -> Match:
+        match = self._sandbox_match(match_id)
+        if not match.sandbox_undo:
+            raise ValueError("There is no sandbox edit left to undo.")
+        match.state = match.sandbox_undo.pop()
+        return match
+
+    def _sandbox_match(self, match_id: str) -> Match:
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError(f"No match '{match_id}'.")
+        if not match.sandbox:
+            raise ValueError("Sandbox mode is not active for this match.")
+        return match
 
     def _get_cached_policy(self, checkpoint_path: str, device: str) -> Any:
         path = Path(checkpoint_path)
@@ -193,6 +266,7 @@ class GameService:
             rng = random.Random((seed << 20) ^ (len(state.action_history) * 2654435761) ^ ai_player_id)
             chosen = choose_ladder_action(state, ai_player_id, ai_elo, rng)
             match.state = apply_action(state, chosen)
+            self._push_sandbox_undo(match, state)
             self._record_if_finished(match, state)
             action_payload = {
                 "kind": chosen.kind,
@@ -224,6 +298,7 @@ class GameService:
             # No checkpoint or no torch: fall back to the built-in search AI.
             chosen = choose_heuristic_action(state, ai_player_id)
         match.state = apply_action(state, chosen)
+        self._push_sandbox_undo(match, state)
         self._record_if_finished(match, state)
         action_payload = {
             "kind": chosen.kind,

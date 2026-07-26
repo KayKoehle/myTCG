@@ -15,6 +15,7 @@ import {
     questOnRoundWon,
 } from './quests.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
+import { createSandboxTools } from './sandbox.js';
 import { buildConfig, createAppState } from './state.js';
 
 export function createGameController(ui, cardStack) {
@@ -48,6 +49,10 @@ export function createGameController(ui, cardStack) {
         bindRevealedDeckCards(snapshot);
         bindOpponentChips(snapshot);
         bindLaneDots();
+        // Sandbox mode adds its own affordances to the freshly built board
+        // (the tool card, the per-location buttons, the mana gems, the crowns).
+        sandboxTools.bind();
+        updateSandboxSwitch();
         layoutHand(ui);
         runHistoryAnimations(snapshot);
         // Deferred: a round-boundary crown can hand the round-starter role to
@@ -518,6 +523,12 @@ export function createGameController(ui, cardStack) {
         ui.oppChips.querySelectorAll('.opp-chip[data-player-id]').forEach((chip) => {
             chip.addEventListener('click', () => {
                 const playerId = chip.dataset.playerId;
+                // Sandbox mode: the chip is the way into that rival's zones,
+                // mana and crowns (there is no rival strip in an FFA game).
+                if (sandboxTools.isActive()) {
+                    sandboxTools.openSeat(Number(playerId));
+                    return;
+                }
                 const cards = (snapshot.underworld && snapshot.underworld[playerId]) || [];
                 if (!cards.length) {
                     flashStatus(`${chip.dataset.playerName || 'Rival'}'s underworld is empty.`);
@@ -674,7 +685,8 @@ export function createGameController(ui, cardStack) {
                 // any seat's round win banks — not just whoever happens to be
                 // holding the device when the entry lands.
                 const roundWinner = Number(parts[2]);
-                if (isLocalGame() ? localSeats().includes(roundWinner) : roundWinner === you) {
+                // A sandbox crown is not earned — it may have been typed in.
+                if (!isSandbox() && (isLocalGame() ? localSeats().includes(roundWinner) : roundWinner === you)) {
                     addCrowns(1);
                     if (app.statsMeta) questOnRoundWon();
                 }
@@ -1845,6 +1857,13 @@ export function createGameController(ui, cardStack) {
                     await doAction(drawAction);
                     continue;
                 }
+                // In a sandbox a seat can be left with no driver at all (its AI
+                // switched off, and not the seat you play). Nothing will happen
+                // until somebody takes it, so say so instead of stalling mutely.
+                const idle = actorSeat(snap);
+                if (isSandbox() && idle !== c.player_id) {
+                    flashStatus(`${seatLabel(idle)} has no one playing it — take that seat or switch its AI back on (🧪 card).`);
+                }
                 return;
             }
         } finally {
@@ -1903,12 +1922,27 @@ export function createGameController(ui, cardStack) {
         await endTurnNow(snap);
     }
 
+    // Who drives which seat in a fresh match: seat 1 is the player, every other
+    // seat is an AI rival (none in a hotseat game). Sandbox mode can hand these
+    // roles around, so a new match has to put them back.
+    function resetSeatRoles() {
+        app.humanPlayerId = 1;
+        app.aiPlayerIds = app.localSeatIds && app.localSeatIds.length
+            ? []
+            : (app.deckNames
+                ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
+                : [app.aiPlayerId]);
+        app.sandboxToolsHidden = false;
+        sandboxTools.closeAll();
+    }
+
     async function newGame() {
         app.matchId = `snap-match-${Math.floor(Math.random() * 1_000_000)}`;
         app.seed = Math.floor(Math.random() * 1_000_000_000);
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
         app.passPending = false;
+        resetSeatRoles();
         // Rematch starts back at the first local seat holding the device.
         if (app.localSeatIds && app.localSeatIds.length) app.activeSeatId = Number(app.localSeatIds[0]);
         // Every match (menu, rematch, debug) is against rated rivals drawn
@@ -1941,12 +1975,10 @@ export function createGameController(ui, cardStack) {
         app.localSeatNames = app.localSeatIds && Array.isArray(localSeatNames) && localSeatNames.length
             ? localSeatNames.map((n) => String(n))
             : null;
+        // Seat roles start from scratch, so a sandbox that handed a seat to the
+        // AI (or took the AI's seat over) cannot leak into the next match.
+        resetSeatRoles();
         app.activeSeatId = app.localSeatIds ? Number(app.localSeatIds[0]) : app.humanPlayerId;
-        app.aiPlayerIds = app.localSeatIds
-            ? []
-            : (app.deckNames
-                ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
-                : [app.aiPlayerId]);
         app.statsMeta = statsMeta;
         playedCardIds = new Set();
         try {
@@ -2091,6 +2123,141 @@ export function createGameController(ui, cardStack) {
         setReconnectOverlay(false);
     }
 
+    // --- Sandbox mode --------------------------------------------------------
+    // A regular match against the AI can be turned into an editable position
+    // from the bottom of the History sheet. The match itself stays a normal
+    // match on the server (same board, same rules, same AI); what changes is
+    // that every zone becomes visible and editable, seats can change hands, and
+    // the result stops counting towards the profile.
+
+    function isSandbox() {
+        return Boolean(app.snapshot && app.snapshot.sandbox);
+    }
+
+    // Only a solo game against the AI can become a sandbox: editing a LAN match
+    // would desync the other players, and a hotseat game already passes control
+    // around by design.
+    function canOfferSandbox() {
+        return Boolean(app.snapshot) && !isLanGame() && !isLocalGame();
+    }
+
+    const sandboxTools = createSandboxTools(ui, {
+        getSnapshot: () => app.snapshot,
+        getConfig: cfg,
+        toolsVisible: () => !app.sandboxToolsHidden,
+        seatLabel,
+        laneLabel: (locationId) => laneLabel(locationId, ((app.snapshot && app.snapshot.locations) || []).length),
+        flashStatus,
+        openInspector,
+        aiSeats: () => aiIds(),
+        mutate: (ops) => sandboxCall('/api/sandbox/mutate', { ops }),
+        undo: () => sandboxCall('/api/sandbox/undo', {}),
+        controlSeat: sandboxControlSeat,
+        setAiSeat: sandboxSetAiSeat,
+        aiPlayNow: (playerId) => aiMove(Number(playerId)),
+        hideTools: () => {
+            app.sandboxToolsHidden = true;
+            sandboxTools.closeAll();
+            rerender(app.snapshot);
+        },
+    });
+
+    // Every sandbox call answers with an ordinary snapshot, so the board is
+    // re-rendered exactly like it is after a play. Returns true when the edit
+    // landed, so the open menu knows whether to rebuild itself.
+    async function sandboxCall(path, body) {
+        const c = cfg();
+        try {
+            const data = await postJson(path, { match_id: c.match_id, player_id: c.player_id, ...body });
+            if (data && data.snapshot) rerender(data.snapshot);
+            return true;
+        } catch (error) {
+            flashStatus(error);
+            return false;
+        }
+    }
+
+    async function activateSandbox() {
+        if (!canOfferSandbox()) return;
+        const c = cfg();
+        // A sandbox is a scratchpad: from here on the match must not move the
+        // rating, bank crowns, or advance quests.
+        app.statsMeta = null;
+        app.sandboxToolsHidden = false;
+        const ok = await sandboxCall('/api/sandbox/enable', { seed: c.seed, decks: c.decks });
+        if (ok) {
+            flashStatus('Sandbox mode on — tap the 🧪 card in your hand.');
+            sandboxTools.openToolbox();
+        }
+    }
+
+    // Switch which seat the player drives. Every other seat goes back to the AI
+    // so the match keeps flowing (the toolbox can switch a seat's AI off again
+    // to drive two seats by hand), and the board is re-fetched from the new
+    // seat's point of view — its hand included.
+    async function sandboxControlSeat(playerId) {
+        const seatId = Number(playerId);
+        app.humanPlayerId = seatId;
+        app.activeSeatId = seatId;
+        app.aiPlayerIds = seatOrder().map(Number).filter((id) => id !== seatId);
+        app.aiPlayerIds.forEach(ensureSeatElo);
+        try {
+            await refresh();
+            flashStatus(`You are now playing ${seatLabel(seatId)}.`);
+        } catch (error) {
+            flashStatus(error);
+        }
+    }
+
+    function sandboxSetAiSeat(playerId, on) {
+        const seatId = Number(playerId);
+        if (seatId === cfg().player_id) return; // the seat you drive is yours
+        const seats = aiIds().filter((id) => id !== seatId);
+        app.aiPlayerIds = on ? seats.concat([seatId]) : seats;
+        if (on) ensureSeatElo(seatId);
+        // Re-rendering restarts the turn loop, so switching the AI on for the
+        // seat that is waiting to act makes it move right away.
+        rerender(app.snapshot);
+    }
+
+    // A seat handed to the AI mid-match still plays at a rated strength, like
+    // the rivals a match starts with.
+    function ensureSeatElo(playerId) {
+        app.aiElos = app.aiElos || {};
+        if (!Number.isFinite(app.aiElos[playerId])) {
+            app.aiElos[playerId] = sampleAiElo(app.playerElo ?? getElo());
+        }
+    }
+
+    // The switch at the bottom of the History sheet, and its explanation.
+    function updateSandboxSwitch() {
+        if (!ui.sandboxSwitchRow) return;
+        const offer = canOfferSandbox();
+        ui.sandboxSwitchRow.classList.toggle('hidden', !offer);
+        if (!offer) return;
+        const on = isSandbox();
+        const hidden = Boolean(app.sandboxToolsHidden);
+        ui.sandboxSwitchLabel.textContent = !on
+            ? 'Activate Sandbox Mode'
+            : (hidden ? 'Show the sandbox tools' : 'Hide the sandbox tools');
+        ui.btnSandboxSwitch.classList.toggle('active', on && !hidden);
+        ui.sandboxSwitchHint.textContent = on
+            ? 'Tap the 🧪 card in your hand for the toolbox, the 🧪 button on a location to edit it, or any pile to look inside and change it. This match no longer counts towards your rating, crowns or quests.'
+            : 'Edit any zone, switch which seat you play, or hand a seat to the AI. A sandbox match no longer counts towards your rating, crowns or quests.';
+    }
+
+    function onSandboxSwitch() {
+        closeSheet(ui.historyModal);
+        if (!isSandbox()) {
+            activateSandbox();
+            return;
+        }
+        app.sandboxToolsHidden = !app.sandboxToolsHidden;
+        if (app.sandboxToolsHidden) sandboxTools.closeAll();
+        rerender(app.snapshot);
+        if (!app.sandboxToolsHidden) sandboxTools.openToolbox();
+    }
+
     function openSheet(modal) {
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
@@ -2117,8 +2284,17 @@ export function createGameController(ui, cardStack) {
             };
         }
         ui.btnHistory.onclick = () => {
+            // The sandbox switch lives under the log, so refresh it every time
+            // the sheet opens (not only when the board re-renders).
+            updateSandboxSwitch();
             openSheet(ui.historyModal);
         };
+        if (ui.btnSandboxSwitch) {
+            ui.btnSandboxSwitch.onclick = () => {
+                onSandboxSwitch();
+            };
+        }
+        sandboxTools.init();
         ui.btnCloseSettings.onclick = () => {
             closeSheet(ui.settingsModal);
         };
@@ -2187,7 +2363,17 @@ export function createGameController(ui, cardStack) {
                 const snap = app.snapshot;
                 if (!snap) return;
                 const c = cfg();
-                const playerId = String(side === 'player' ? c.player_id : c.ai_player_id);
+                // In a 2P game "the opponent" is whichever seat isn't the viewer
+                // — sandbox mode can hand the viewer either side.
+                const rival = (snap.players || []).map(Number).find((pid) => pid !== c.player_id);
+                const playerId = String(side === 'player' ? c.player_id : (rival ?? c.ai_player_id));
+                // Sandbox mode turns the pile into an editable list instead of a
+                // read-only one (and an empty pile is still worth opening: you
+                // can put cards into it).
+                if (sandboxTools.isActive()) {
+                    sandboxTools.openZone(Number(playerId), 'underworld');
+                    return;
+                }
                 const cards = (snap.underworld && snap.underworld[playerId]) || [];
                 if (!cards.length) return;
                 cardStack.open({

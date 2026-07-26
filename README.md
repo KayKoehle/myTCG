@@ -20,7 +20,7 @@ src/
                              flood, troy, odin, osiris) registering each card's behavior
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
-      sandbox.py             Testing mode: editable positions, undo, AI probes
+      sandbox.py             Sandbox mode: scenario edits on a live match
       ai.py                  Search AI: greedy one-ply + positional evaluation
       policy.py              Neural featurization + torch-free inference
       training.py            Neural-network self-play training (PyTorch)
@@ -62,8 +62,8 @@ uv run --group dev pytest
 - `tests/test_playout_invariants.py` — seeded random playouts of all finished
   deck pairings: termination, no crashes, capacity and card-conservation.
 - `tests/test_card_effects.py` — targeted tests for individual card behaviors.
-- `tests/test_sandbox.py` — testing mode: zone edits, undo/redo, AI probes,
-  scenario round-trips.
+- `tests/test_sandbox.py` — sandbox mode: zone/stat edits, undo, and switching a
+  live match into a sandbox.
 - `tests/test_mobile_sync.py` — mobile tree matches the masters.
 
 ## Android APK (fully offline)
@@ -166,51 +166,60 @@ beats neural 93% and random 99%. The neural policy is still the weakest
 trained tier — see "Training the AI & balancing the decks" below to improve
 it.
 
-## Testing mode (the playtesting sandbox)
+## Sandbox mode (playtesting inside a real game)
 
-Main menu -> **🧪 Testing Mode**. A workbench over the rules engine for
-playtesters: build any position by hand, drive every seat yourself or hand it
-to an AI, and step backwards whenever a line turns out to be uninteresting.
+Sandbox mode is not a separate mode with a screen of its own: it is a switch you
+throw *inside* a normal game against the AI. Open the **history sheet** (the
+clock icon, top right), scroll past the log, and tap **🧪 Activate Sandbox
+Mode**. The board, the rules and the AI stay exactly what they were — the game
+screen just grows a few affordances:
 
-- **Every zone of every seat is visible and editable** — hand, deck (in draw
-  order), underworld, set-aside, and both sides of every location. Tap a card
-  to move it to any zone of any seat, put it in play on either side, mint a
-  face-down copy, give it a power modifier, or take it out of the game. `+ Card`
-  adds any of the game's printed cards straight into a zone.
-- **Dial the state**: mana, crowns, turns taken (which caps mana), phase, whose
-  turn it is, turn/round counters. The engine keeps validating everything: a
-  full location still refuses a card, an illegal action is still rejected.
-- **Drive any seat**: the panel lists that seat's legal actions (including the
-  options of a pending choice) and applies the one you click — so a card's whole
-  trigger chain runs exactly as it would in a real match.
-- **Watch the AI**: pick a seat and an agent (search, minimax, neural, random,
-  or the rated ladder at a given Elo). *Analyze* scores every legal action one
-  ply deep with the AI's own evaluation, so a decision is explainable; *Play 1
-  move* / *Play turn* / *Auto-play match* let it play, action by action.
-- **Undo everything.** Every action and every edit is a step on one linear
-  stack; undo, redo, or jump straight to any earlier step. `GameState` is
-  immutable, so a step is a pointer, not a copy.
-- **Scenarios**: export the position as JSON (attach it to a bug report) and
-  import it back later — decklists and card ownership travel with it.
+- **A sandbox card at the end of your hand.** Tap it for the toolbox: add any
+  printed card to your hand, draw, discard, hand a seat to the AI or take one
+  over, undo the last step, or open any seat's zones.
+- **Every pile is editable.** Tap your own or the opponent's hand, deck or
+  underworld to see what is really in it (decks in draw order) and act on a card:
+  return it to hand, put it on top of or under a deck, send it to the underworld,
+  put it in play on either side of any location, banish it out of the game, nudge
+  its power, or flip it face down. Adding a card the other seat already owns mints
+  a copy that plays exactly like the original.
+- **A 🧪 button on every location.** Add a card to either side, move or banish
+  what is standing there, clear a side, or protect the location from the flood.
+- **Mana and crowns, one by one.** Tap a mana gem to spend or refresh exactly
+  that one (and the seat's cap follows if you go past it); tap a crown in the
+  score panel to set the count. Both also have a menu with ±1 / refresh / spend
+  all.
+- **Switch control or let the AI play.** Taking a seat over flips the board to
+  its point of view — its hand included — and hands every other seat to the AI so
+  the match keeps flowing. Any seat's AI can be switched off to drive two seats by
+  hand, and "let the AI play this turn" plays a single move for the seat you hold.
+- **Undo.** Every edit, play and AI move is one step on the match's undo stack.
+- **Escape hatches**: skip the mulligan, cancel a pending choice, and play on
+  after a match has already ended.
 
-Nothing in testing mode touches the profile: no Elo, no crowns, no quests, no
-matchup stats.
+Nothing in a sandbox match touches the profile: no Elo, no crowns banked, no
+quests, no matchup stats. The switch stays in the history sheet to put the tools
+away again (the edits stay); the next match is a normal match.
 
-Implementation: `engine/sandbox.py` (all the logic, shared with Android),
-`api/endpoints.py` (`/api/sandbox/*`), `webapp/js/sandbox.js` (the screen).
-Headless use — the same registry the endpoints drive:
+Implementation: `engine/sandbox.py` (the edits and the omniscient view, shared
+with Android), `services/game_service.py` (`enable_sandbox`, `apply_sandbox_ops`,
+`undo_sandbox`), `api/endpoints.py` (`/api/sandbox/*`), `webapp/js/sandbox.js`
+(the tools). Headless use:
 
 ```python
-from server.engine.sandbox import REGISTRY, analyze, sandbox_view
+from server.engine import sandbox
+from server.services import GameService
 
-match = REGISTRY.create("scratch", decks=["epic_of_gilgamesh", "siege_of_troy"], seed=7)
-REGISTRY.mutate("scratch", [
+service = GameService()
+service.create_match("scratch", seed=7, deck_a="epic_of_gilgamesh", deck_b="siege_of_troy")
+service.enable_sandbox("scratch")
+service.apply_sandbox_ops("scratch", [
+    {"op": "skip_mulligan"},
     {"op": "add_card", "card_name": "Gilgamesh", "zone": "location", "player_id": 1, "location_id": 1},
     {"op": "set_stat", "stat": "mana_pool", "player_id": 1, "value": 7},
 ])
-print(analyze(match.state, player_id=1)["actions"][:3])   # what the AI would do
-REGISTRY.play_out("scratch", agent="minimax")             # and how the game ends
-REGISTRY.undo("scratch", steps=5)
+print(sandbox.reveal_all(service._matches["scratch"].state)["seats"][0]["hand"])
+service.undo_sandbox("scratch")
 ```
 
 ## Training the AI & balancing the decks

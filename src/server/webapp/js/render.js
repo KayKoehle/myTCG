@@ -411,7 +411,9 @@ function renderActionHistory(snapshot, ui, config) {
 export function layoutHand(ui) {
     const handEl = ui.hand;
     if (!handEl) return;
-    const cards = Array.from(handEl.querySelectorAll('.hand-card[data-card-id]'));
+    // Every card in the row, including the sandbox card (which carries no card
+    // id — it is a tool, not a game card).
+    const cards = Array.from(handEl.querySelectorAll('.hand-card'));
     if (!cards.length) {
         // An empty hand keeps its space (the CSS min-height stays in charge)
         // so the layout doesn't jump when the last card is played.
@@ -475,6 +477,27 @@ export function updateEndTurnButton(ui, app, config) {
     );
 }
 
+// The sandbox card that sits at the end of the hand while sandbox mode is on:
+// the entry point to every tool (see js/sandbox.js). It is deliberately shaped
+// like a hand card — the whole point of sandbox mode is that the screen stays
+// the game screen.
+function renderSandboxCard() {
+    return `
+        <div class="hand-card sandbox-card" data-sandbox-card="1" title="Sandbox tools">
+            <div class="hand-card-headline">
+                <span class="stat-badge cost">🧪</span>
+                <div class="hand-title-main" style="--title-scale: 1;"><span class="hand-title-text">Sandbox</span></div>
+                <span class="stat-badge power">∞</span>
+            </div>
+            <div class="card-type">Playtest tools</div>
+            <div class="hand-media">
+                <div class="sandbox-card-art" aria-hidden="true">🧪</div>
+            </div>
+            <div class="sandbox-card-hint">Tap for add / draw / discard, seats &amp; undo</div>
+        </div>
+    `;
+}
+
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, cardStack }) {
     // A new game state means any previously peeked decision popup is resolved;
     // start every render with the popups fully visible again.
@@ -524,6 +547,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const elo = String(pid) === human ? app.playerElo : (app.aiElos || {})[Number(pid)];
         return Number.isFinite(elo) ? `<span class="score-elo">${Math.round(elo)}</span>` : '';
     };
+    // Sandbox mode: the same board, plus a tool card in the hand and a 🧪 button
+    // on every location. The server decides whether a match is a sandbox; the
+    // player can tuck the tools away again without ending the sandbox.
+    const sandboxOn = Boolean(snapshot.sandbox) && !app.sandboxToolsHidden;
+    ui.gameScreen.classList.toggle('sandbox-mode', sandboxOn);
     const mana = snapshot.mana_pool;
     const manaCap = snapshot.mana_cap || {};
     const deckSizes = snapshot.deck_sizes || {};
@@ -863,6 +891,8 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                     <div class="lane-head-left">${renderLaneSlots(laneSlotSegments, Number(loc.capacity) || 7)}</div>
                     ${isFfa && isCenter ? '<span class="lane-value-badge" title="Worth more when scoring">★</span>' : ''}
                     ${isFfa && !youCanReach ? '<span class="lane-lock" title="Out of your reach">🔒</span>' : ''}
+                    ${sandboxOn ? `<button class="lane-sandbox-btn" data-sandbox-lane="${loc.location_id}"
+                        aria-label="Sandbox tools for this location" title="Sandbox: move, banish, add a card">🧪</button>` : ''}
                 </div>
                 ${laneOpponents.map((pid) => laneRowHtml(loc, pid, false, isFfa && isCenter)).join('')}
                 <div class="lane-mid">${scoreHtml}</div>
@@ -921,6 +951,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             `;
         }).join('')
         : '';
+    if (sandboxOn) ui.hand.innerHTML += renderSandboxCard();
 
     // The mulligan instruction banner was removed; mulligan mode is now shown
     // purely by the red X marks on cards and the teal "Confirm mulligan" button.
