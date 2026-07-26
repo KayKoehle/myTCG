@@ -30,9 +30,14 @@ from .state import GameState, LocationState, PendingChoice
 _load_data_if_needed = catalog.load_data_if_needed
 
 
+# Testing mode gives every seat a private, editable decklist (see
+# engine/sandbox.py). Those are match scratch space, never a deck to pick.
+SANDBOX_DECK_PREFIX = "sandbox:"
+
+
 def available_decks() -> tuple[str, ...]:
     _load_data_if_needed()
-    return tuple(sorted(DECK_LIBRARY.keys()))
+    return tuple(sorted(name for name in DECK_LIBRARY if not name.startswith(SANDBOX_DECK_PREFIX)))
 
 
 def deck_card_ids(deck_names: Iterable[str]) -> tuple[str, ...]:

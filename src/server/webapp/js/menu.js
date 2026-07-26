@@ -69,7 +69,7 @@ function companionPartnerName(cardName) {
 // Menu / Decks / Shop screens. The game screen itself stays owned by the
 // game controller; this controller only decides which screen is visible and
 // starts matches (player's selected deck vs. a random stock AI deck).
-export function createMenuController(ui, game, cardStack) {
+export function createMenuController(ui, game, cardStack, sandbox = null) {
     // Stock deck lists + full card details, fetched once from /api/collection.
     let stockCardsByDeck = null; // Map deckId -> [card, ...] (deck order)
     let collectionError = null;
@@ -219,6 +219,9 @@ export function createMenuController(ui, game, cardStack) {
         } else if (target.screen === 'shop' && shopUnlocked()) {
             showScreen('shop');
             renderShop();
+        } else if (target.screen === 'sandbox' && sandbox) {
+            showScreen('sandbox');
+            sandbox.open({ onExit: navBack });
         } else if (target.screen === 'game') {
             showScreen('game');
         } else {
@@ -241,6 +244,7 @@ export function createMenuController(ui, game, cardStack) {
             menu: ui.menuScreen,
             decks: ui.decksScreen,
             shop: ui.shopScreen,
+            sandbox: ui.sandboxScreen,
             game: ui.gameScreen,
         };
         for (const el of Object.values(screens)) {
@@ -1788,6 +1792,15 @@ export function createMenuController(ui, game, cardStack) {
         renderShop();
     }
 
+    // The playtesting sandbox (js/sandbox.js). Its state lives on the server,
+    // so re-entering the screen picks the last position back up.
+    function openSandbox() {
+        if (!sandbox) return;
+        pushNav({ screen: 'sandbox' });
+        showScreen('sandbox');
+        sandbox.open({ onExit: navBack });
+    }
+
     // --- Wiring ------------------------------------------------------------------
 
     function init() {
@@ -1817,6 +1830,11 @@ export function createMenuController(ui, game, cardStack) {
         }
         if (ui.btnLan) {
             ui.btnLan.addEventListener('click', () => { openLan(); });
+        }
+        if (ui.btnTesting && sandbox) {
+            // Testing mode is a tool, not a game mode: it never touches the
+            // profile, so it is always available and unlocks nothing.
+            ui.btnTesting.addEventListener('click', () => { openSandbox(); });
         }
         if (ui.btnReconnect) {
             ui.btnReconnect.addEventListener('click', () => { reconnectSavedLan(); });
