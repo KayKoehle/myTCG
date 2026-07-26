@@ -1,4 +1,5 @@
 import { createCardStackPopup } from './cardstack.js';
+import { initCardRefs } from './cardrefs.js';
 import { createGameController } from './controller.js';
 import { createMenuController } from './menu.js';
 import { getUiElements } from './dom.js';
@@ -8,6 +9,9 @@ import { initUpdateCheck } from './update.js';
 const ui = getUiElements();
 // Wire the "👁 Board" peek buttons on the decision popups (choice + card stack).
 initPeek();
+// Card names inside effect text become hover/tap references to those cards;
+// this also warms the card catalog they resolve against.
+initCardRefs();
 // One shared card-stack popup: in-game choices and the collection's card
 // reader both use it (its DOM listeners must only be bound once).
 const cardStack = createCardStackPopup(ui);
