@@ -125,7 +125,14 @@ register("Camp Guard at the Ships", CardBehavior(on_enter=_camp_guard_enter))
 
 def _greek_soldiers_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
-        weaklings = [cid for cid in state.locations[target_loc].stacks[target_side] if rt.dynamic_power(state, cid, target_loc, target_side) <= 2]
+        # "For that opponent, you may destroy up to five of their beings with
+        # Power [2] or less": that opponent's own beings only — not the
+        # soldiers themselves, nor other cards of yours smuggled over here.
+        weaklings = [
+            cid
+            for cid, power in _opponent_beings_here(rt, state, owner_idx, target_side, target_loc)
+            if power <= 2
+        ]
         if weaklings:
             return prim.with_pending_choice(
                 state, owner_idx, "greek_soldiers_destroy_weaklings", card_id, target_loc,
@@ -219,12 +226,15 @@ register_choice("odysseus_move", _handle_odysseus_move)
 
 
 def _opponent_beings_here(rt: Any, state: GameState, actor_idx: int, opp_idx: int, location_idx: int) -> list[tuple[str, int]]:
-    """One opponent's beings on their side of this location (the actor's own
-    smuggled cards standing there are not that opponent's beings)."""
+    """One opponent's beings on their side of this location that a destroy
+    would actually claim (anyone else's smuggled cards standing there belong
+    to their own owner, and an immortal target is no target at all)."""
     return [
         (cid, rt.dynamic_power(state, cid, location_idx, opp_idx))
         for cid in state.locations[location_idx].stacks[opp_idx]
-        if is_being(cid) and catalog.card_owner_idx(state, cid) != actor_idx
+        if is_being(cid)
+        and catalog.card_owner_idx(state, cid) == opp_idx
+        and rt.can_be_destroyed(state, cid)
     ]
 
 
@@ -260,7 +270,7 @@ def _achilles_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int
 def _patroclus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
     # "Destroy one Being of each opponent here": one kill per opponent, the
     # actor picking each target, resolved as an opponent chain.
-    if any(card(cid).name == "Achilles" and side_idx == player_idx for _, side_idx, cid in prim.find_cards_in_play(state, named("Achilles"))):
+    if any(catalog.card_owner_idx(state, cid) == player_idx for _, _, cid in prim.find_cards_in_play(state, named("Achilles"))):
         chained = start_opponent_chain(rt, state, player_idx, "patroclus_destroy", card_id, location_idx)
         if chained is not None:
             return Halt(chained)

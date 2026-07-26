@@ -268,13 +268,17 @@ register(OSIRIS, CardBehavior(on_revive=_osiris_revive))
 
 # --- The usurper and the avenger --------------------------------------------------
 
-def _beings_of_owner_here(state: GameState, owner_idx: int, location_idx: int) -> list[str]:
+def _beings_of_owner_here(state: GameState, owner_idx: int, location_idx: int, rt: Any = None) -> list[str]:
+    """`owner_idx`'s beings at this location; with `rt`, only the ones a
+    destroy would actually claim (immortals shrug it off)."""
     location = state.locations[location_idx]
     return [
         cid
         for side_idx in range(state.n_players)
         for cid in location.stacks[side_idx]
-        if is_being(cid) and catalog.card_owner_idx(state, cid) == owner_idx
+        if is_being(cid)
+        and catalog.card_owner_idx(state, cid) == owner_idx
+        and (rt is None or rt.can_be_destroyed(state, cid))
     ]
 
 
@@ -288,7 +292,9 @@ def _set_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, sou
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx and card(cid).cost <= budget
+        if catalog.card_owner_idx(state, cid) == opp_idx
+        and card(cid).cost <= budget
+        and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None
@@ -309,7 +315,7 @@ register("Set, the Usurper", CardBehavior(on_enter=_set_enter))
 def _horus_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
-        for cid in _beings_of_owner_here(state, opp_idx, location_idx)
+        for cid in _beings_of_owner_here(state, opp_idx, location_idx, rt)
         if _dynamic_power_of(rt, state, cid) <= 4
     ]
     if not options:
@@ -321,7 +327,7 @@ def _horus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, locat
     if any(card(cid).name == OSIRIS for cid in state.underworlds[player_idx]):
         # The father is found: no restraint. The strongest falls, however mighty.
         for opp_idx in prim.other_side_indices(state, player_idx):
-            victims = _beings_of_owner_here(state, opp_idx, location_idx)
+            victims = _beings_of_owner_here(state, opp_idx, location_idx, rt)
             if not victims:
                 continue
             strongest = max(victims, key=lambda cid: (_dynamic_power_of(rt, state, cid), card(cid).cost, card(cid).name))

@@ -36,7 +36,7 @@ def _inanna_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, 
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None
@@ -55,14 +55,27 @@ def _inanna_revive(rt: Any, state: GameState, player_idx: int, card_id: str, loc
 register_opponent_chain("inanna_banish", _inanna_chain_step)
 
 
+def _own_beings_here(rt: Any, state: GameState, player_idx: int, location_idx: int, exclude: str) -> list[str]:
+    """The player's own beings on their side of this location that a banish
+    would actually remove — an immortal one is no sacrifice at all."""
+    return prim.friendly_cards_here(
+        state, player_idx, location_idx, exclude={exclude},
+        predicate=lambda cid: (
+            is_being(cid)
+            and catalog.card_owner_idx(state, cid) == player_idx
+            and rt.can_be_banished(state, cid)
+        ),
+    )
+
+
 def _ninshubur_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
     if any(card(cid).name == INANNA for cid in state.underworlds[player_idx]):
-        options = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
+        options = _own_beings_here(rt, state, player_idx, location_idx, card_id)
         if options:
             return Halt(
                 prim.with_pending_choice(
                     state, player_idx, "banish_friendly_for_inanna", card_id, location_idx,
-                    prim.choose_options_for_cards(options, include_pass=True), "Choose a friendly card to banish and revive Inanna",
+                    prim.choose_options_for_cards(options, include_pass=True), "Choose a friendly being to banish and revive Inanna",
                 )
             )
     return state
@@ -163,13 +176,14 @@ register(
 
 
 def _galla_demons_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    # "You must banish one of your other beings if possible" — no passing.
-    options = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id})
+    # "You must banish one of your other beings here if possible" — no passing,
+    # and only beings a banish can actually claim.
+    options = _own_beings_here(rt, state, player_idx, location_idx, card_id)
     if options:
         return Halt(
             prim.with_pending_choice(
                 state, player_idx, "banish_other_friendly", card_id, location_idx,
-                prim.choose_options_for_cards(options), "Choose another friendly card to banish",
+                prim.choose_options_for_cards(options), "Choose another of your beings here to banish",
             )
         )
     return state
@@ -182,7 +196,7 @@ def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
     options += [
         f"battlefield|{cid}"
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == player_idx and cid != card_id
+        if catalog.card_owner_idx(state, cid) == player_idx and cid != card_id and rt.can_be_banished(state, cid)
     ]
     if options:
         return Halt(
@@ -212,7 +226,7 @@ def _anunnaki_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int
     options = [
         cid
         for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx
+        if catalog.card_owner_idx(state, cid) == opp_idx and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None

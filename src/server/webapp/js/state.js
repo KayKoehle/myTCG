@@ -46,7 +46,6 @@ export function createAppState() {
         aiElos: {},
         lastEloDelta: null,
         snapshot: null,
-        selectedCardId: null,
         legalPlaySet: new Set(),
         legalMoveChoiceSet: new Set(),
         movableChoiceCardSet: new Set(),

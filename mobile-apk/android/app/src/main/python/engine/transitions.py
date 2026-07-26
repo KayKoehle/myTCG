@@ -321,6 +321,27 @@ def is_immortal(state: GameState, card_id: str, location_idx: int | None = None)
     return immortal_hook is not None and immortal_hook(RT, state, card_id, location_idx)
 
 
+def can_be_banished(state: GameState, card_id: str) -> bool:
+    """Whether banishing `card_id` would actually move it.
+
+    Effects that *must* hit something ("banish one of your beings") build their
+    option lists from this, so an immortal card can never be offered up as a
+    no-op sacrifice that quietly voids the effect.
+    """
+    found = prim.find_card_in_play(state, card_id)
+    if found is None:
+        return False
+    return not is_immortal(state, card_id, found[0])
+
+
+def can_be_destroyed(state: GameState, card_id: str) -> bool:
+    """Same as `can_be_banished`, but for destruction — which indestructible
+    cards (The Ark) also shrug off."""
+    if effects.behavior_of(card_id).indestructible:
+        return False
+    return can_be_banished(state, card_id)
+
+
 def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:
     """Whether an enemy top card (e.g. Agamemnon) caps `side_idx`'s stack at
     this location so no further card may arrive — by play, move, or revive."""
@@ -541,7 +562,11 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
         and source_side_idx == owner_idx
     ):
         owner_top = prim.top_card(state.locations[source_location_idx], owner_idx)
-        if owner_top is not None and effects.behavior_of(owner_top).on_friendly_hero_left_while_top is not None:
+        if (
+            owner_top is not None
+            and _card_owner_idx(state, owner_top) == owner_idx
+            and effects.behavior_of(owner_top).on_friendly_hero_left_while_top is not None
+        ):
             hero_left_watcher = owner_top
 
     moved = prim.remove_from_stack(state, card_id, source_location_idx, source_side_idx)
@@ -569,7 +594,7 @@ def move_card(state: GameState, card_id: str, target_location_idx: int, target_s
     # Monsters are defeated as soon as enough heroes stand with them — also
     # when the heroes arrive by moving, not only when they are played.
     if state.pending_choice is None:
-        state = _resolve_monster_rewards(state, target_location_idx, target_side_idx)
+        state = _resolve_monster_rewards_here(state, target_location_idx)
     return state
 
 
@@ -646,7 +671,11 @@ def _apply_on_enter(state: GameState, player_idx: int, card_id: str, location_id
         if isinstance(result, Halt):
             return result.state
         state = result
-    return _resolve_monster_rewards(state, location_idx, player_idx)
+    # An enter hook can open a choice without halting (e.g. Ninsun's move
+    # waking Ishtar); the monster sweep must not overwrite it.
+    if state.pending_choice is not None:
+        return state
+    return _resolve_monster_rewards_here(state, location_idx)
 
 
 def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
@@ -659,9 +688,14 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
         if isinstance(result, Halt):
             return result.state
         state = result
-    # Revival witnesses (e.g. Anunnaki) react while on top of the reviver's stacks.
+    # Revival witnesses (e.g. Anunnaki) react while on top of the reviver's
+    # stacks — their own card, not an enemy's that defected onto this side.
+    if state.pending_choice is not None:
+        return state
     for loc_idx, side_idx, witness_id in prim.find_cards_in_play(state, lambda cid: effects.behavior_of(cid).on_friendly_revive_while_top is not None):
-        if side_idx == player_idx and prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
+        if side_idx != player_idx or _card_owner_idx(state, witness_id) != player_idx:
+            continue
+        if prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
             witness_hook = effects.behavior_of(witness_id).on_friendly_revive_while_top
             result = witness_hook(RT, state, player_idx, card_id, witness_id, loc_idx)
             if result is not None:
@@ -676,7 +710,9 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
             result = underworld_hook(RT, state, player_idx, card_id, witness_id, location_idx)
             if result is not None:
                 return result
-    return _resolve_monster_rewards(state, location_idx, player_idx)
+    if state.pending_choice is not None:
+        return state
+    return _resolve_monster_rewards_here(state, location_idx)
 
 
 def _resolve_all_monster_rewards(state: GameState) -> GameState:
@@ -684,21 +720,56 @@ def _resolve_all_monster_rewards(state: GameState) -> GameState:
     so a second monster still dies when the first one's reward paused the
     pipeline with a PendingChoice)."""
     for location_idx in range(len(state.locations)):
-        for side_idx in range(state.n_players):
-            state = _resolve_monster_rewards(state, location_idx, side_idx)
-            if state.pending_choice is not None:
-                return state
+        state = _resolve_monster_rewards_here(state, location_idx)
+        if state.pending_choice is not None:
+            return state
     return state
+
+
+def _resolve_monster_rewards_here(state: GameState, location_idx: int) -> GameState:
+    """Check every seat's monsters at one location.
+
+    A card arriving here can hand a hero to any seat (the Trojan Horse drops
+    cards on a rival's side), so the whole location is re-checked rather than
+    only the side that was just played to.
+    """
+    for side_idx in range(state.n_players):
+        state = _resolve_monster_rewards(state, location_idx, side_idx)
+        if state.pending_choice is not None:
+            return state
+    return state
+
+
+def heroes_of_player_at(state: GameState, location_idx: int, player_idx: int) -> list[str]:
+    """`player_idx`'s heroes standing at this location, on either side.
+
+    Ownership is what "you have heroes here" means: an enemy hero smuggled
+    onto your side is not yours, and a hero of yours that defected to a rival's
+    side still is.
+    """
+    location = state.locations[location_idx]
+    return [
+        card_id
+        for side in range(state.n_players)
+        for card_id in location.stacks[side]
+        if catalog.is_hero(card_id) and _card_owner_idx(state, card_id) == player_idx
+    ]
 
 
 def _resolve_monster_rewards(state: GameState, location_idx: int, player_idx: int) -> GameState:
     while True:
+        # Never overwrite a decision the players still owe an answer to: a
+        # trigger earlier in this chain may already have opened one.
+        if state.pending_choice is not None:
+            return state
         stack = list(state.locations[location_idx].stacks[player_idx])
-        heroes_here = [cid for cid in stack if catalog.is_hero(cid)]
+        heroes_here = heroes_of_player_at(state, location_idx, player_idx)
         changed = False
         for card_id in stack:
             reward_hook = effects.behavior_of(card_id).monster_reward
             if reward_hook is None:
+                continue
+            if _card_owner_idx(state, card_id) != player_idx:
                 continue
             result = reward_hook(RT, state, player_idx, location_idx, card_id, heroes_here)
             if result is None:
@@ -858,20 +929,22 @@ def _artifact_top_discount(state: GameState, player_idx: int) -> int:
     total = 0
     for location in state.locations:
         top = prim.top_card(location, player_idx)
-        if top is not None:
+        if top is not None and _card_owner_idx(state, top) == player_idx:
             total += effects.behavior_of(top).artifact_discount_while_top
     return total
 
 
 def _sacrifice_discount_tops(state: GameState, player_idx: int) -> list[tuple[str, int]]:
-    """Cards on top of the player's stacks that can be banished for an artifact discount."""
+    """The player's own cards on top of their stacks that can be banished for
+    an artifact discount (never a rival's card that defected onto this side)."""
     tops: list[tuple[str, int]] = []
     for location in state.locations:
         top = prim.top_card(location, player_idx)
-        if top is not None:
-            discount = effects.behavior_of(top).sacrifice_artifact_discount_while_top
-            if discount:
-                tops.append((top, discount))
+        if top is None or _card_owner_idx(state, top) != player_idx:
+            continue
+        discount = effects.behavior_of(top).sacrifice_artifact_discount_while_top
+        if discount:
+            tops.append((top, discount))
     return tops
 
 
@@ -926,7 +999,9 @@ def _can_play_at(state: GameState, player_idx: int, card_id: str, location_idx: 
         return False
     if prim.location_total_cards(location) >= location.capacity:
         return False
-    if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in location.stacks[player_idx]):
+    # "Cannot be played at a location where you have heroes": your own heroes.
+    # An enemy hero smuggled onto your side is not one of yours.
+    if catalog.is_monster(card_id) and heroes_of_player_at(state, location_idx, player_idx):
         return False
     if enemy_stack_capped(state, location_idx, player_idx):
         return False
@@ -1460,6 +1535,18 @@ class _Runtime:
     @staticmethod
     def flood_protected(state: GameState, owner_idx: int, location_idx: int) -> bool:
         return flood_protected(state, owner_idx, location_idx)
+
+    @staticmethod
+    def can_be_banished(state: GameState, card_id: str) -> bool:
+        return can_be_banished(state, card_id)
+
+    @staticmethod
+    def can_be_destroyed(state: GameState, card_id: str) -> bool:
+        return can_be_destroyed(state, card_id)
+
+    @staticmethod
+    def heroes_of_player_at(state: GameState, location_idx: int, player_idx: int) -> list[str]:
+        return heroes_of_player_at(state, location_idx, player_idx)
 
     @staticmethod
     def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:

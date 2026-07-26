@@ -1,9 +1,21 @@
-export function laneLabel(locationId) {
+// The three lanes of a duel have places ("left/middle/right"); an FFA board
+// is a ring of outposts around a shared center, so those lanes are named by
+// the number printed on them (see laneNumberLabel / the lane head badge).
+export function laneLabel(locationId, laneCount = 3) {
     const laneId = Number(locationId);
+    if (Number(laneCount) > 3) return laneNumberLabel(laneId, laneCount).toLowerCase();
     if (laneId === 0) return 'left lane';
     if (laneId === 1) return 'middle lane';
     if (laneId === 2) return 'right lane';
     return `lane ${laneId + 1}`;
+}
+
+// The badge printed on an FFA lane. The shared center is the last location the
+// engine builds (one outpost per seat, then the center), and it gets a name of
+// its own so "Lane 4" never competes with "the center".
+export function laneNumberLabel(locationId, laneCount) {
+    const laneId = Number(locationId);
+    return laneId === Number(laneCount) - 1 ? 'Center' : `Lane ${laneId + 1}`;
 }
 
 function looksLikeCardId(value) {
@@ -135,7 +147,7 @@ export function buildCardNameMap(snapshot) {
     return cardNameById;
 }
 
-export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = null) {
+export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = null, laneCount = 3) {
     if (optionId === 'PASS') return 'Pass';
     if (optionId === 'KEEP') return 'Keep current hand';
     if (optionId === 'BOTTOM') return 'Move top card to bottom';
@@ -149,7 +161,7 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
     // A lone location index (e.g. the Ark's "choose a location" choice, or
     // the revive-destination follow-up choice) reads far better as a lane name.
     if (typeof optionId === 'string' && /^\d+$/.test(optionId)) {
-        return `Move to ${laneLabel(Number(optionId))}`;
+        return `Move to ${laneLabel(Number(optionId), laneCount)}`;
     }
 
     if (typeof optionId === 'string') {
@@ -167,7 +179,7 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
         // A free play at a chosen lane (Hlidskjalf's top deck card, the
         // Bennu Bird rising from the underworld).
         if (parts.length === 2 && zone === 'PLAY') {
-            return `Play for free at ${laneLabel(Number(parts[1]))}`;
+            return `Play for free at ${laneLabel(Number(parts[1]), laneCount)}`;
         }
 
         // Dolon in multiplayer: first pick whose deck to scout ("OPP|<side>").
@@ -180,10 +192,10 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
             const maybeLane = Number(parts[1]);
             // "location|side" pairs (e.g. Enkidu joining Gilgamesh) carry no card id.
             if (Number.isFinite(Number(parts[0])) && Number.isFinite(maybeLane)) {
-                return `Move to ${laneLabel(Number(parts[0]))}`;
+                return `Move to ${laneLabel(Number(parts[0]), laneCount)}`;
             }
             if (Number.isFinite(maybeLane)) {
-                return `${cardDisplayName(maybeCardId, cardNameById)} -> ${laneLabel(maybeLane)}`;
+                return `${cardDisplayName(maybeCardId, cardNameById)} -> ${laneLabel(maybeLane, laneCount)}`;
             }
 
             const allNamed = parts.every((part) => cardNameById.has(part) || looksLikeCardId(part));
@@ -199,7 +211,7 @@ export function describeChoiceOption(optionId, cardNameById, viewerSideIdx = nul
                 const sideSuffix = viewerSideIdx === null
                     ? ''
                     : (maybeSide === Number(viewerSideIdx) ? ' (your side)' : ' (opponent side)');
-                return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane)}${sideSuffix}`;
+                return `${cardDisplayName(parts[0], cardNameById)} -> ${laneLabel(maybeLane, laneCount)}${sideSuffix}`;
             }
         }
 

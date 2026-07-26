@@ -1218,8 +1218,7 @@ select {
     box-shadow: inset 0 0 0 1px rgba(45, 212, 169, 0.35);
 }
 
-.lane-row.drop-target,
-.lane-row.tap-target {
+.lane-row.drop-target {
     border-color: rgba(23, 182, 255, 0.95);
     background: rgba(8, 31, 51, 0.95);
     box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35);
@@ -1392,22 +1391,9 @@ select {
     box-shadow: 0 0 8px rgba(210, 60, 60, 0.55);
 }
 
-.card-body,
-.hand-body {
+.card-body {
     display: grid;
     gap: 2px;
-}
-
-.hand-body {
-    display: none;
-    min-height: 145px;
-    padding: 8px 6px;
-    align-content: start;
-    border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(8, 22, 35, 0.82);
-    line-height: 1.35;
-    color: #d9edf9;
 }
 
 .hand-wrap {
@@ -1550,11 +1536,6 @@ select {
     box-shadow: 0 0 0 2px rgba(45, 212, 169, 0.25), 0 0 14px rgba(45, 212, 169, 0.22);
 }
 
-.deck-revealed-card.selected {
-    border-color: rgba(23, 182, 255, 0.95);
-    box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35), 0 0 16px rgba(23, 182, 255, 0.3);
-}
-
 .deck-revealed-card.dragging {
     opacity: 0.45;
 }
@@ -1654,21 +1635,6 @@ select {
 
 .hand-card:active {
     cursor: grabbing;
-}
-
-.hand-card.selected {
-    z-index: 60 !important;
-    transform: translateY(-10px) scale(1.04);
-    border-color: rgba(23, 182, 255, 0.95);
-    box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35), 0 16px 28px rgba(0, 0, 0, 0.42);
-}
-
-.hand-card.selected .hand-media {
-    display: none;
-}
-
-.hand-card.selected .hand-body {
-    display: grid;
 }
 
 .hand-card.mulligan-mode {
@@ -1819,6 +1785,23 @@ select {
     display: none;
 }
 
+/* How a card gets played, stated on the card itself: drag it to a lane. */
+.inspector-hint {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(45, 212, 169, 0.45);
+    background: rgba(16, 62, 55, 0.55);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    color: #b6f0e0;
+}
+
+.inspector-hint.hidden {
+    display: none;
+}
+
 .inspector-action {
     width: 100%;
     padding: 12px;
@@ -1923,16 +1906,9 @@ select {
     }
 
     .hand-art,
-    .hand-media,
-    .hand-body {
+    .hand-media {
         min-height: 0;
         height: 112px;
-    }
-
-    .hand-body {
-        height: auto;
-        min-height: 112px;
-        padding: 6px;
     }
 
     .opp-card-back {
@@ -4296,6 +4272,27 @@ details[open]>.cos-summary::before {
     border-color: rgba(255, 200, 79, 0.5);
 }
 
+/* FFA lanes wear their number: the board is a ring of outposts around a
+   shared center, so "left/middle/right" means nothing there. */
+.lane-number {
+    flex: none;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(159, 195, 218, 0.45);
+    background: rgba(8, 24, 38, 0.85);
+    color: #cfe4f2;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.lane-number-center {
+    border-color: rgba(255, 200, 79, 0.75);
+    color: #ffd98a;
+    background: rgba(48, 34, 8, 0.85);
+}
+
 .lane-value-badge {
     color: #ffc84f;
     font-size: 14px;
@@ -4356,25 +4353,32 @@ details[open]>.cos-summary::before {
     padding: 6px 0 2px;
 }
 
+/* The carousel dots carry the same lane numbers as the lane heads, so
+   "Lane 3" on screen and "lane 3" in a prompt point at the same place. */
 .lane-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
     border: 1px solid rgba(150, 175, 195, 0.5);
-    background: rgba(150, 175, 195, 0.25);
-    padding: 0;
+    background: rgba(150, 175, 195, 0.2);
+    color: #c3d7e6;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0 5px;
     cursor: pointer;
 }
 
 .lane-dot.reachable {
     border-color: rgba(255, 200, 79, 0.9);
-    background: rgba(255, 200, 79, 0.55);
+    background: rgba(255, 200, 79, 0.35);
+    color: #ffe6ae;
     box-shadow: 0 0 6px rgba(255, 200, 79, 0.35);
 }
 
 .lane-dot.center {
-    width: 11px;
-    height: 11px;
+    border-color: rgba(255, 200, 79, 0.9);
+    color: #ffd98a;
 }
 
 /* --- FFA score panel (3-5 crown tracks) -------------------------------------- */
