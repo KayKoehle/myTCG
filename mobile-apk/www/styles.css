@@ -4807,3 +4807,63 @@ details[open]>.cos-summary::before {
 .update-banner-close:hover {
     color: var(--ink);
 }
+
+/* --- Card references in effect text (js/cardrefs.js) ----------------------- */
+/* A card name printed inside another card's effect ("Draw 'Kur-Jara' and
+   'Gala-Tura'") is a chip: hover it on desktop, tap it on touch, and the
+   referenced card shows in a floating preview. */
+.card-ref {
+    display: inline;
+    margin: 0;
+    padding: 0 1px;
+    border: 0;
+    border-bottom: 1px dashed rgba(255, 200, 79, 0.75);
+    border-radius: 3px;
+    background: none;
+    color: #ffd98a;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.card-ref:hover,
+.card-ref:focus-visible {
+    background: rgba(255, 200, 79, 0.16);
+    border-bottom-style: solid;
+    outline: none;
+}
+
+.card-ref-preview {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 2600;
+    display: none;
+    width: min(260px, 78vw);
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(20, 55, 85, 0.99), rgba(11, 33, 53, 0.99));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+.card-ref-preview.open {
+    display: grid;
+    gap: 8px;
+}
+
+.card-ref-preview-art {
+    display: block;
+    width: 100%;
+    max-height: 34vh;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.card-ref-preview-effect {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #d9edf9;
+}

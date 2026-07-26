@@ -1336,15 +1336,26 @@ def _is_round_boundary(state: GameState) -> bool:
     return state.turn_number % state.n_players == 0
 
 
-def _advance_turn(state: GameState) -> GameState:
+def _advance_turn(state: GameState) -> tuple[GameState, int | None]:
+    """Advance to the next turn, returning the new state and — on a round
+    boundary — the index of the player who won that round (None on a draw).
+
+    The winner is returned rather than recomputed by the caller: end-of-turn
+    effects (the flood) can banish beings and flip who controls a location, so
+    the standings only settle *after* they resolve. Deciding twice let the
+    crown and the logged/animated round result disagree.
+    """
     state = _resolve_end_turn_effects(state)
     next_turn_number = state.turn_number + 1
     next_round = state.round_number
     next_starter = state.round_starter_idx
     next_current = (state.current_player_idx + 1) % state.n_players
     victory_points = list(state.victory_points)
-    if _is_round_boundary(state):
+    round_winner: int | None = None
+    is_boundary = _is_round_boundary(state)
+    if is_boundary:
         winner = _round_winner_idx(state)
+        round_winner = winner
         if winner is not None:
             victory_points[winner] += 1
             next_starter = winner
@@ -1355,7 +1366,7 @@ def _advance_turn(state: GameState) -> GameState:
     # winner of the last round takes it (their round VP already counts).
     if max(victory_points) >= 4 or next_round > 7:
         next_phase = "GAME_OVER"
-    return replace(
+    advanced = replace(
         state,
         current_player_idx=next_current,
         round_starter_idx=next_starter,
@@ -1364,21 +1375,23 @@ def _advance_turn(state: GameState) -> GameState:
         victory_points=tuple(victory_points),
         phase=next_phase,
     )
+    return advanced, (round_winner if is_boundary else None)
 
 
 def _apply_end_turn(state: GameState, action: EndTurnAction) -> GameState:
     _active_index(state, action.player_id)
-    advanced = _advance_turn(state)
+    advanced, round_winner_idx = _advance_turn(state)
     # End-of-turn effects (the flood) log their own entries during
     # _advance_turn; keep them, with the end_turn entry first.
     history_entries = [f"end_turn:{action.player_id}"]
     history_entries.extend(advanced.action_history[len(state.action_history):])
     if _is_round_boundary(state):
-        winner_idx = _round_winner_idx(state)
-        if winner_idx is None:
+        # Logged from the same decision that awarded the crown, so the banner,
+        # the shop payout and the VP track can never name different winners.
+        if round_winner_idx is None:
             history_entries.append(f"round_result:{state.round_number}:DRAW")
         else:
-            history_entries.append(f"round_result:{state.round_number}:{state.player_ids[winner_idx]}")
+            history_entries.append(f"round_result:{state.round_number}:{state.player_ids[round_winner_idx]}")
     if advanced.phase == "GAME_OVER":
         outcome = returns(advanced)
         best = max(outcome)

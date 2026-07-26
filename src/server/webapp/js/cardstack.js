@@ -1,4 +1,5 @@
 import { anecdoteText, cardArtTag, effectLabel, escapeHtml, typeLabel } from './helpers.js';
+import { ensureCardCatalog, hideCardRefPreview, linkifyEffectHtml, upgradeEffectElements } from './cardrefs.js';
 import { unpeekAll } from './peek.js';
 
 // A reusable card-stack popup. Three modes:
@@ -42,7 +43,7 @@ export function createCardStackPopup(ui) {
                 </div>
                 ${type ? `<div class="card-type">${escapeHtml(type)}</div>` : ''}
                 <div class="stackpop-media">${cardArtTag(card.name, 'stackpop-art')}</div>
-                <div class="stackpop-effect tiny">${escapeHtml(effectLabel(card))}</div>
+                <div class="stackpop-effect tiny" data-effect-source="${escapeHtml(effectLabel(card))}" data-effect-self="${escapeHtml(card.name || '')}">${linkifyEffectHtml(effectLabel(card), card.name)}</div>
                 ${anecdoteText(card) ? `<div class="stackpop-anecdote tiny">${escapeHtml(anecdoteText(card))}</div>` : ''}
             </div>
         `;
@@ -136,6 +137,9 @@ export function createCardStackPopup(ui) {
         }
         ui.stackList.innerHTML = cards.map((entry, i) => cardTile(entry, i)).join('')
             || '<div class="tiny stackpop-empty">No cards here.</div>';
+        // Tiles render before the card catalog is necessarily loaded; link the
+        // card names in their effect text as soon as it is.
+        ensureCardCatalog().then(() => upgradeEffectElements(ui.stackList));
         renderExtras(opts.extras, opts.note);
 
         soloView = mode === 'view' && cards.length === 1;
@@ -172,6 +176,7 @@ export function createCardStackPopup(ui) {
 
     function close() {
         if (!ui.stackModal.classList.contains('open')) return;
+        hideCardRefPreview();
         unpeekAll();
         ui.stackModal.classList.remove('open');
         ui.stackModal.setAttribute('aria-hidden', 'true');

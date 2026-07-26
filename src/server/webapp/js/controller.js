@@ -1,5 +1,6 @@
 import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
+import { hideCardRefPreview, setEffectText } from './cardrefs.js';
 import { eloDelta, placementsFromVp, sampleAiElo, streakMultiplier } from './elo.js';
 import { activeEmotes, addCrowns, applyEloDelta, getElo, getWinStreak, recordCasualGame, recordGameResult } from './profile.js';
 import {
@@ -380,7 +381,9 @@ export function createGameController(ui, cardStack) {
         ui.inspectorCost.textContent = card.cost ?? '?';
         ui.inspectorPower.textContent = card.power !== null && card.power !== undefined ? card.power : '?';
         ui.inspectorMedia.innerHTML = cardArtTag(card.name, 'inspector-art');
-        ui.inspectorEffect.textContent = effectLabel(card);
+        // Card names in the effect text (e.g. Kur-Jara / Gala-Tura on "Dirt
+        // under Enki's Fingernail") become hover/tap references to those cards.
+        setEffectText(ui.inspectorEffect, effectLabel(card), card.name);
         const anecdote = anecdoteText(card);
         ui.inspectorAnecdote.textContent = anecdote;
         ui.inspectorAnecdote.classList.toggle('hidden', !anecdote);
@@ -410,6 +413,7 @@ export function createGameController(ui, cardStack) {
     }
 
     function closeInspector() {
+        hideCardRefPreview();
         ui.cardInspector.classList.remove('open');
         ui.cardInspector.setAttribute('aria-hidden', 'true');
     }

@@ -857,3 +857,25 @@ def test_enkidu_will_not_join_a_gilgamesh_who_switched_sides():
     assert rules.effects.behavior_named("Enkidu").top_ability(
         rules.RT, state, 0, 0, enk
     ) is None
+
+
+def test_round_result_names_the_player_the_crown_went_to_after_the_flood():
+    """The flood resolves at end of turn, before the round is scored: the
+    logged round result must come from that same post-flood board, or the
+    banner (and the shop payout) credits a crown the VP track gave elsewhere."""
+    state = start_game(FLOOD, GIL)
+    # p0's lead rests entirely on humans the flood will wash away; p1 holds
+    # every location with beings that survive it.
+    for name, loc in (("Slave", 0), ("Shepherd", 1), ("Citizen of Shruppak", 2)):
+        state = put_in_play(state, by_name(FLOOD, name), loc, 0)
+    for name, loc in (("Ninsun, Mother of Gilgamesh", 0), ("Enkidu", 1), ("Bull of Heaven", 2)):
+        state = put_in_play(state, by_name(GIL, name), loc, 1)
+    state = replace(state, phase="MAIN", current_player_idx=1, turn_number=2, flood_pending_turn=2)
+
+    assert rules._round_winner_idx(state) == 0, "p0 leads while their humans still stand"
+
+    after = apply_action(state, rules.EndTurnAction(player_id=state.player_ids[1]))
+    result = [e for e in after.action_history if e.startswith("round_result:")][-1]
+    crowned = [i for i, vp in enumerate(after.victory_points) if vp > 0]
+    assert crowned == [1], "the flood hands the round to p1"
+    assert result == f"round_result:1:{state.player_ids[1]}"
