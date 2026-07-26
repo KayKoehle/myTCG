@@ -4868,638 +4868,274 @@ details[open]>.cos-summary::before {
     color: #d9edf9;
 }
 
-/* --- Testing mode (sandbox) ---------------------------------------------------
-   A dense, desktop-first tool screen: the board and every seat's zones on the
-   left, the drive/AI/history panels on the right. It deliberately looks nothing
-   like the game screen — it is a workbench, not a table. */
+/* --- Sandbox mode ------------------------------------------------------------
+   Sandbox mode deliberately adds nothing to the layout: it is the same game
+   screen with a tool card at the end of the hand, a small 🧪 button on every
+   location, and clickable mana gems / crowns. Everything else happens in one
+   sheet (.sbx-menu), styled like the rest of the game's sheets. */
 
-.sandbox-screen {
-    max-width: 1500px;
-    margin: 0 auto;
-    padding: 12px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-    align-content: start;
-    min-height: 100vh;
-}
-
-.sb-status {
-    min-width: 70px;
-    text-align: right;
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.sb-toolbar {
-    display: grid;
-    gap: 8px;
-}
-
-.sb-toolbar-row,
-.sb-setup {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: rgba(12, 28, 44, 0.75);
-}
-
-.sb-toolbar-row {
-    justify-content: space-between;
-}
-
-.sb-group {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-}
-
-.sb-btn,
-.sb-mini,
-.sb-action,
-.sb-step {
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: rgba(23, 182, 255, 0.16);
-    color: var(--ink);
-    font: inherit;
+.sandbox-card {
     cursor: pointer;
-    transition: border-color 120ms ease, background 120ms ease;
+    border-color: rgba(120, 230, 200, 0.7);
+    background: linear-gradient(165deg, rgba(16, 74, 68, 0.95), rgba(8, 38, 44, 0.95));
+    box-shadow: 0 0 14px rgba(84, 226, 195, 0.25);
 }
 
-.sb-btn {
-    padding: 7px 12px;
-    font-size: 13px;
-    font-weight: 600;
+.sandbox-card .stat-badge.cost,
+.sandbox-card .stat-badge.power {
+    background: rgba(10, 46, 44, 0.9);
+    border-color: rgba(120, 230, 200, 0.6);
 }
 
-.sb-btn.primary {
-    background: rgba(23, 182, 255, 0.42);
-}
-
-.sb-btn.ghost,
-.sb-mini.ghost {
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.sb-mini.danger {
-    background: rgba(255, 90, 90, 0.22);
-    border-color: rgba(255, 120, 120, 0.5);
-}
-
-.sb-btn:hover,
-.sb-mini:hover,
-.sb-action:hover,
-.sb-step:hover {
-    border-color: rgba(23, 182, 255, 0.85);
-}
-
-.sb-btn:disabled,
-.sb-mini:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
-.sb-mini {
-    padding: 3px 8px;
-    font-size: 11px;
-}
-
-.sb-field,
-.sb-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.sb-field select,
-.sb-field input,
-.sb-search,
-.sb-scenario {
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(6, 20, 33, 0.9);
-    color: var(--ink);
-    font: inherit;
-    font-size: 13px;
-    text-transform: none;
-    letter-spacing: 0;
-    padding: 4px 6px;
-}
-
-.sb-field input[type="number"] {
-    width: 66px;
-}
-
-.sb-pill {
-    padding: 4px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    background: rgba(45, 212, 169, 0.16);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.sb-pill.danger {
-    background: rgba(255, 138, 58, 0.2);
-}
-
-.sb-pill.tiny {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--muted);
-}
-
-.sb-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-}
-
-@media (min-width: 1080px) {
-    .sb-body {
-        grid-template-columns: minmax(0, 1fr) 380px;
-    }
-
-    .sb-side {
-        position: sticky;
-        top: 12px;
-        max-height: calc(100vh - 24px);
-        overflow-y: auto;
-    }
-}
-
-.sb-main {
-    display: grid;
-    gap: 10px;
-    min-width: 0;
-}
-
-.sb-board,
-.sb-seats {
-    display: grid;
-    gap: 8px;
-}
-
-@media (min-width: 720px) {
-    .sb-seats {
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    }
-}
-
-.sb-lane,
-.sb-seat,
-.sb-panel {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--panel);
-    padding: 8px 10px;
-}
-
-.sb-lane-head,
-.sb-seat-head,
-.sb-panel-head {
+.sandbox-card-art {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.sb-panel-head h3 {
-    margin: 0;
-    font-size: 14px;
-    letter-spacing: 0.04em;
-}
-
-.sb-lane-name,
-.sb-seat-name {
-    font-weight: 700;
-    font-size: 14px;
-    text-transform: capitalize;
-}
-
-.sb-lane-meta,
-.sb-seat-deck,
-.sb-seat-eval {
-    font-size: 11px;
-    color: var(--muted);
-}
-
-.sb-lane-row {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
-}
-
-.sb-lane-row.unreachable {
-    opacity: 0.45;
-}
-
-.sb-lane-side {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-}
-
-.sb-lane-power {
-    font-weight: 700;
-    color: var(--good);
-}
-
-.sb-lane-cards {
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-}
-
-.sb-boardcard {
-    position: relative;
-    flex: 0 0 62px;
-    height: 86px;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(6, 20, 33, 0.9);
-    overflow: hidden;
-    cursor: pointer;
-}
-
-.sb-boardcard img {
-    width: 100%;
+    justify-content: center;
     height: 100%;
-    object-fit: cover;
+    min-height: 145px;
+    font-size: 62px;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
 }
 
-.sb-boardcard.facedown img {
-    filter: grayscale(1) brightness(0.4);
-}
-
-.sb-boardcard-name {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 2px 3px;
-    font-size: 9px;
-    line-height: 1.1;
-    background: rgba(4, 14, 24, 0.82);
-    color: var(--ink);
-}
-
-.sb-boardcard-power {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 16px;
-    padding: 1px 3px;
-    border-radius: 6px;
-    background: rgba(45, 212, 169, 0.85);
-    color: #04131f;
+.sandbox-card-hint {
     font-size: 10px;
-    font-weight: 800;
+    line-height: 1.25;
+    color: #a9e8dc;
+    text-align: center;
 }
 
-.sb-stats {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding-bottom: 6px;
-}
-
-.sb-zone {
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
-    padding: 5px 0;
-}
-
-.sb-zone-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-}
-
-.sb-zone-title {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-}
-
-.sb-zone-actions {
-    display: flex;
-    gap: 4px;
-}
-
-.sb-count {
-    color: var(--muted);
-    font-weight: 500;
-}
-
-.sb-zone-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 4px;
-    max-height: 132px;
-    overflow-y: auto;
-}
-
-.sb-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    max-width: 100%;
-    padding: 3px 7px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(6, 20, 33, 0.85);
+/* The per-location tool button sits in the lane header, next to the lock/star. */
+.lane-sandbox-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    border: 1px solid rgba(120, 230, 200, 0.6);
+    background: rgba(10, 46, 44, 0.9);
     color: var(--ink);
-    font-size: 11px;
+    font-size: 13px;
+    line-height: 1;
     cursor: pointer;
 }
 
-.sb-chip:hover {
-    border-color: rgba(23, 182, 255, 0.85);
+.lane-sandbox-btn:hover {
+    border-color: rgba(150, 255, 225, 0.95);
 }
 
-.sb-chip-name {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+/* Anything the sandbox makes tappable gets the same faint teal hint. */
+.sandbox-mode .sbx-target {
+    cursor: pointer;
 }
 
-.sb-chip-cost {
-    color: #9ad8ff;
-    font-weight: 700;
+.sandbox-mode .peek-pile.sbx-target,
+.sandbox-mode .peek-hand.sbx-target {
+    outline: 1px dashed rgba(120, 230, 200, 0.5);
+    outline-offset: 3px;
+    border-radius: 10px;
 }
 
-.sb-chip-power {
-    color: var(--good);
-    font-weight: 700;
+.sandbox-mode .mana-gem.sbx-target:hover,
+.sandbox-mode .vp-dot.sbx-target:hover {
+    filter: brightness(1.5);
 }
 
-.sb-flag {
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    font-size: 10px;
-    color: var(--muted);
-    white-space: nowrap;
-}
-
-.sb-flag-owner {
-    background: rgba(255, 138, 58, 0.22);
-    color: #ffd2ab;
-}
-
-.sb-empty {
-    font-size: 11px;
-    color: var(--muted);
-    font-style: italic;
-}
-
-.sb-seat.acting {
-    border-color: rgba(45, 212, 169, 0.7);
-    box-shadow: 0 0 0 1px rgba(45, 212, 169, 0.25);
-}
-
-.sb-side {
+/* The switch at the bottom of the History sheet. */
+.history-foot {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.16);
     display: grid;
-    gap: 10px;
-    min-width: 0;
+    gap: 6px;
 }
 
-.sb-actions,
-.sb-mini-row,
-.sb-ai-controls,
-.sb-flags,
-.sb-scenario-actions {
+.sandbox-switch {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.sandbox-switch.active {
+    border-color: rgba(120, 230, 200, 0.75);
+    color: #b8f4e6;
+}
+
+/* The one sheet every sandbox menu renders into. */
+.sbx-hint {
+    margin: 0 0 10px;
+    color: var(--muted);
+}
+
+.sbx-menu {
+    display: grid;
+    gap: 12px;
+}
+
+.sbx-group {
+    display: grid;
+    gap: 6px;
+}
+
+.sbx-group-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.sbx-items {
+    display: grid;
     gap: 5px;
 }
 
-.sb-actions {
-    max-height: 240px;
-    overflow-y: auto;
-}
-
-.sb-action {
-    padding: 4px 8px;
-    font-size: 12px;
-    text-align: left;
-}
-
-.sb-panel-foot {
-    margin-top: 6px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
-    padding-top: 6px;
-}
-
-.sb-pending {
-    margin-bottom: 6px;
-    padding: 6px 8px;
-    border: 1px solid rgba(255, 200, 79, 0.45);
-    border-radius: 10px;
-    background: rgba(66, 48, 6, 0.4);
-}
-
-.sb-pending-head {
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.sb-pending-prompt {
-    font-size: 12px;
-    color: #ffe9ad;
-    margin: 3px 0 5px;
-}
-
-.sb-analysis {
-    margin-top: 8px;
-}
-
-.sb-best {
-    margin: 4px 0;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--good);
-}
-
-.sb-analysis-list,
-.sb-steps,
-.sb-log {
-    list-style: none;
-    margin: 4px 0 0;
-    padding: 0;
-    max-height: 260px;
-    overflow-y: auto;
-    display: grid;
-    gap: 3px;
-}
-
-.sb-analysis-list li {
+.sbx-btn {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-}
-
-.sb-score {
-    font-size: 11px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.sb-score.up {
-    color: var(--good);
-}
-
-.sb-score.down {
-    color: var(--warn);
-}
-
-.sb-step {
-    width: 100%;
-    padding: 3px 7px;
-    font-size: 11px;
-    text-align: left;
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.sb-step.current {
-    background: rgba(23, 182, 255, 0.32);
-    font-weight: 700;
-}
-
-.sb-step.future {
-    opacity: 0.5;
-}
-
-.sb-step-no {
-    color: var(--muted);
-    margin-right: 4px;
-}
-
-.sb-log li {
-    font-size: 11px;
-    color: var(--muted);
-    padding: 2px 0;
-    border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
-}
-
-/* Card menu / picker / scenario sheets */
-
-.sb-cardmenu-top {
-    display: grid;
-    grid-template-columns: 120px minmax(0, 1fr);
     gap: 10px;
-    align-items: start;
-}
-
-.sb-cardmenu-art {
     width: 100%;
-    border-radius: 8px;
-}
-
-.sb-cardmenu-line {
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.sb-cardmenu-effect {
-    margin: 6px 0 0;
-    font-size: 13px;
-    color: var(--ink);
-}
-
-.sb-cardmenu-section {
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.12);
-    display: grid;
-    gap: 6px;
-}
-
-.sb-search {
-    width: 100%;
-    margin: 6px 0;
-}
-
-.sb-picker-list {
-    display: grid;
-    gap: 4px;
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-.sb-picker-card {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    padding: 4px;
+    padding: 8px 10px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 12px;
     background: rgba(6, 20, 33, 0.8);
     color: var(--ink);
     text-align: left;
     cursor: pointer;
+    font: inherit;
 }
 
-.sb-picker-card:hover {
-    border-color: rgba(23, 182, 255, 0.85);
+.sbx-btn:hover:not(:disabled) {
+    border-color: rgba(120, 230, 200, 0.8);
 }
 
-.sb-picker-card img {
-    width: 44px;
-    border-radius: 6px;
+.sbx-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
-.sb-picker-text {
+.sbx-btn.danger {
+    border-color: rgba(255, 138, 138, 0.5);
+}
+
+.sbx-btn-icon {
+    flex: 0 0 22px;
+    font-size: 16px;
+    text-align: center;
+}
+
+.sbx-btn-text {
     display: grid;
     gap: 1px;
     min-width: 0;
 }
 
-.sb-picker-name {
+.sbx-btn-label {
     font-size: 13px;
     font-weight: 700;
 }
 
-.sb-picker-meta {
+.sbx-btn-note {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.3;
+}
+
+/* A card row: used both in the menus and in the "add any card" picker. */
+.sbx-card-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(6, 20, 33, 0.8);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.sbx-card-row:hover {
+    border-color: rgba(120, 230, 200, 0.8);
+}
+
+.sbx-card-art {
+    display: block;
+}
+
+.sbx-art {
+    width: 44px;
+    border-radius: 6px;
+    display: block;
+}
+
+.sbx-card-text {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.sbx-card-name {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sbx-card-meta {
     font-size: 11px;
     color: var(--muted);
 }
 
-.sb-picker-effect {
-    font-size: 11px;
+.sbx-card-effect {
     color: #cfe6f5;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.sb-scenario {
+.sbx-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #ffd67f;
+}
+
+.sbx-search {
     width: 100%;
-    min-height: 240px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px;
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(4, 14, 24, 0.9);
+    color: var(--ink);
+    font: inherit;
+}
+
+.sbx-picker-list {
+    display: grid;
+    gap: 5px;
+    max-height: 58vh;
+    overflow-y: auto;
+}
+
+.sbx-empty {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 2px;
+}
+
+/* A menu that drilled down offers "‹" next to its title. */
+.sheet-back {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(10, 25, 39, 0.85);
+    color: var(--ink);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
 }

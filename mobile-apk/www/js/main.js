@@ -2,7 +2,6 @@ import { createCardStackPopup } from './cardstack.js';
 import { initCardRefs } from './cardrefs.js';
 import { createGameController } from './controller.js';
 import { createMenuController } from './menu.js';
-import { createSandboxController } from './sandbox.js';
 import { getUiElements } from './dom.js';
 import { initPeek } from './peek.js';
 import { initUpdateCheck } from './update.js';
@@ -16,12 +15,10 @@ initCardRefs();
 // One shared card-stack popup: in-game choices and the collection's card
 // reader both use it (its DOM listeners must only be bound once).
 const cardStack = createCardStackPopup(ui);
+// The controller owns the game screen, including the sandbox tools a match can
+// be switched into from its History sheet (js/sandbox.js).
 const controller = createGameController(ui, cardStack);
-// Testing mode: a playtester sandbox over the rules engine, reachable from the
-// main menu and driven entirely by its own server endpoints.
-const sandbox = createSandboxController(ui);
-const menu = createMenuController(ui, controller, cardStack, sandbox);
-sandbox.init({ onExit: () => menu.navBack() });
+const menu = createMenuController(ui, controller, cardStack);
 // The in-game home button pops the history entry the match pushed, so the
 // hardware back stack stays consistent with what is on screen.
 controller.init({ onExitToMenu: () => menu.navBack() });

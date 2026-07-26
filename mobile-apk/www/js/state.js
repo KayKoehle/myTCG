@@ -65,6 +65,9 @@ export function createAppState() {
         // Board card rects captured before each re-render, so removal effects
         // (defeat, banish, discard, bury, move) can animate at the old slot.
         prevBoardRects: new Map(),
+        // Sandbox mode: the server owns whether a match *is* a sandbox
+        // (snapshot.sandbox); this only hides the tools without ending it.
+        sandboxToolsHidden: false,
     };
 }
 
@@ -76,9 +79,11 @@ export function buildConfig(ui, app) {
     const youId = localSeats ? Number(app.activeSeatId ?? localSeats[0]) : app.humanPlayerId;
     // Local hotseat and LAN games have no AI seats — every other seat is a human.
     const noAi = Boolean(localSeats) || Boolean(app.lanGame);
+    // An explicit (possibly empty) list wins: sandbox mode can leave a match
+    // with no AI seat at all, which must not fall back to "seat 2 is the AI".
     const aiIds = noAi
         ? []
-        : (app.aiPlayerIds && app.aiPlayerIds.length ? app.aiPlayerIds : [app.aiPlayerId]);
+        : (Array.isArray(app.aiPlayerIds) ? app.aiPlayerIds.map(Number) : [app.aiPlayerId]);
     return {
         match_id: app.matchId,
         player_id: youId,
