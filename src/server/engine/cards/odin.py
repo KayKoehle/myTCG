@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .. import catalog, primitives as prim
+from .. import primitives as prim
 from ..catalog import card, is_being
 from ..effects import (
     CardBehavior,
@@ -272,8 +272,8 @@ register_choice("gondul_swap_with_top", _handle_gondul_swap)
 def _vafthrudnir_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
     if prim.top_card(state.locations[location_idx], side_idx) != card_id:
         return base
-    owner_idx = catalog.card_owner_idx(state, card_id)
-    if revealed_deck_cards(state, owner_idx):
+    # He sees what is coming for the camp he stands with.
+    if revealed_deck_cards(state, side_idx):
         return base + 3
     return base
 

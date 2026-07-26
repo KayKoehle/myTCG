@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import catalog, primitives as prim
+from .. import primitives as prim
 from ..catalog import card, is_being, named
 from ..effects import (
     CardBehavior,
@@ -35,8 +35,8 @@ GESHTINANNA = "Geshtinanna, Dumuzid's Sister"
 def _inanna_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
-        for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx and rt.can_be_banished(state, cid)
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == opp_idx and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None
@@ -56,15 +56,12 @@ register_opponent_chain("inanna_banish", _inanna_chain_step)
 
 
 def _own_beings_here(rt: Any, state: GameState, player_idx: int, location_idx: int, exclude: str) -> list[str]:
-    """The player's own beings on their side of this location that a banish
-    would actually remove — an immortal one is no sacrifice at all."""
+    """The beings the player commands at this location that a banish would
+    actually remove — an immortal one is no sacrifice at all. A card that
+    defected onto this side is theirs to give up now."""
     return prim.friendly_cards_here(
         state, player_idx, location_idx, exclude={exclude},
-        predicate=lambda cid: (
-            is_being(cid)
-            and catalog.card_owner_idx(state, cid) == player_idx
-            and rt.can_be_banished(state, cid)
-        ),
+        predicate=lambda cid: is_being(cid) and rt.can_be_banished(state, cid),
     )
 
 
@@ -195,8 +192,8 @@ def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
     options += [f"deck|{cid}" for cid in state.decks[player_idx] if is_being(cid)]
     options += [
         f"battlefield|{cid}"
-        for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == player_idx and cid != card_id and rt.can_be_banished(state, cid)
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == player_idx and cid != card_id and rt.can_be_banished(state, cid)
     ]
     if options:
         return Halt(
@@ -225,8 +222,8 @@ register_choice("namtar_send_to_underworld", _handle_namtar_send)
 def _anunnaki_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
-        for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx and rt.can_be_banished(state, cid)
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == opp_idx and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None

@@ -55,9 +55,9 @@ TopAbilityHook = Callable[[Any, GameState, int, int, str], "GameState | None"]
 # (rt, state, player_idx, card_id) -> GameState | None (None: not offered)
 # Offered while the card sits *in its owner's deck* and is revealed (Kvasir).
 DeckAbilityHook = Callable[[Any, GameState, int, str], "GameState | None"]
-# (rt, state, owner_idx, card_id, source_loc, source_side, target_loc, target_side) -> GameState
+# (rt, state, actor_idx, card_id, source_loc, source_side, target_loc, target_side) -> GameState
 MovedHook = Callable[[Any, GameState, int, str, int, int, int, int], GameState]
-# (rt, state, owner_idx, moved_card_id, source_location_idx, trigger_card_id) -> GameState | None (None: nothing happened)
+# (rt, state, controller_idx, moved_card_id, source_location_idx, trigger_card_id) -> GameState | None (None: nothing happened)
 HeroLeftHook = Callable[[Any, GameState, int, str, int, str], "GameState | None"]
 # (rt, state, location, side_idx, powers) -> int  (delta for that side's total)
 TopPowerHook = Callable[[Any, GameState, LocationState, int, dict[str, int]], int]
@@ -98,21 +98,21 @@ class CardBehavior:
     top_ability: TopAbilityHook | None = None
     # Fired after this card is moved between stacks.
     on_self_moved: MovedHook | None = None
-    # While on top: fired when one of the owner's heroes moves away from here.
+    # While on top: fired when a hero its controller commands leaves here.
     on_friendly_hero_left_while_top: HeroLeftHook | None = None
-    # While on top: witnesses the owner reviving any friendly card.
+    # While on top: witnesses its controller reviving any friendly card.
     on_friendly_revive_while_top: ReviveWitnessHook | None = None
     # While on top: friendly beings here cannot be moved by enemy effects.
     blocks_enemy_move_while_top: bool = False
-    # While on top: the owner's chosen location stays protected from the flood.
+    # While on top: its controller's chosen location stays flood-protected.
     flood_protector_while_top: bool = False
     # While on top: the enemy side of this location holds at most N cards.
     max_enemy_stack_while_top: int | None = None
-    # While on top: flat discount on artifacts the owner plays.
+    # While on top: flat discount on artifacts its controller plays.
     artifact_discount_while_top: int = 0
-    # While on top: may be banished to discount the owner's next artifact (Slave).
+    # While on top: may be banished to discount its controller's next artifact (Slave).
     sacrifice_artifact_discount_while_top: int = 0
-    # While on top: extra power added to the owner's side total here.
+    # While on top: extra power added to its controller's side total here.
     friendly_power_bonus_while_top: TopPowerHook | None = None
     # While on top: replaces the power of individual enemy cards here (applied
     # inside dynamic power, so both round scoring and the UI see it).
@@ -123,19 +123,19 @@ class CardBehavior:
     # Set aside at game start (scenario cards like the Deluge).
     set_aside_at_start: bool = False
     # --- The revealed-top-card mechanic (Odin's High Seat) ------------------
-    # While on top: the owner plays with the top card of their deck revealed.
+    # While on top: its controller plays with their top deck card revealed.
     reveals_own_top_while_top: bool = False
     # While on top: ALL players play with their top deck card revealed.
     reveals_all_tops_while_top: bool = False
-    # While on top: if the owner's top card is revealed, the card beneath it
-    # is also revealed (Muninn deepens the reveal by one).
+    # While on top: if its controller's top card is revealed, the card beneath
+    # it is also revealed (Muninn deepens the reveal by one).
     extends_reveal_while_top: bool = False
     # While in the owner's deck and revealed: may be played as though it were
     # in hand (Frigg, Fenrir), optionally at a discount.
     playable_from_deck_when_revealed: bool = False
     deck_play_discount: int = 0
-    # While on top: once per turn the owner may play their revealed top deck
-    # card as though it were in hand (Odin's High One ability).
+    # While on top: once per turn its controller may play their revealed top
+    # deck card as though it were in hand (Odin's High One ability).
     plays_top_deck_card_while_top: bool = False
     # Offered while this card is in its owner's deck and revealed (Kvasir).
     deck_ability: DeckAbilityHook | None = None
@@ -155,6 +155,12 @@ class CardBehavior:
     # While in the owner's underworld: witnesses the owner reviving a being
     # (Sacred Scarab rides along on any revival).
     on_friendly_revive_from_underworld: ReviveWitnessHook | None = None
+    # Infiltrators (Sinon, Dolon, the Trojan Horse, Greek Soldiers) switch
+    # sides on purpose, so control of them passes to the player they defect
+    # to like any other card — but their own printed ability is the whole
+    # point of sending them over and keeps resolving for their owner, with
+    # "the opponent" meaning the camp they are standing in.
+    ability_follows_owner: bool = False
 
 
 BEHAVIORS: dict[str, CardBehavior] = {}
@@ -185,6 +191,14 @@ def behavior_named(name: str) -> CardBehavior:
     return BEHAVIORS.get(name, _INERT)
 
 
+def ability_actor_idx(state: GameState, card_id: str, side_idx: int) -> int:
+    """Whose ability a card in play is: its controller, except for infiltrators
+    (`ability_follows_owner`), whose ability stays with their owner."""
+    if behavior_of(card_id).ability_follows_owner:
+        return catalog.card_owner_idx(state, card_id)
+    return side_idx
+
+
 # --------------------------------------------------------------------------
 # The revealed-top-card mechanic (Odin's High Seat)
 #
@@ -206,7 +220,9 @@ def reveal_depth(state: GameState, player_idx: int) -> int:
             behavior = behavior_of(top)
             if behavior.reveals_all_tops_while_top:
                 revealed = True
-            if catalog.card_owner_idx(state, top) != player_idx:
+            # A revealer reveals the deck of whoever controls it, so a Huginn
+            # that switched sides starts reading its new camp's deck for them.
+            if side_idx != player_idx:
                 continue
             if behavior.reveals_own_top_while_top:
                 revealed = True
@@ -521,11 +537,11 @@ def continue_opponent_chain(rt: Any, state: GameState, pending: PendingChoice) -
 
 def _handle_move_card_option(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     card_id, target_location, target_side = option.split("|")
-    return rt.move_card(state, card_id, int(target_location), int(target_side), source_effect_owner_idx=chooser_idx)
+    return rt.move_card(state, card_id, int(target_location), int(target_side), moving_player_idx=chooser_idx)
 
 
 def _handle_move_to_pending_location(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    return rt.move_card(state, option, pending.location_id, source_effect_owner_idx=chooser_idx)
+    return rt.move_card(state, option, pending.location_id, moving_player_idx=chooser_idx)
 
 
 def _handle_revive_here(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:

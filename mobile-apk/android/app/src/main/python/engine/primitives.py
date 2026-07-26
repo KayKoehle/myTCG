@@ -92,8 +92,23 @@ def find_cards_in_play(state: GameState, predicate: Predicate) -> list[tuple[int
     return found
 
 
-def find_cards_owned_in_play(state: GameState, owner_idx: int) -> list[str]:
-    return [card_id for _, _, card_id in find_cards_in_play(state, lambda cid: catalog.card_owner_idx(state, cid) == owner_idx)]
+def controller_idx(state: GameState, card_id: str) -> int:
+    """Which seat currently controls a card.
+
+    Control is positional: whoever's side of a location the card stands on
+    commands it. A card that switched sides is played, moved, counted and
+    targeted as if it belonged to its new controller — only leaving play
+    consults `catalog.card_owner_idx`, which never changes and decides whose
+    hand/underworld/deck the card returns to.
+
+    Outside play there is no side, so the owner controls the card.
+    """
+    found = find_card_in_play(state, card_id)
+    return found[1] if found is not None else catalog.card_owner_idx(state, card_id)
+
+
+def find_cards_controlled_in_play(state: GameState, player_idx: int) -> list[str]:
+    return [card_id for _, side_idx, card_id in find_cards_in_play(state, lambda _cid: True) if side_idx == player_idx]
 
 
 def top_card(location: LocationState, side_idx: int) -> str | None:
@@ -140,6 +155,12 @@ def enemy_cards_here(state: GameState, player_idx: int, location_idx: int, predi
 
 
 def player_has_card_on_opponent_side(state: GameState, player_idx: int, location_idx: int) -> bool:
+    """Whether one of `player_idx`'s cards has switched sides here.
+
+    Ownership is the question this one asks: such a card is by definition no
+    longer controlled by `player_idx` (Camp Guard at the Ships looks for the
+    infiltration itself, not for something it still commands).
+    """
     location = state.locations[location_idx]
     return any(
         catalog.card_owner_idx(state, card_id) == player_idx
@@ -324,10 +345,10 @@ def build_move_options(state: GameState, card_ids: Iterable[str], include_pass: 
         if found is None:
             continue
         current_loc, current_side, _ = found
-        owner_idx = catalog.card_owner_idx(state, card_id)
+        mover_idx = current_side
         for location_idx, location in enumerate(state.locations):
-            # Cards may never be moved to a location their owner cannot reach.
-            if owner_idx not in location.accessible:
+            # Cards may never be moved to a location their controller cannot reach.
+            if mover_idx not in location.accessible:
                 continue
             target_sides = tuple(location.accessible) if allow_side_switch else (current_side,)
             for target_side in target_sides:

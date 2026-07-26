@@ -140,6 +140,8 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
     name = _card(card_id).name
 
     if name == "Sinon the Deceiver":
+        # An infiltrator's ability stays with his owner, so he only works
+        # while standing in somebody else's camp.
         return card_owner_idx(state, card_id) != side_idx
 
     if (
@@ -156,11 +158,11 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
     # Revealers (Huginn, Heimdall, Odin) are doing something while a deck
     # still has a top card to show; Muninn only once a reveal is live to deepen.
     if behavior.reveals_own_top_while_top or behavior.plays_top_deck_card_while_top:
-        return bool(state.decks[card_owner_idx(state, card_id)])
+        return bool(state.decks[side_idx])
     if behavior.reveals_all_tops_while_top:
         return any(state.decks)
     if behavior.extends_reveal_while_top:
-        return len(effects.revealed_deck_cards(state, card_owner_idx(state, card_id))) > 1
+        return len(effects.revealed_deck_cards(state, side_idx)) > 1
 
     if behavior.friendly_power_bonus_while_top is not None:
         powers = {cid: dynamic_card_power(state, cid, location.location_id, side_idx) for cid in location.stacks[side_idx]}

@@ -38,6 +38,16 @@ zone operations in `primitives.py`. Register interactive choices with
 `register_choice` right next to the card. Never branch on card names inside
 `transitions.py`.
 
+**Owner vs controller:** ownership is fixed by the decklist
+(`catalog.card_owner_idx`) and decides one thing only — whose hand, deck or
+underworld a card returns to when it leaves play. Control is positional
+(`primitives.controller_idx`): whoever's side of a location a card stands on
+commands it, so a card that switched sides is counted, targeted, buffed and
+activated for its new camp, and every "your"/"friendly" check reads the side.
+Infiltrators (`CardBehavior.ability_follows_owner` — Sinon, Dolon, the Trojan
+Horse, the Greek Soldiers) are the single exception: control of them passes,
+but their own printed ability keeps resolving for the player who sent them.
+
 **Editing engine/webapp/card data:** run `python scripts/sync_mobile.py`
 afterwards — the copies under `mobile-apk/` are generated, never edit them by
 hand. `tests/test_mobile_sync.py` fails if they drift.
