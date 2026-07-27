@@ -102,6 +102,33 @@
         <div class="shop-items" id="shopItems"></div>
     </div>
 
+    <!-- Sandbox mode (js/sandbox.js): switched on from the History sheet of a
+         regular match. One sheet holds every tool menu; the card picker adds any
+         printed card to any zone. -->
+    <div id="sandboxMenuModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sandboxMenuTitle">
+            <div class="sheet-head">
+                <button class="sheet-back hidden" id="btnSandboxMenuBack" aria-label="Back">&lsaquo;</button>
+                <h2 class="sheet-title" id="sandboxMenuTitle">Sandbox</h2>
+                <button class="sheet-close" id="btnCloseSandboxMenu" aria-label="Close">&times;</button>
+            </div>
+            <p class="tiny sbx-hint" id="sandboxMenuHint"></p>
+            <div class="sbx-menu" id="sandboxMenuBody"></div>
+        </div>
+    </div>
+
+    <div id="sandboxPickerModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sandboxPickerTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="sandboxPickerTitle">Add a card</h2>
+                <button class="sheet-close" id="btnCloseSandboxPicker" aria-label="Close">&times;</button>
+            </div>
+            <input class="sbx-search" id="sandboxPickerSearch" type="search"
+                placeholder="Search any card by name, type or effect" autocomplete="off">
+            <div class="sbx-picker-list" id="sandboxPickerList"></div>
+        </div>
+    </div>
+
     <div class="app screen" id="gameScreen">
         <div class="reconnect-overlay hidden" id="reconnectOverlay" role="alertdialog" aria-live="assertive"
             aria-hidden="true">
@@ -296,6 +323,16 @@
                 <button class="sheet-close" id="btnCloseHistory" aria-label="Close past actions">&times;</button>
             </div>
             <div class="history-list" id="actionHistory"></div>
+            <!-- Scroll past the log to find the sandbox switch: it turns this
+                 very match into an editable position (js/sandbox.js). -->
+            <div class="history-foot hidden" id="sandboxSwitchRow">
+                <button class="btn ghost sandbox-switch" id="btnSandboxSwitch">
+                    <span aria-hidden="true">🧪</span>
+                    <span id="sandboxSwitchLabel">Activate Sandbox Mode</span>
+                </button>
+                <p class="tiny" id="sandboxSwitchHint">Edit any zone, switch which seat you play, or hand a seat to
+                    the AI. A sandbox match no longer counts towards your rating, crowns or quests.</p>
+            </div>
         </div>
     </div>
 
@@ -324,6 +361,7 @@
             <div class="inspector-media" id="inspectorMedia"></div>
             <p class="inspector-effect" id="inspectorEffect"></p>
             <p class="inspector-anecdote hidden" id="inspectorAnecdote"></p>
+            <p class="inspector-hint hidden" id="inspectorHint"></p>
             <button class="btn inspector-action hidden" id="inspectorAction"></button>
         </div>
     </div>

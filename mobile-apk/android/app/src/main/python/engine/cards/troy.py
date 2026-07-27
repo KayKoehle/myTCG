@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .. import catalog, primitives as prim
+from .. import primitives as prim
 from ..catalog import card, is_being, is_deity, is_human, named
 from ..effects import (
     CardBehavior,
@@ -107,8 +107,10 @@ def _handle_dolon_bottom(rt: Any, state: GameState, chooser_idx: int, option: st
     return state
 
 
-register("Sinon the Deceiver", CardBehavior(on_enter=defect_to_enemy_side()))
-register("Dolon the Scout", CardBehavior(on_enter=defect_to_enemy_side(), top_ability=_dolon_top_ability))
+# Both scouts hand control of themselves to the camp they walk into, but the
+# spying is what they were sent to do: their abilities stay with their owner.
+register("Sinon the Deceiver", CardBehavior(on_enter=defect_to_enemy_side(), ability_follows_owner=True))
+register("Dolon the Scout", CardBehavior(on_enter=defect_to_enemy_side(), top_ability=_dolon_top_ability, ability_follows_owner=True))
 register_choice("dolon_pick_opponent", _handle_dolon_pick_opponent)
 register_choice("dolon_bottom_top_card", _handle_dolon_bottom)
 
@@ -125,7 +127,14 @@ register("Camp Guard at the Ships", CardBehavior(on_enter=_camp_guard_enter))
 
 def _greek_soldiers_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
-        weaklings = [cid for cid in state.locations[target_loc].stacks[target_side] if rt.dynamic_power(state, cid, target_loc, target_side) <= 2]
+        # "For that opponent, you may destroy up to five of their beings with
+        # Power [2] or less": that opponent's own beings only — not the
+        # soldiers themselves, nor other cards of yours smuggled over here.
+        weaklings = [
+            cid
+            for cid, power in _opponent_beings_here(rt, state, owner_idx, target_side, target_loc)
+            if power <= 2
+        ]
         if weaklings:
             return prim.with_pending_choice(
                 state, owner_idx, "greek_soldiers_destroy_weaklings", card_id, target_loc,
@@ -143,7 +152,7 @@ def _handle_greek_soldiers_destroy(rt: Any, state: GameState, chooser_idx: int, 
     return state
 
 
-register("Greek Soldiers", CardBehavior(on_self_moved=_greek_soldiers_moved))
+register("Greek Soldiers", CardBehavior(on_self_moved=_greek_soldiers_moved, ability_follows_owner=True))
 register_choice("greek_soldiers_destroy_weaklings", _handle_greek_soldiers_destroy)
 
 
@@ -158,10 +167,12 @@ def _trojan_horse_enter(rt: Any, state: GameState, player_idx: int, card_id: str
 
 def _trojan_horse_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
+        # Everything the horse's camp still commands on the side it rolled
+        # away from can climb inside, whoever printed it.
         source_humans = [
             cid
             for cid in state.locations[source_loc].stacks[source_side]
-            if is_human(cid) and cid != card_id and catalog.card_owner_idx(state, cid) == owner_idx
+            if is_human(cid) and cid != card_id
         ]
         if source_humans:
             return prim.with_pending_choice(
@@ -183,7 +194,7 @@ def _handle_trojan_horse_payload(rt: Any, state: GameState, chooser_idx: int, op
         return state
     facedown = set(state.facedown_cards)
     for card_id in option.split("|"):
-        state = rt.move_card(state, card_id, pending.location_id, horse_side, source_effect_owner_idx=chooser_idx)
+        state = rt.move_card(state, card_id, pending.location_id, horse_side, moving_player_idx=chooser_idx)
         found = prim.find_card_in_play(state, card_id)
         if found is None or found[1] != horse_side:
             continue  # the move was vetoed or blocked (e.g. a full side): no penalty for a card that stayed put.
@@ -191,7 +202,7 @@ def _handle_trojan_horse_payload(rt: Any, state: GameState, chooser_idx: int, op
     return replace(state, facedown_cards=tuple(sorted(facedown)))
 
 
-register(TROJAN_HORSE, CardBehavior(on_enter=_trojan_horse_enter, on_self_moved=_trojan_horse_moved))
+register(TROJAN_HORSE, CardBehavior(on_enter=_trojan_horse_enter, on_self_moved=_trojan_horse_moved, ability_follows_owner=True))
 register_choice("trojan_horse_payload", _handle_trojan_horse_payload)
 
 
@@ -211,7 +222,7 @@ def _odysseus_top_ability(rt: Any, state: GameState, player_idx: int, location_i
 
 def _handle_odysseus_move(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     card_id, target_location, target_side = option.split("|")
-    return rt.move_card(state, card_id, int(target_location), int(target_side), source_effect_owner_idx=chooser_idx)
+    return rt.move_card(state, card_id, int(target_location), int(target_side), moving_player_idx=chooser_idx)
 
 
 register("Odysseus", CardBehavior(top_ability=_odysseus_top_ability))
@@ -219,12 +230,13 @@ register_choice("odysseus_move", _handle_odysseus_move)
 
 
 def _opponent_beings_here(rt: Any, state: GameState, actor_idx: int, opp_idx: int, location_idx: int) -> list[tuple[str, int]]:
-    """One opponent's beings on their side of this location (the actor's own
-    smuggled cards standing there are not that opponent's beings)."""
+    """The beings one opponent commands at this location that a destroy would
+    actually claim — everything on their side of it, whoever printed it, minus
+    immortals, who are no target at all."""
     return [
         (cid, rt.dynamic_power(state, cid, location_idx, opp_idx))
         for cid in state.locations[location_idx].stacks[opp_idx]
-        if is_being(cid) and catalog.card_owner_idx(state, cid) != actor_idx
+        if is_being(cid) and rt.can_be_destroyed(state, cid)
     ]
 
 
@@ -260,7 +272,7 @@ def _achilles_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int
 def _patroclus_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
     # "Destroy one Being of each opponent here": one kill per opponent, the
     # actor picking each target, resolved as an opponent chain.
-    if any(card(cid).name == "Achilles" and side_idx == player_idx for _, side_idx, cid in prim.find_cards_in_play(state, named("Achilles"))):
+    if any(side_idx == player_idx for _, side_idx, cid in prim.find_cards_in_play(state, named("Achilles"))):
         chained = start_opponent_chain(rt, state, player_idx, "patroclus_destroy", card_id, location_idx)
         if chained is not None:
             return Halt(chained)

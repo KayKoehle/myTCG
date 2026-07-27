@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 from pydantic import ValidationError
 
-from ..engine.transitions import register_custom_deck
+from ..engine import sandbox
+from ..engine.transitions import available_decks, register_custom_deck
 from ..services import GameService
 from ..services.lan import LanService
 from .schemas import (
@@ -178,7 +179,9 @@ def register_ws_routes(app: FastAPI):
             lobby = lan_service.host_game(
                 host_name=request.get("name", "Host"),
                 deck_name=deck_name,
-                num_players=request.get("num_players", 2),
+                # Optional: a host may leave the size open and start with
+                # whoever has joined (>= 2). Defaults to the full seat cap.
+                num_players=request.get("num_players"),
                 deck_cards=request.get("deck_cards"),
                 seed=request.get("seed"),
             )
@@ -255,6 +258,61 @@ def register_ws_routes(app: FastAPI):
             return {"ok": True, "trade": lan_service.trade(request["trade_id"])}
         except KeyError as exc:
             return {"ok": False, "error": str(exc)}
+
+    # --- Sandbox mode ---------------------------------------------------------
+    # Sandbox mode runs *inside* an ordinary match (the game's History sheet
+    # switches it on), so there is no separate match store and no separate view:
+    # every call answers with the same player snapshot /api/state returns, with
+    # the omniscient "sandbox" block attached. Plain dicts in and out for the
+    # same reason as the LAN routes — the payloads evolve with the client.
+
+    def _sandbox_snapshot(match_id: str, player_id: int):
+        return {"ok": True, "snapshot": game_service.state_snapshot(
+            match_id=match_id, viewer_player_id=player_id)}
+
+    def _sandbox_call(fn):
+        """Run a sandbox operation, turning a rejected edit into a normal
+        error response instead of a 500 — a refused edit is an expected answer
+        here ("no, the engine does not allow that")."""
+        try:
+            return fn()
+        except (KeyError, ValueError, IndexError) as exc:
+            # KeyError stringifies to its repr ('"...":'), which reads like a
+            # quoting bug in the client's toast — use the message itself.
+            return {"ok": False, "error": exc.args[0] if exc.args else str(exc)}
+
+    @app.post("/api/sandbox/enable")
+    async def sandbox_enable(request: dict):
+        def run():
+            match_id = str(request["match_id"])
+            game_service.enable_sandbox(
+                match_id=match_id,
+                seed=int(request.get("seed", 42)),
+                decks=request.get("decks"),
+            )
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
+        return _sandbox_call(run)
+
+    @app.post("/api/sandbox/mutate")
+    async def sandbox_mutate(request: dict):
+        ops = request.get("ops") or ([request["op"]] if isinstance(request.get("op"), dict) else [])
+        def run():
+            match_id = str(request["match_id"])
+            game_service.apply_sandbox_ops(match_id, list(ops))
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
+        return _sandbox_call(run)
+
+    @app.post("/api/sandbox/undo")
+    async def sandbox_undo(request: dict):
+        def run():
+            match_id = str(request["match_id"])
+            game_service.undo_sandbox(match_id)
+            return _sandbox_snapshot(match_id, int(request["player_id"]))
+        return _sandbox_call(run)
+
+    @app.post("/api/sandbox/catalog")
+    async def sandbox_catalog(request: dict | None = None):
+        return {"ok": True, "cards": sandbox.catalog_cards(), "decks": list(available_decks())}
 
     @app.websocket("/ws/action")
     async def action_stream(websocket: WebSocket):

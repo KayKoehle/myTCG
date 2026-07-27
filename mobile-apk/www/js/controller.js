@@ -1,5 +1,6 @@
 import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
+import { hideCardRefPreview, setEffectText } from './cardrefs.js';
 import { eloDelta, placementsFromVp, sampleAiElo, streakMultiplier } from './elo.js';
 import { activeEmotes, addCrowns, applyEloDelta, getElo, getWinStreak, recordCasualGame, recordGameResult } from './profile.js';
 import {
@@ -14,6 +15,7 @@ import {
     questOnRoundWon,
 } from './quests.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
+import { createSandboxTools } from './sandbox.js';
 import { buildConfig, createAppState } from './state.js';
 
 export function createGameController(ui, cardStack) {
@@ -26,6 +28,10 @@ export function createGameController(ui, cardStack) {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     function rerender(snapshot) {
+        // Snapshot the board's current card positions *before* renderSnapshot
+        // rebuilds the DOM, so history-driven effects (defeat, banish, discard,
+        // bury, move) can still animate at the spot a card just vacated.
+        app.prevBoardRects = captureBoardRects();
         renderSnapshot({
             snapshot,
             ui,
@@ -36,7 +42,6 @@ export function createGameController(ui, cardStack) {
                 doAction({ kind: 'choose_option', option_id: optionId });
             },
         });
-        app.selectedCardId = null;
         bindDragAndDrop(snapshot);
         bindBoardMoveChoices(snapshot);
         bindMulliganSelection(snapshot);
@@ -44,6 +49,10 @@ export function createGameController(ui, cardStack) {
         bindRevealedDeckCards(snapshot);
         bindOpponentChips(snapshot);
         bindLaneDots();
+        // Sandbox mode adds its own affordances to the freshly built board
+        // (the tool card, the per-location buttons, the mana gems, the crowns).
+        sandboxTools.bind();
+        updateSandboxSwitch();
         layoutHand(ui);
         runHistoryAnimations(snapshot);
         // Deferred: a round-boundary crown can hand the round-starter role to
@@ -206,10 +215,9 @@ export function createGameController(ui, cardStack) {
             if (!dragging) {
                 if (Math.hypot(dx, dy) < 9) return;
                 dragging = true;
-                clearTapSelection();
                 const rect = cardEl.getBoundingClientRect();
                 ghost = cardEl.cloneNode(true);
-                ghost.classList.remove('selected', 'playable', 'unplayable', 'movable-choice');
+                ghost.classList.remove('playable', 'unplayable', 'movable-choice');
                 ghost.classList.add('drag-ghost');
                 ghost.style.width = `${rect.width}px`;
                 ghost.style.height = `${rect.height}px`;
@@ -239,7 +247,8 @@ export function createGameController(ui, cardStack) {
                     flashLaneFull(target.loc);
                 } else {
                     const verb = payload.type === 'play' ? 'play' : 'move';
-                    flashStatus(`Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc)} right now.`);
+                    const laneCount = ((app.snapshot && app.snapshot.locations) || []).length;
+                    flashStatus(`Cannot ${verb} ${cardDisplayName(payload.cardId, app.cardNameById)} to ${laneLabel(target.loc, laneCount)} right now.`);
                 }
                 return;
             }
@@ -351,25 +360,6 @@ export function createGameController(ui, cardStack) {
         });
     }
 
-    function clearTapSelection() {
-        app.selectedCardId = null;
-        ui.hand.querySelectorAll('.hand-card.selected').forEach((el) => el.classList.remove('selected'));
-        document.querySelectorAll('.deck-revealed-card.selected').forEach((el) => el.classList.remove('selected'));
-        ui.lanes.querySelectorAll('.lane-row.tap-target').forEach((el) => el.classList.remove('tap-target'));
-    }
-
-    function selectHandCard(cardEl, cardId) {
-        clearTapSelection();
-        app.selectedCardId = cardId;
-        cardEl.classList.add('selected');
-        ui.lanes.querySelectorAll('.lane-row.lane-drop[data-location-id]').forEach((zone) => {
-            const loc = Number(zone.dataset.locationId);
-            if (app.legalPlaySet.has(`${cardId}|${loc}`)) {
-                zone.classList.add('tap-target');
-            }
-        });
-    }
-
     // Activate a card's "while on top" ability from the inspector (e.g. move
     // Enkidu to Gilgamesh). A single-target Enkidu move confirms itself.
     async function useCardAbility(cardId) {
@@ -396,10 +386,19 @@ export function createGameController(ui, cardStack) {
         ui.inspectorCost.textContent = card.cost ?? '?';
         ui.inspectorPower.textContent = card.power !== null && card.power !== undefined ? card.power : '?';
         ui.inspectorMedia.innerHTML = cardArtTag(card.name, 'inspector-art');
-        ui.inspectorEffect.textContent = effectLabel(card);
+        // Card names in the effect text (e.g. Kur-Jara / Gala-Tura on "Dirt
+        // under Enki's Fingernail") become hover/tap references to those cards.
+        setEffectText(ui.inspectorEffect, effectLabel(card), card.name);
         const anecdote = anecdoteText(card);
         ui.inspectorAnecdote.textContent = anecdote;
         ui.inspectorAnecdote.classList.toggle('hidden', !anecdote);
+        // Cards are played by dragging them onto a lane — nothing else. Say so
+        // on the cards that can actually be played right now.
+        if (ui.inspectorHint) {
+            const canPlay = Boolean(card.id) && app.playableCardSet.has(card.id);
+            ui.inspectorHint.textContent = canPlay ? 'Drag this card onto a lane to play it.' : '';
+            ui.inspectorHint.classList.toggle('hidden', !canPlay);
+        }
         const abilityAction = (card.id && app.snapshot)
             ? humanLegalActions(app.snapshot, cfg().player_id).find((a) => a.kind === 'use_ability' && a.card_id === card.id)
             : null;
@@ -419,13 +418,15 @@ export function createGameController(ui, cardStack) {
     }
 
     function closeInspector() {
+        hideCardRefPreview();
         ui.cardInspector.classList.remove('open');
         ui.cardInspector.setAttribute('aria-hidden', 'true');
     }
 
-    // Tap-first controls: touch devices cannot use HTML5 drag-and-drop or
-    // hover, so playable cards select on tap and lanes confirm the play,
-    // while any other card opens the full-size inspector.
+    // Tap controls: a tap is always "show me this card" — it opens the
+    // full-size inspector, for playable and unplayable cards alike. Playing a
+    // card is a drag onto a lane and nothing else, so a tap can never commit a
+    // move by accident (see bindDragAndDrop).
     function bindTapControls(snapshot) {
         const clickFollowsDrag = () => Date.now() - (app.dragEndedAt || 0) < 350;
 
@@ -436,24 +437,14 @@ export function createGameController(ui, cardStack) {
                     if (clickFollowsDrag()) return;
                     const cardId = cardEl.dataset.cardId;
                     if (!cardId) return;
-                    if (!app.playableCardSet.has(cardId)) {
-                        openInspector(findCardById(snapshot, cardId));
-                        return;
-                    }
-                    if (app.selectedCardId === cardId) {
-                        clearTapSelection();
-                        return;
-                    }
-                    selectHandCard(cardEl, cardId);
+                    openInspector(findCardById(snapshot, cardId));
                 });
             });
         }
 
         ui.lanes.querySelectorAll('.card[data-board-card-id]').forEach((cardEl) => {
             cardEl.addEventListener('click', (event) => {
-                // With a hand card selected, a tap on a lane's stack counts as
-                // playing to that lane; the lane handler takes it.
-                if (app.selectedCardId) return;
+                if (clickFollowsDrag()) return;
                 event.stopPropagation();
                 openInspector(findCardById(snapshot, cardEl.dataset.boardCardId));
             });
@@ -498,31 +489,10 @@ export function createGameController(ui, cardStack) {
                 openInspector(card);
             });
         });
-
-        ui.lanes.querySelectorAll('.lane').forEach((laneEl) => {
-            const zone = laneEl.querySelector('.lane-row.lane-drop[data-location-id]');
-            if (!zone) return;
-            laneEl.addEventListener('click', async () => {
-                if (clickFollowsDrag()) return;
-                const cardId = app.selectedCardId;
-                if (!cardId) return;
-                const loc = Number(zone.dataset.locationId);
-                if (!app.legalPlaySet.has(`${cardId}|${loc}`)) {
-                    if (laneIsFull(loc)) {
-                        flashLaneFull(loc);
-                    } else {
-                        flashStatus(`Cannot play ${cardDisplayName(cardId, app.cardNameById)} to ${laneLabel(loc)} right now.`);
-                    }
-                    return;
-                }
-                clearTapSelection();
-                await doAction({ kind: 'play_card', card_id: cardId, location_id: loc });
-            });
-        });
     }
 
-    // Revealed top deck cards (Odin's High Seat): tapping inspects; the
-    // owner plays a playable one like a hand card (drag or tap-select).
+    // Revealed top deck cards (Odin's High Seat): tapping inspects; the owner
+    // drags a playable one onto a lane exactly like a hand card.
     function bindRevealedDeckCards(snapshot) {
         const clickFollowsDrag = () => Date.now() - (app.dragEndedAt || 0) < 350;
         const openingMulligan = isOpeningMulligan(snapshot);
@@ -531,8 +501,7 @@ export function createGameController(ui, cardStack) {
             stackEl.querySelectorAll('.deck-revealed-card[data-deck-card-id]').forEach((cardEl) => {
                 const cardId = cardEl.dataset.deckCardId;
                 if (!cardId) return;
-                const playable = !openingMulligan && app.playableCardSet.has(cardId);
-                if (playable) {
+                if (!openingMulligan && app.playableCardSet.has(cardId)) {
                     cardEl.classList.add('draggable');
                     cardEl.addEventListener('pointerdown', (event) => {
                         beginPointerDrag(event, cardEl, { type: 'play', cardId });
@@ -541,14 +510,6 @@ export function createGameController(ui, cardStack) {
                 cardEl.addEventListener('click', (event) => {
                     event.stopPropagation();
                     if (clickFollowsDrag()) return;
-                    if (playable) {
-                        if (app.selectedCardId === cardId) {
-                            clearTapSelection();
-                            return;
-                        }
-                        selectHandCard(cardEl, cardId);
-                        return;
-                    }
                     openInspector(findCardById(snapshot, cardId));
                 });
             });
@@ -562,6 +523,12 @@ export function createGameController(ui, cardStack) {
         ui.oppChips.querySelectorAll('.opp-chip[data-player-id]').forEach((chip) => {
             chip.addEventListener('click', () => {
                 const playerId = chip.dataset.playerId;
+                // Sandbox mode: the chip is the way into that rival's zones,
+                // mana and crowns (there is no rival strip in an FFA game).
+                if (sandboxTools.isActive()) {
+                    sandboxTools.openSeat(Number(playerId));
+                    return;
+                }
                 const cards = (snapshot.underworld && snapshot.underworld[playerId]) || [];
                 if (!cards.length) {
                     flashStatus(`${chip.dataset.playerName || 'Rival'}'s underworld is empty.`);
@@ -590,6 +557,18 @@ export function createGameController(ui, cardStack) {
                 scrollLaneIntoView(Number(dot.dataset.locationId));
             });
         });
+    }
+
+    // A remote player just played a card (LAN): fly it in from their side, the
+    // same face-down-then-flip motion the AI uses. Origin is the 2P opponent
+    // hand, or that rival's chip in an FFA game.
+    function animateOpponentPlay(actorId, cardId) {
+        const chipEl = ui.oppChips && ui.oppChips.querySelector(`.opp-chip[data-player-id="${actorId}"]`);
+        const originEl = (chipEl && chipEl.offsetParent) ? chipEl : ui.oppHand;
+        if (!originEl) return;
+        const rect = originEl.getBoundingClientRect();
+        if (!rect.width) return;
+        animateCardPlay(cardId, rect, { flip: true });
     }
 
     // Fly a copy of the played card from the source rect onto its new spot on
@@ -694,6 +673,9 @@ export function createGameController(ui, cardStack) {
         // The fourth crown ends the game: the game-over animation replaces the
         // regular round-crown animation for that final round.
         const gameEnded = fresh.some((e) => String(e || '').startsWith('game_result:'));
+        // Cap simultaneous removal effects so a chain (e.g. the flood banishing
+        // a whole board) can't spawn dozens of ghosts at once on mobile.
+        let fxBudget = 8;
         for (const entry of fresh) {
             const raw = String(entry || '');
             const parts = raw.split(':');
@@ -703,15 +685,23 @@ export function createGameController(ui, cardStack) {
                 // any seat's round win banks — not just whoever happens to be
                 // holding the device when the entry lands.
                 const roundWinner = Number(parts[2]);
-                if (isLocalGame() ? localSeats().includes(roundWinner) : roundWinner === you) {
+                // A sandbox crown is not earned — it may have been typed in.
+                if (!isSandbox() && (isLocalGame() ? localSeats().includes(roundWinner) : roundWinner === you)) {
                     addCrowns(1);
                     if (app.statsMeta) questOnRoundWon();
                 }
                 if (!gameEnded) animateRoundResult(raw);
             } else if (raw.startsWith('play_card:')) {
-                if (Number(parts[1]) === you && app.statsMeta) {
+                const actor = Number(parts[1]);
+                if (actor === you && app.statsMeta) {
                     if (parts[2]) playedCardIds.add(parts[2]);
                     questOnCardPlayed(cardTypeCtx(knownCard(snapshot, parts[2])));
+                } else if (actor !== you && isLanGame() && parts[2]) {
+                    // A remote player's card arrives via a background state poll
+                    // with no animation of its own; fly it in from their side so
+                    // the opponent's turn reads as live (the AI path animates in
+                    // aiMove — this is the LAN equivalent).
+                    animateOpponentPlay(actor, parts[2]);
                 }
             } else if (raw.startsWith('game_result:')) {
                 recordFinishedGame(raw, snapshot);
@@ -723,12 +713,28 @@ export function createGameController(ui, cardStack) {
                 // "Banish X enemy beings": a rival losing a being counts.
                 const ctx = cardTypeCtx(knownCard(snapshot, parts[2]));
                 if (Number(parts[1]) !== you && ctx.isBeing && app.statsMeta) questOnCardBanished();
+                if (fxBudget-- > 0) animateBanish(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('second_death:')) {
+                if (fxBudget-- > 0) {
+                    animateBanish(parts[2], Number(parts[1]), { label: 'DESTROYED', glyph: '☠', cls: 'fx-banish fx-second-death' });
+                }
+            } else if (raw.startsWith('discard:')) {
+                if (fxBudget-- > 0) animateToUnderworld(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('bury:')) {
+                if (fxBudget-- > 0) {
+                    animateToUnderworld(parts[2], Number(parts[1]), { label: 'BURIED', cls: 'fx-bury' });
+                }
             } else if (raw.startsWith('revive:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardRevived();
+                animateRevive(parts[2], Number(parts[1]));
             } else if (raw.startsWith('move_card:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardMoved();
+                animateMove(parts[2]);
             } else if (raw.startsWith('monster_defeated:')) {
                 if (Number(parts[1]) === you && app.statsMeta) questOnMonsterDefeated();
+                if (fxBudget-- > 0) animateDefeat(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('use_ability:')) {
+                animateEffect(parts[2]);
             } else if (raw.startsWith('mulligan_keep:')) {
                 if (aiIds().includes(Number(parts[1])) && Number(parts[2]) > 0) {
                     animateOpponentMulligan(Number(parts[2]));
@@ -934,6 +940,251 @@ export function createGameController(ui, cardStack) {
         const done = () => ghost.remove();
         anim.addEventListener('finish', done);
         anim.addEventListener('cancel', done);
+    }
+
+    // --- Board event animations -------------------------------------------
+    // Defeat / banish / revive / discard / bury / move / effect-trigger all
+    // read from action_history and play a short throwaway animation. Events
+    // that *remove* a card lean on the rects captured in rerender(); events
+    // that keep or add one (revive, move, effect) use the live DOM element.
+
+    function captureBoardRects() {
+        const map = new Map();
+        if (!ui.lanes) return map;
+        ui.lanes.querySelectorAll('.card[data-board-card-id]').forEach((el) => {
+            const id = el.getAttribute('data-board-card-id');
+            if (!id) return;
+            const rect = el.getBoundingClientRect();
+            if (rect.width) map.set(id, { rect, node: el.cloneNode(true) });
+        });
+        return map;
+    }
+
+    // A card's current (or just-vacated) board slot, plus a clonable node.
+    function boardCardFx(cardId) {
+        const live = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (live) {
+            const rect = live.getBoundingClientRect();
+            if (rect.width) return { rect, node: live.cloneNode(true) };
+        }
+        const prev = app.prevBoardRects && app.prevBoardRects.get(cardId);
+        if (prev) return { rect: prev.rect, node: prev.node.cloneNode(true) };
+        return null;
+    }
+
+    // Where departing cards drift: the owner's underworld pile.
+    function underworldRect(playerId) {
+        const el = Number(playerId) === cfg().player_id ? ui.yourUnderworld : ui.oppUnderworld;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return rect.width ? rect : null;
+    }
+
+    function fxGhost(rect, node, cls) {
+        const ghost = document.createElement('div');
+        ghost.className = `fx-ghost ${cls || ''}`.trim();
+        ghost.style.left = `${rect.left}px`;
+        ghost.style.top = `${rect.top}px`;
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+        if (node) {
+            node.style.visibility = '';
+            ghost.appendChild(node);
+        }
+        document.body.appendChild(ghost);
+        return ghost;
+    }
+
+    function fxLabel(rect, text, cls) {
+        const label = document.createElement('div');
+        label.className = `fx-label ${cls || ''}`.trim();
+        label.textContent = text;
+        label.style.left = `${rect.left + rect.width / 2}px`;
+        label.style.top = `${rect.top + rect.height / 2}px`;
+        document.body.appendChild(label);
+        const anim = label.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 },
+                { transform: 'translate(-50%, -95%) scale(1)', opacity: 1, offset: 0.28 },
+                { transform: 'translate(-50%, -150%) scale(1)', opacity: 1, offset: 0.72 },
+                { transform: 'translate(-50%, -195%) scale(0.92)', opacity: 0 },
+            ],
+            { duration: 1150, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' }
+        );
+        const done = () => label.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    function fxBurst(rect, glyph, cls) {
+        const burst = document.createElement('div');
+        burst.className = `fx-burst ${cls || ''}`.trim();
+        burst.textContent = glyph;
+        burst.style.left = `${rect.left + rect.width / 2}px`;
+        burst.style.top = `${rect.top + rect.height / 2}px`;
+        document.body.appendChild(burst);
+        const anim = burst.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.2) rotate(-12deg)', opacity: 0 },
+                { transform: 'translate(-50%, -50%) scale(1.5) rotate(6deg)', opacity: 1, offset: 0.4 },
+                { transform: 'translate(-50%, -50%) scale(1.15) rotate(0deg)', opacity: 0 },
+            ],
+            { duration: 720, easing: 'ease-out' }
+        );
+        const done = () => burst.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A monster is defeated: the card flares, shudders, then collapses away.
+    function animateDefeat(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, 'fx-defeat');
+        fxBurst(fx.rect, '💥', 'fx-burst-defeat');
+        fxLabel(fx.rect, 'DEFEATED', 'fx-label-defeat');
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1)', opacity: 1 },
+                { transform: 'translate(-5px,0) rotate(-4deg) scale(1.05)', filter: 'brightness(2) saturate(1.5)', opacity: 1, offset: 0.14 },
+                { transform: 'translate(5px,0) rotate(4deg) scale(1.02)', filter: 'brightness(1.6) saturate(1.3)', opacity: 1, offset: 0.28 },
+                { transform: 'translate(-3px,4px) rotate(-2deg) scale(0.96)', filter: 'brightness(0.7) grayscale(0.5)', opacity: 0.85, offset: 0.45 },
+                { transform: 'translate(0,44px) rotate(10deg) scale(0.55)', filter: 'brightness(0.2) grayscale(1)', opacity: 0 },
+            ],
+            { duration: 900, easing: 'ease-in' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A being is banished/exiled: it lifts, spins and dissolves in a haze.
+    function animateBanish(cardId, ownerId, opts = {}) {
+        if (!window.Element.prototype.animate) return;
+        const { label = 'BANISHED', glyph = '✦', cls = 'fx-banish' } = opts;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, cls);
+        fxBurst(fx.rect, glyph, 'fx-burst-banish');
+        fxLabel(fx.rect, label, 'fx-label-banish');
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1) blur(0)', opacity: 1 },
+                { transform: 'translate(0,-16px) rotate(4deg) scale(1.04)', filter: 'brightness(1.5) blur(0)', opacity: 0.95, offset: 0.3 },
+                { transform: 'translate(0,-52px) rotate(-6deg) scale(0.7)', filter: 'brightness(1.2) blur(3px)', opacity: 0.4, offset: 0.7 },
+                { transform: 'translate(0,-84px) rotate(-12deg) scale(0.4)', filter: 'brightness(1) blur(8px)', opacity: 0 },
+            ],
+            { duration: 850, easing: 'cubic-bezier(0.3, 0.1, 0.2, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A card is discarded or buried: it tumbles toward the owner's underworld.
+    function animateToUnderworld(cardId, ownerId, opts = {}) {
+        if (!window.Element.prototype.animate) return;
+        const { label = 'DISCARDED', cls = 'fx-discard', labelCls = 'fx-label-discard' } = opts;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        const ghost = fxGhost(fx.rect, fx.node, cls);
+        fxLabel(fx.rect, label, labelCls);
+        const uw = underworldRect(ownerId);
+        const cx = fx.rect.left + fx.rect.width / 2;
+        const cy = fx.rect.top + fx.rect.height / 2;
+        const dx = uw ? (uw.left + uw.width / 2 - cx) : 0;
+        const dy = uw ? (uw.top + uw.height / 2 - cy) : 64;
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
+                { transform: `translate(${dx * 0.3}px, ${dy * 0.3 - 8}px) rotate(8deg) scale(0.9)`, opacity: 0.95, offset: 0.35 },
+                { transform: `translate(${dx}px, ${dy}px) rotate(22deg) scale(0.4)`, opacity: 0 },
+            ],
+            { duration: 780, easing: 'cubic-bezier(0.4, 0.1, 0.6, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A being is revived: it rises from the underworld onto its slot, aglow.
+    function animateRevive(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const target = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (!target) return;
+        const endRect = target.getBoundingClientRect();
+        if (!endRect.width) return;
+        const uw = underworldRect(ownerId);
+        const ghost = fxGhost(endRect, target.cloneNode(true), 'fx-revive');
+        target.style.visibility = 'hidden';
+        fxBurst(endRect, '✨', 'fx-burst-revive');
+        fxLabel(endRect, 'REVIVED', 'fx-label-revive');
+        const startX = uw ? (uw.left + uw.width / 2 - (endRect.left + endRect.width / 2)) : 0;
+        const startY = uw ? (uw.top + uw.height / 2 - (endRect.top + endRect.height / 2)) : 64;
+        const anim = ghost.animate(
+            [
+                { transform: `translate(${startX}px, ${startY}px) scale(0.4)`, filter: 'brightness(0.6) drop-shadow(0 0 0 rgba(120,255,180,0))', opacity: 0 },
+                { transform: `translate(${startX * 0.4}px, ${startY * 0.4}px) scale(0.8)`, filter: 'brightness(1.6) drop-shadow(0 0 14px rgba(120,255,180,0.8))', opacity: 1, offset: 0.5 },
+                { transform: 'translate(0,0) scale(1.06)', filter: 'brightness(1.4) drop-shadow(0 0 18px rgba(120,255,180,0.7))', opacity: 1, offset: 0.8 },
+                { transform: 'translate(0,0) scale(1)', filter: 'brightness(1) drop-shadow(0 0 0 rgba(120,255,180,0))', opacity: 1 },
+            ],
+            { duration: 820, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' }
+        );
+        const done = () => { target.style.visibility = ''; ghost.remove(); };
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A card is moved to another lane: it slides from its old slot to the new one.
+    function animateMove(cardId) {
+        if (!window.Element.prototype.animate) return;
+        const prev = app.prevBoardRects && app.prevBoardRects.get(cardId);
+        if (!prev) return;
+        const target = ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`);
+        if (!target) return;
+        const endRect = target.getBoundingClientRect();
+        if (!endRect.width) return;
+        // Only worth a slide if the slot actually changed.
+        if (Math.abs(prev.rect.left - endRect.left) < 4 && Math.abs(prev.rect.top - endRect.top) < 4) return;
+        fxLabel(endRect, 'MOVED', 'fx-label-move');
+        animateCardPlay(cardId, prev.rect);
+    }
+
+    // An effect triggers: the source card pulses with an expanding ring.
+    function animateEffect(cardId) {
+        if (!window.Element.prototype.animate) return;
+        const el = (ui.lanes && ui.lanes.querySelector(`.card[data-board-card-id="${CSS.escape(cardId)}"]`))
+            || (ui.hand && ui.hand.querySelector(`.hand-card[data-card-id="${CSS.escape(cardId)}"]`));
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) return;
+        const ring = document.createElement('div');
+        ring.className = 'fx-ring';
+        ring.style.left = `${rect.left + rect.width / 2}px`;
+        ring.style.top = `${rect.top + rect.height / 2}px`;
+        ring.style.width = `${rect.width}px`;
+        ring.style.height = `${rect.height}px`;
+        ring.style.transform = 'translate(-50%, -50%)';
+        document.body.appendChild(ring);
+        const ringAnim = ring.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.55)', opacity: 0.9 },
+                { transform: 'translate(-50%, -50%) scale(1.5)', opacity: 0 },
+            ],
+            { duration: 620, easing: 'ease-out' }
+        );
+        const doneRing = () => ring.remove();
+        ringAnim.addEventListener('finish', doneRing);
+        ringAnim.addEventListener('cancel', doneRing);
+        el.animate(
+            [
+                { filter: 'brightness(1)' },
+                { filter: 'brightness(1.7) drop-shadow(0 0 10px rgba(255, 214, 120, 0.9))', offset: 0.4 },
+                { filter: 'brightness(1)' },
+            ],
+            { duration: 620, easing: 'ease-in-out' }
+        );
     }
 
     // Game over: a full-screen animation distinct from the round-crown one,
@@ -1483,7 +1734,10 @@ export function createGameController(ui, cardStack) {
     function seatLabel(seatId) {
         const order = seatOrder();
         const idx = order.indexOf(String(seatId));
-        return `Player ${idx >= 0 ? idx + 1 : seatId}`;
+        const seatNo = idx >= 0 ? idx + 1 : seatId;
+        const names = cfg().local_seat_names;
+        const custom = Array.isArray(names) && idx >= 0 ? (names[idx] || '').trim() : '';
+        return custom || `Player ${seatNo}`;
     }
 
     // Full-screen opaque hand-off: hides the outgoing player's board until the
@@ -1533,13 +1787,16 @@ export function createGameController(ui, cardStack) {
                 if (app.lanPollFails >= 2) startReconnect();
                 else scheduleLanPoll();
             }
-        }, 1500);
+        }, 900);
     }
     async function lanTick() {
         const snap = app.snapshot;
-        if (!snap || snap.phase === 'GAME_OVER') { clearLanPoll(); return; }
+        if (!snap || snap.phase === 'GAME_OVER') { setOpponentTurn(false); clearLanPoll(); return; }
         const you = cfg().player_id;
         if (actorSeat(snap) === you) {
+            // Our turn (or a choice aimed at us): drop the waiting indicator and
+            // stop polling; the board is now ours to drive.
+            setOpponentTurn(false);
             clearLanPoll();
             if (!snap.pending_choice) {
                 const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
@@ -1547,6 +1804,10 @@ export function createGameController(ui, cardStack) {
             }
             return;
         }
+        // A remote seat is acting. Unlike an AI game there's no local loop to flip
+        // the End Turn button, so do it here: show the disabled "Opponent's Turn"
+        // (or "Opponent choosing…") state and keep polling the host for plays.
+        setOpponentTurn(true);
         scheduleLanPoll();
     }
 
@@ -1595,6 +1856,13 @@ export function createGameController(ui, cardStack) {
                 if (drawAction) {
                     await doAction(drawAction);
                     continue;
+                }
+                // In a sandbox a seat can be left with no driver at all (its AI
+                // switched off, and not the seat you play). Nothing will happen
+                // until somebody takes it, so say so instead of stalling mutely.
+                const idle = actorSeat(snap);
+                if (isSandbox() && idle !== c.player_id) {
+                    flashStatus(`${seatLabel(idle)} has no one playing it — take that seat or switch its AI back on (🧪 card).`);
                 }
                 return;
             }
@@ -1654,12 +1922,27 @@ export function createGameController(ui, cardStack) {
         await endTurnNow(snap);
     }
 
+    // Who drives which seat in a fresh match: seat 1 is the player, every other
+    // seat is an AI rival (none in a hotseat game). Sandbox mode can hand these
+    // roles around, so a new match has to put them back.
+    function resetSeatRoles() {
+        app.humanPlayerId = 1;
+        app.aiPlayerIds = app.localSeatIds && app.localSeatIds.length
+            ? []
+            : (app.deckNames
+                ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
+                : [app.aiPlayerId]);
+        app.sandboxToolsHidden = false;
+        sandboxTools.closeAll();
+    }
+
     async function newGame() {
         app.matchId = `snap-match-${Math.floor(Math.random() * 1_000_000)}`;
         app.seed = Math.floor(Math.random() * 1_000_000_000);
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
         app.passPending = false;
+        resetSeatRoles();
         // Rematch starts back at the first local seat holding the device.
         if (app.localSeatIds && app.localSeatIds.length) app.activeSeatId = Number(app.localSeatIds[0]);
         // Every match (menu, rematch, debug) is against rated rivals drawn
@@ -1676,7 +1959,7 @@ export function createGameController(ui, cardStack) {
     // edited) deck against the given AI deck(s), in a fresh match. statsMeta
     // identifies the profile deck so the result can be recorded. `decks`
     // (one deck name per seat, human first) switches the match to FFA.
-    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null }) {
+    async function startGame({ deckAName, deckACards, deckBName, decks = null, statsMeta = null, localSeatIds = null, localSeatNames = null }) {
         // Starting any non-LAN match tears down lingering LAN state first —
         // releases the host Wi-Fi lock, clears the rejoin session, stops polling.
         endLanGame();
@@ -1687,12 +1970,15 @@ export function createGameController(ui, cardStack) {
         // Local pass-and-play: all seats are human, no AI to drive. Otherwise
         // seats 2..n are AI rivals.
         app.localSeatIds = Array.isArray(localSeatIds) && localSeatIds.length ? localSeatIds.map(Number) : null;
+        // Player display names for the local seats (index 0 = seat 1), used by
+        // the hand-off overlay, score panel, and history. Null outside hotseat.
+        app.localSeatNames = app.localSeatIds && Array.isArray(localSeatNames) && localSeatNames.length
+            ? localSeatNames.map((n) => String(n))
+            : null;
+        // Seat roles start from scratch, so a sandbox that handed a seat to the
+        // AI (or took the AI's seat over) cannot leak into the next match.
+        resetSeatRoles();
         app.activeSeatId = app.localSeatIds ? Number(app.localSeatIds[0]) : app.humanPlayerId;
-        app.aiPlayerIds = app.localSeatIds
-            ? []
-            : (app.deckNames
-                ? Array.from({ length: app.deckNames.length - 1 }, (_, i) => i + 2)
-                : [app.aiPlayerId]);
         app.statsMeta = statsMeta;
         playedCardIds = new Set();
         try {
@@ -1837,6 +2123,141 @@ export function createGameController(ui, cardStack) {
         setReconnectOverlay(false);
     }
 
+    // --- Sandbox mode --------------------------------------------------------
+    // A regular match against the AI can be turned into an editable position
+    // from the bottom of the History sheet. The match itself stays a normal
+    // match on the server (same board, same rules, same AI); what changes is
+    // that every zone becomes visible and editable, seats can change hands, and
+    // the result stops counting towards the profile.
+
+    function isSandbox() {
+        return Boolean(app.snapshot && app.snapshot.sandbox);
+    }
+
+    // Only a solo game against the AI can become a sandbox: editing a LAN match
+    // would desync the other players, and a hotseat game already passes control
+    // around by design.
+    function canOfferSandbox() {
+        return Boolean(app.snapshot) && !isLanGame() && !isLocalGame();
+    }
+
+    const sandboxTools = createSandboxTools(ui, {
+        getSnapshot: () => app.snapshot,
+        getConfig: cfg,
+        toolsVisible: () => !app.sandboxToolsHidden,
+        seatLabel,
+        laneLabel: (locationId) => laneLabel(locationId, ((app.snapshot && app.snapshot.locations) || []).length),
+        flashStatus,
+        openInspector,
+        aiSeats: () => aiIds(),
+        mutate: (ops) => sandboxCall('/api/sandbox/mutate', { ops }),
+        undo: () => sandboxCall('/api/sandbox/undo', {}),
+        controlSeat: sandboxControlSeat,
+        setAiSeat: sandboxSetAiSeat,
+        aiPlayNow: (playerId) => aiMove(Number(playerId)),
+        hideTools: () => {
+            app.sandboxToolsHidden = true;
+            sandboxTools.closeAll();
+            rerender(app.snapshot);
+        },
+    });
+
+    // Every sandbox call answers with an ordinary snapshot, so the board is
+    // re-rendered exactly like it is after a play. Returns true when the edit
+    // landed, so the open menu knows whether to rebuild itself.
+    async function sandboxCall(path, body) {
+        const c = cfg();
+        try {
+            const data = await postJson(path, { match_id: c.match_id, player_id: c.player_id, ...body });
+            if (data && data.snapshot) rerender(data.snapshot);
+            return true;
+        } catch (error) {
+            flashStatus(error);
+            return false;
+        }
+    }
+
+    async function activateSandbox() {
+        if (!canOfferSandbox()) return;
+        const c = cfg();
+        // A sandbox is a scratchpad: from here on the match must not move the
+        // rating, bank crowns, or advance quests.
+        app.statsMeta = null;
+        app.sandboxToolsHidden = false;
+        const ok = await sandboxCall('/api/sandbox/enable', { seed: c.seed, decks: c.decks });
+        if (ok) {
+            flashStatus('Sandbox mode on — tap the 🧪 card in your hand.');
+            sandboxTools.openToolbox();
+        }
+    }
+
+    // Switch which seat the player drives. Every other seat goes back to the AI
+    // so the match keeps flowing (the toolbox can switch a seat's AI off again
+    // to drive two seats by hand), and the board is re-fetched from the new
+    // seat's point of view — its hand included.
+    async function sandboxControlSeat(playerId) {
+        const seatId = Number(playerId);
+        app.humanPlayerId = seatId;
+        app.activeSeatId = seatId;
+        app.aiPlayerIds = seatOrder().map(Number).filter((id) => id !== seatId);
+        app.aiPlayerIds.forEach(ensureSeatElo);
+        try {
+            await refresh();
+            flashStatus(`You are now playing ${seatLabel(seatId)}.`);
+        } catch (error) {
+            flashStatus(error);
+        }
+    }
+
+    function sandboxSetAiSeat(playerId, on) {
+        const seatId = Number(playerId);
+        if (seatId === cfg().player_id) return; // the seat you drive is yours
+        const seats = aiIds().filter((id) => id !== seatId);
+        app.aiPlayerIds = on ? seats.concat([seatId]) : seats;
+        if (on) ensureSeatElo(seatId);
+        // Re-rendering restarts the turn loop, so switching the AI on for the
+        // seat that is waiting to act makes it move right away.
+        rerender(app.snapshot);
+    }
+
+    // A seat handed to the AI mid-match still plays at a rated strength, like
+    // the rivals a match starts with.
+    function ensureSeatElo(playerId) {
+        app.aiElos = app.aiElos || {};
+        if (!Number.isFinite(app.aiElos[playerId])) {
+            app.aiElos[playerId] = sampleAiElo(app.playerElo ?? getElo());
+        }
+    }
+
+    // The switch at the bottom of the History sheet, and its explanation.
+    function updateSandboxSwitch() {
+        if (!ui.sandboxSwitchRow) return;
+        const offer = canOfferSandbox();
+        ui.sandboxSwitchRow.classList.toggle('hidden', !offer);
+        if (!offer) return;
+        const on = isSandbox();
+        const hidden = Boolean(app.sandboxToolsHidden);
+        ui.sandboxSwitchLabel.textContent = !on
+            ? 'Activate Sandbox Mode'
+            : (hidden ? 'Show the sandbox tools' : 'Hide the sandbox tools');
+        ui.btnSandboxSwitch.classList.toggle('active', on && !hidden);
+        ui.sandboxSwitchHint.textContent = on
+            ? 'Tap the 🧪 card in your hand for the toolbox, the 🧪 button on a location to edit it, or any pile to look inside and change it. This match no longer counts towards your rating, crowns or quests.'
+            : 'Edit any zone, switch which seat you play, or hand a seat to the AI. A sandbox match no longer counts towards your rating, crowns or quests.';
+    }
+
+    function onSandboxSwitch() {
+        closeSheet(ui.historyModal);
+        if (!isSandbox()) {
+            activateSandbox();
+            return;
+        }
+        app.sandboxToolsHidden = !app.sandboxToolsHidden;
+        if (app.sandboxToolsHidden) sandboxTools.closeAll();
+        rerender(app.snapshot);
+        if (!app.sandboxToolsHidden) sandboxTools.openToolbox();
+    }
+
     function openSheet(modal) {
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
@@ -1863,8 +2284,17 @@ export function createGameController(ui, cardStack) {
             };
         }
         ui.btnHistory.onclick = () => {
+            // The sandbox switch lives under the log, so refresh it every time
+            // the sheet opens (not only when the board re-renders).
+            updateSandboxSwitch();
             openSheet(ui.historyModal);
         };
+        if (ui.btnSandboxSwitch) {
+            ui.btnSandboxSwitch.onclick = () => {
+                onSandboxSwitch();
+            };
+        }
+        sandboxTools.init();
         ui.btnCloseSettings.onclick = () => {
             closeSheet(ui.settingsModal);
         };
@@ -1933,7 +2363,17 @@ export function createGameController(ui, cardStack) {
                 const snap = app.snapshot;
                 if (!snap) return;
                 const c = cfg();
-                const playerId = String(side === 'player' ? c.player_id : c.ai_player_id);
+                // In a 2P game "the opponent" is whichever seat isn't the viewer
+                // — sandbox mode can hand the viewer either side.
+                const rival = (snap.players || []).map(Number).find((pid) => pid !== c.player_id);
+                const playerId = String(side === 'player' ? c.player_id : (rival ?? c.ai_player_id));
+                // Sandbox mode turns the pile into an editable list instead of a
+                // read-only one (and an empty pile is still worth opening: you
+                // can put cards into it).
+                if (sandboxTools.isActive()) {
+                    sandboxTools.openZone(Number(playerId), 'underworld');
+                    return;
+                }
                 const cards = (snap.underworld && snap.underworld[playerId]) || [];
                 if (!cards.length) return;
                 cardStack.open({
@@ -1950,12 +2390,6 @@ export function createGameController(ui, cardStack) {
                 });
             });
         });
-        document.addEventListener('click', (event) => {
-            if (!app.selectedCardId) return;
-            if (event.target.closest('.hand-card') || event.target.closest('.lane')) return;
-            clearTapSelection();
-        });
-
         // No initial refresh: the app opens on the main menu and the first
         // match is created by its Play button.
     }

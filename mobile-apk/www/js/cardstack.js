@@ -1,4 +1,5 @@
 import { anecdoteText, cardArtTag, effectLabel, escapeHtml, typeLabel } from './helpers.js';
+import { ensureCardCatalog, hideCardRefPreview, linkifyEffectHtml, upgradeEffectElements } from './cardrefs.js';
 import { unpeekAll } from './peek.js';
 
 // A reusable card-stack popup. Three modes:
@@ -42,7 +43,7 @@ export function createCardStackPopup(ui) {
                 </div>
                 ${type ? `<div class="card-type">${escapeHtml(type)}</div>` : ''}
                 <div class="stackpop-media">${cardArtTag(card.name, 'stackpop-art')}</div>
-                <div class="stackpop-effect tiny">${escapeHtml(effectLabel(card))}</div>
+                <div class="stackpop-effect tiny" data-effect-source="${escapeHtml(effectLabel(card))}" data-effect-self="${escapeHtml(card.name || '')}">${linkifyEffectHtml(effectLabel(card), card.name)}</div>
                 ${anecdoteText(card) ? `<div class="stackpop-anecdote tiny">${escapeHtml(anecdoteText(card))}</div>` : ''}
             </div>
         `;
@@ -136,6 +137,9 @@ export function createCardStackPopup(ui) {
         }
         ui.stackList.innerHTML = cards.map((entry, i) => cardTile(entry, i)).join('')
             || '<div class="tiny stackpop-empty">No cards here.</div>';
+        // Tiles render before the card catalog is necessarily loaded; link the
+        // card names in their effect text as soon as it is.
+        ensureCardCatalog().then(() => upgradeEffectElements(ui.stackList));
         renderExtras(opts.extras, opts.note);
 
         soloView = mode === 'view' && cards.length === 1;
@@ -143,6 +147,11 @@ export function createCardStackPopup(ui) {
 
         ui.stackConfirm.classList.toggle('hidden', mode !== 'select' && mode !== 'multi-select');
         ui.stackExtras.classList.toggle('hidden', !(opts.extras && opts.extras.length) && !opts.note);
+        // The ✕ only closes a read-only view. A 'select'/'multi-select' popup is
+        // a mandatory decision resolved by confirming (or an explicit skip
+        // option), so hide ✕ there — dismissing it would strand the pending
+        // choice and freeze the game.
+        if (ui.stackClose) ui.stackClose.classList.toggle('hidden', mode !== 'view');
 
         const tiles = ui.stackList.querySelectorAll('.stackpop-card');
         if (opts.expandAll) {
@@ -167,6 +176,7 @@ export function createCardStackPopup(ui) {
 
     function close() {
         if (!ui.stackModal.classList.contains('open')) return;
+        hideCardRefPreview();
         unpeekAll();
         ui.stackModal.classList.remove('open');
         ui.stackModal.setAttribute('aria-hidden', 'true');
@@ -210,10 +220,21 @@ export function createCardStackPopup(ui) {
         if (cb) cb(chosen);
     });
 
-    ui.stackClose.addEventListener('click', close);
+    ui.stackClose.addEventListener('click', () => {
+        // The ✕ is only shown for read-only views (see open()); ignore stray
+        // clicks in a mandatory 'select'/'multi-select' so the choice can't be
+        // stranded (which would freeze the game).
+        if (mode === 'view') close();
+    });
     ui.stackModal.addEventListener('click', (event) => {
         // Solo card view: any tap that isn't an action button dismisses it.
-        if (event.target === ui.stackModal || (soloView && !event.target.closest('.stackpop-extra'))) close();
+        if (soloView && !event.target.closest('.stackpop-extra')) { close(); return; }
+        // A tap on the backdrop dismisses a read-only view, but must NOT
+        // dismiss a mandatory 'select'/'multi-select' decision: closing it
+        // leaves the pending choice unresolved with no UI to resolve it, which
+        // freezes the game (e.g. Clay's "choose a card to draw"). The player
+        // uses the 👁 Board button to study the board without dismissing.
+        if (event.target === ui.stackModal && mode === 'view') close();
     });
 
     return { open, close, isOpen };

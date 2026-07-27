@@ -11,6 +11,9 @@ export function createAppState() {
         // holding the device — it drives both the controller identity and the
         // viewer perspective, and swaps on a "pass the device" hand-off.
         localSeatIds: null,
+        // Editable display name per local seat (index 0 = seat 1); null outside
+        // pass-and-play, where blank entries fall back to "Player N".
+        localSeatNames: null,
         activeSeatId: 1,
         // LAN multiplayer: when true, other seats are remote humans on the
         // network. lanHostBase is the authoritative host's URL (null = we are
@@ -43,7 +46,6 @@ export function createAppState() {
         aiElos: {},
         lastEloDelta: null,
         snapshot: null,
-        selectedCardId: null,
         legalPlaySet: new Set(),
         legalMoveChoiceSet: new Set(),
         movableChoiceCardSet: new Set(),
@@ -60,6 +62,12 @@ export function createAppState() {
         // entries added after these markers; reset per match.
         animMatchId: null,
         historySeen: 0,
+        // Board card rects captured before each re-render, so removal effects
+        // (defeat, banish, discard, bury, move) can animate at the old slot.
+        prevBoardRects: new Map(),
+        // Sandbox mode: the server owns whether a match *is* a sandbox
+        // (snapshot.sandbox); this only hides the tools without ending it.
+        sandboxToolsHidden: false,
     };
 }
 
@@ -71,9 +79,11 @@ export function buildConfig(ui, app) {
     const youId = localSeats ? Number(app.activeSeatId ?? localSeats[0]) : app.humanPlayerId;
     // Local hotseat and LAN games have no AI seats — every other seat is a human.
     const noAi = Boolean(localSeats) || Boolean(app.lanGame);
+    // An explicit (possibly empty) list wins: sandbox mode can leave a match
+    // with no AI seat at all, which must not fall back to "seat 2 is the AI".
     const aiIds = noAi
         ? []
-        : (app.aiPlayerIds && app.aiPlayerIds.length ? app.aiPlayerIds : [app.aiPlayerId]);
+        : (Array.isArray(app.aiPlayerIds) ? app.aiPlayerIds.map(Number) : [app.aiPlayerId]);
     return {
         match_id: app.matchId,
         player_id: youId,
@@ -81,6 +91,7 @@ export function buildConfig(ui, app) {
         ai_player_ids: aiIds,
         viewer_player_id: youId,
         local_seat_ids: localSeats,
+        local_seat_names: localSeats && app.localSeatNames && app.localSeatNames.length ? app.localSeatNames : null,
         seed: app.seed,
         deck_a: app.deckAName || ui.deckA.value.trim() || app.defaultDeckA,
         deck_b: app.deckBName || ui.deckB.value.trim() || app.defaultDeckB,

@@ -92,6 +92,9 @@ export function createMenuController(ui, game, cardStack) {
     // pick from stock decks so their card lists resolve from the catalog.
     let passPlayCount = 2;
     let passPlaySeatDecks = [];
+    // Editable display name per seat (index 0 = seat 1). Empty entries fall back
+    // to "Player N" so a name is never required.
+    let passPlaySeatNames = [];
 
     // LAN multiplayer setup: discovery + lobby state while the LAN sheet is open.
     let lanEnabled = false;
@@ -104,8 +107,6 @@ export function createMenuController(ui, game, cardStack) {
     // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
     // my_pid, num_players, seats, started }.
     let lanLobby = null;
-    let lanHostCount = 2;
-    let lanDeckId = null;
 
     // Embedding models, fitted once on the loaded collection.
     let cardSearch = null; // (query) -> [{card, score}] | null
@@ -521,9 +522,14 @@ export function createMenuController(ui, game, cardStack) {
         for (let i = 0; i < passPlayCount; i += 1) {
             const row = document.createElement('div');
             row.className = 'passplay-seat';
-            const label = document.createElement('span');
-            label.className = 'passplay-seat-label';
-            label.textContent = `Player ${i + 1}`;
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.className = 'passplay-seat-name';
+            name.maxLength = 20;
+            name.placeholder = `Player ${i + 1}`;
+            name.value = passPlaySeatNames[i] || '';
+            name.setAttribute('aria-label', `Name for player ${i + 1}`);
+            name.addEventListener('input', () => { passPlaySeatNames[i] = name.value; });
             const select = document.createElement('select');
             select.className = 'passplay-deck';
             for (const deckId of seatDeckChoices(i)) {
@@ -534,7 +540,7 @@ export function createMenuController(ui, game, cardStack) {
                 select.appendChild(opt);
             }
             select.addEventListener('change', () => { passPlaySeatDecks[i] = select.value; });
-            row.appendChild(label);
+            row.appendChild(name);
             row.appendChild(select);
             ui.passPlaySeats.appendChild(row);
         }
@@ -553,6 +559,12 @@ export function createMenuController(ui, game, cardStack) {
         }
         const names = [seat0.name, ...seatIds.slice(1)];
         const localSeatIds = Array.from({ length: count }, (_, i) => i + 1);
+        // Player display names for the hand-off overlay, history, and score
+        // panel. Blank entries default to "Player N" at render time.
+        const localSeatNames = Array.from({ length: count }, (_, i) => {
+            const entered = (passPlaySeatNames[i] || '').trim();
+            return entered || `Player ${i + 1}`;
+        });
         applyCosmetics(seatIds[0]);
         closePassPlay();
         pushNav({ screen: 'game' });
@@ -563,6 +575,7 @@ export function createMenuController(ui, game, cardStack) {
             deckBName: names[1],
             decks: count > 2 ? names : null,
             localSeatIds,
+            localSeatNames,
         });
     }
 
@@ -616,7 +629,8 @@ export function createMenuController(ui, game, cardStack) {
     // Deck config for whichever deck the player picked for LAN. Custom/edited
     // decks ride along as an explicit card list so the host can register them.
     function lanDeckConfig() {
-        const deckId = lanDeckId || getSelectedDeckId();
+        // LAN reuses whichever deck is selected for vs-AI play — no separate picker.
+        const deckId = getSelectedDeckId();
         const cfg = deckMatchConfig(deckId, stockIds(deckId));
         const ids = deckCardIds(deckId, stockIds(deckId));
         return { deckId, name: cfg.name, cards: cfg.cards, size: ids.length };
@@ -629,7 +643,6 @@ export function createMenuController(ui, game, cardStack) {
         // native bridge) first; if that fails there is nothing to host with.
         if (isLocalBridge() && !(await ensureLanServer())) return;
         await ensureCollection();
-        lanDeckId = getSelectedDeckId();
         ui.lanModal.classList.add('open');
         ui.lanModal.setAttribute('aria-hidden', 'false');
         renderLan();
@@ -664,7 +677,7 @@ export function createMenuController(ui, game, cardStack) {
             try {
                 const data = await lanPost('', '/api/lan/peers', {});
                 lanPeers = data.peers || [];
-                if (!lanLobby) renderLan();
+                if (!lanLobby) renderLanPeers();
             } catch (error) { /* transient; keep polling */ }
             lanPeersTimer = setTimeout(tick, 2000);
         };
@@ -681,11 +694,12 @@ export function createMenuController(ui, game, cardStack) {
             return;
         }
         try {
+            // No headcount is sent: the lobby stays open and the match starts
+            // with whoever has joined (>= 2 players) when the host is ready.
             const data = await lanPost('', '/api/lan/host', {
                 name: lanPlayerName(),
                 deck_name: deck.name,
                 deck_cards: deck.cards,
-                num_players: lanHostCount,
             });
             const lobby = data.lobby;
             lanLobby = {
@@ -776,7 +790,7 @@ export function createMenuController(ui, game, cardStack) {
         const lobby = lanLobby;
         closeLan({ keepDiscovery: true });
         lanLobby = lobby; // keep for the in-game trade UI (rosters/host base)
-        applyCosmetics(lanDeckId || getSelectedDeckId());
+        applyCosmetics(getSelectedDeckId());
         pushNav({ screen: 'game' });
         showScreen('game');
         game.startLanGame({ hostBase, matchId, seed, playerId, decks });
@@ -791,17 +805,22 @@ export function createMenuController(ui, game, cardStack) {
             const rows = seats.map((s) => `
                 <div class="lan-seat"><span>${escapeHtml(s.name)}</span>
                     <span class="tiny">seat ${s.player_id}</span></div>`).join('');
-            const empty = Math.max(0, lanLobby.num_players - seats.length);
-            const emptyRows = Array.from({ length: empty }, () =>
-                '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for a player…</span></div>').join('');
+            // The lobby has no fixed size: show a single "waiting" hint while
+            // there's still room, rather than padding to a chosen headcount.
+            const hasRoom = seats.length < (lanLobby.num_players || 5);
+            const waitingRow = hasRoom
+                ? '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for players to join…</span></div>'
+                : '';
             const canStart = lanLobby.is_host && seats.length >= 2;
+            const startLabel = seats.length >= 2 ? `Start ${seats.length}-player game` : 'Need at least 2 players';
             ui.lanBody.innerHTML = `
                 <div class="lan-section-title">${lanLobby.is_host ? 'Your lobby' : 'Joined lobby'}
-                    (${seats.length}/${lanLobby.num_players})</div>
-                <div class="lan-seats">${rows}${emptyRows}</div>
+                    (${seats.length} in)</div>
+                <div class="lan-seats">${rows}${waitingRow}</div>
                 ${lanLobby.is_host
                     ? `<button class="btn" id="lanStartBtn" ${canStart ? '' : 'disabled'} style="width:100%;margin-top:12px;">
-                            ${canStart ? 'Start Game' : 'Need at least 2 players'}</button>`
+                            ${startLabel}</button>
+                       <p class="tiny" style="margin-top:8px;">The game starts with everyone in the lobby. Start whenever you're ready.</p>`
                     : '<p class="tiny" style="margin-top:12px;">Waiting for the host to start…</p>'}
                 <button class="btn ghost" id="lanLeaveBtn" style="width:100%;margin-top:8px;">Leave lobby</button>`;
             const startBtn = document.getElementById('lanStartBtn');
@@ -809,43 +828,44 @@ export function createMenuController(ui, game, cardStack) {
             document.getElementById('lanLeaveBtn').addEventListener('click', leaveLanLobby);
             return;
         }
-        // Otherwise: name + deck + host/join browser.
-        const deckOptions = allDeckIds().map((id) =>
-            `<option value="${id}" ${id === (lanDeckId || getSelectedDeckId()) ? 'selected' : ''}>${escapeHtml(deckDisplayName(id))}</option>`).join('');
-        const openPeers = lanPeers.filter((p) => p.lobby);
-        const peerRows = openPeers.length
-            ? openPeers.map((p, i) => `
-                <div class="lan-peer" data-peer-idx="${i}">
-                    <div><div class="lan-peer-name">${escapeHtml(p.name)}</div>
-                        <div class="tiny">${escapeHtml(p.lobby.host_name)}'s game · ${p.lobby.joined}/${p.lobby.num_players}</div></div>
-                    <button class="btn small" data-join-idx="${i}">Join</button>
-                </div>`).join('')
-            : '<p class="tiny">No open games found yet. Make sure everyone is on the same Wi‑Fi.</p>';
+        // Otherwise: name + host/join browser. LAN uses the deck already selected
+        // for vs-AI play, so there is no separate deck picker here.
         ui.lanBody.innerHTML = `
             <label class="lan-label">Your name</label>
             <input id="lanNameInput" class="lan-input" value="${escapeHtml(name)}" maxlength="20" />
-            <label class="lan-label">Your deck</label>
-            <select id="lanDeckSelect" class="lan-input">${deckOptions}</select>
             <div class="lan-section-title">Host a game</div>
-            <div class="passplay-count" id="lanHostCount"></div>
+            <p class="tiny" style="margin:0 0 8px;">Open a lobby and start once others join — 2 to 5 players.</p>
             <button class="btn" id="lanHostBtn" style="width:100%;">Host game</button>
             <div class="lan-section-title">Join a game ${lanEnabled ? '' : '(starting discovery…)'}</div>
-            <div class="lan-peers">${peerRows}</div>`;
+            <div class="lan-peers" id="lanPeers"></div>`;
         const nameInput = document.getElementById('lanNameInput');
-        nameInput.addEventListener('change', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
-        document.getElementById('lanDeckSelect').addEventListener('change', (e) => { lanDeckId = e.target.value; });
-        const countRow = document.getElementById('lanHostCount');
-        for (let n = 2; n <= 5; n += 1) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = `passplay-count-chip ${n === lanHostCount ? 'active' : ''}`;
-            btn.textContent = `${n}P`;
-            btn.addEventListener('click', () => { lanHostCount = n; renderLan(); });
-            countRow.appendChild(btn);
-        }
+        // Persist on every keystroke so a later re-render never loses in-progress text.
+        nameInput.addEventListener('input', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
         document.getElementById('lanHostBtn').addEventListener('click', hostLan);
+        renderLanPeers();
+    }
+
+    function lanPeerRowsHtml() {
+        const openPeers = lanPeers.filter((p) => p.lobby);
+        return openPeers.length
+            ? openPeers.map((p, i) => `
+                <div class="lan-peer" data-peer-idx="${i}">
+                    <div><div class="lan-peer-name">${escapeHtml(p.name)}</div>
+                        <div class="tiny">${escapeHtml(p.lobby.host_name)}'s game · ${p.lobby.joined} ${p.lobby.joined === 1 ? 'player' : 'players'} in</div></div>
+                    <button class="btn small" data-join-idx="${i}">Join</button>
+                </div>`).join('')
+            : '<p class="tiny">No open games found yet. Make sure everyone is on the same Wi‑Fi.</p>';
+    }
+
+    // Refresh only the peer list. Peer polling must not rebuild the whole panel,
+    // or it would tear down the focused name input and dismiss the keyboard.
+    function renderLanPeers() {
+        const container = document.getElementById('lanPeers');
+        if (!container) return;
+        container.innerHTML = lanPeerRowsHtml();
+        const openPeers = lanPeers.filter((p) => p.lobby);
         openPeers.forEach((p, i) => {
-            const btn = ui.lanBody.querySelector(`[data-join-idx="${i}"]`);
+            const btn = container.querySelector(`[data-join-idx="${i}"]`);
             if (btn) btn.addEventListener('click', () => joinLan(p));
         });
     }

@@ -1196,8 +1196,7 @@ select {
     box-shadow: inset 0 0 0 1px rgba(45, 212, 169, 0.35);
 }
 
-.lane-row.drop-target,
-.lane-row.tap-target {
+.lane-row.drop-target {
     border-color: rgba(23, 182, 255, 0.95);
     background: rgba(8, 31, 51, 0.95);
     box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35);
@@ -1370,22 +1369,9 @@ select {
     box-shadow: 0 0 8px rgba(210, 60, 60, 0.55);
 }
 
-.card-body,
-.hand-body {
+.card-body {
     display: grid;
     gap: 2px;
-}
-
-.hand-body {
-    display: none;
-    min-height: 145px;
-    padding: 8px 6px;
-    align-content: start;
-    border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(8, 22, 35, 0.82);
-    line-height: 1.35;
-    color: #d9edf9;
 }
 
 .hand-wrap {
@@ -1528,11 +1514,6 @@ select {
     box-shadow: 0 0 0 2px rgba(45, 212, 169, 0.25), 0 0 14px rgba(45, 212, 169, 0.22);
 }
 
-.deck-revealed-card.selected {
-    border-color: rgba(23, 182, 255, 0.95);
-    box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35), 0 0 16px rgba(23, 182, 255, 0.3);
-}
-
 .deck-revealed-card.dragging {
     opacity: 0.45;
 }
@@ -1616,28 +1597,22 @@ select {
 }
 
 .hand-card.unplayable {
-    opacity: 0.72;
-    filter: saturate(0.8);
+    opacity: 1;
     cursor: default;
+}
+
+/* In mulligan mode every card must read as fully solid — you are judging what
+   to keep, not what is playable — so no dimming ever applies here. The render
+   already withholds the "unplayable" class during a mulligan; this guard keeps
+   the cards opaque even if any other state briefly tries to fade them. */
+.hand-card.mulligan-mode,
+.hand-card.mulligan-mode.unplayable {
+    opacity: 1;
+    filter: none;
 }
 
 .hand-card:active {
     cursor: grabbing;
-}
-
-.hand-card.selected {
-    z-index: 60 !important;
-    transform: translateY(-10px) scale(1.04);
-    border-color: rgba(23, 182, 255, 0.95);
-    box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.35), 0 16px 28px rgba(0, 0, 0, 0.42);
-}
-
-.hand-card.selected .hand-media {
-    display: none;
-}
-
-.hand-card.selected .hand-body {
-    display: grid;
 }
 
 .hand-card.mulligan-mode {
@@ -1788,6 +1763,23 @@ select {
     display: none;
 }
 
+/* How a card gets played, stated on the card itself: drag it to a lane. */
+.inspector-hint {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(45, 212, 169, 0.45);
+    background: rgba(16, 62, 55, 0.55);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    color: #b6f0e0;
+}
+
+.inspector-hint.hidden {
+    display: none;
+}
+
 .inspector-action {
     width: 100%;
     padding: 12px;
@@ -1892,16 +1884,9 @@ select {
     }
 
     .hand-art,
-    .hand-media,
-    .hand-body {
+    .hand-media {
         min-height: 0;
         height: 112px;
-    }
-
-    .hand-body {
-        height: auto;
-        min-height: 112px;
-        padding: 6px;
     }
 
     .opp-card-back {
@@ -2061,6 +2046,76 @@ select {
     border: 1px solid rgba(255, 255, 255, 0.24);
     background: var(--card-back-opponent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* --- Board event effects -------------------------------------------------- */
+/* Ghosts, labels and bursts spawned for defeat / banish / revive / discard /
+   bury / move / effect-trigger events. Each is a throwaway element appended to
+   <body>, animated via the Web Animations API, then removed on finish. */
+
+.fx-ghost {
+    position: fixed;
+    z-index: 385;
+    pointer-events: none;
+    border-radius: 8px;
+    will-change: transform, opacity, filter;
+}
+
+.fx-ghost .card,
+.fx-ghost .hand-card {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    position: static;
+}
+
+.fx-defeat { box-shadow: 0 0 26px rgba(255, 74, 60, 0.7); }
+.fx-banish { box-shadow: 0 0 30px rgba(178, 116, 255, 0.75); }
+.fx-second-death { box-shadow: 0 0 30px rgba(120, 60, 200, 0.85); }
+.fx-discard { box-shadow: 0 12px 24px rgba(0, 0, 0, 0.55); }
+.fx-bury { box-shadow: 0 14px 26px rgba(0, 0, 0, 0.62); }
+.fx-revive { box-shadow: 0 0 30px rgba(120, 255, 180, 0.8); }
+
+.fx-label {
+    position: fixed;
+    z-index: 387;
+    pointer-events: none;
+    font-family: "Barlow", "Segoe UI", sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #f3f9ff;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 12px currentColor;
+}
+
+.fx-label-defeat { color: #ff6a5a; }
+.fx-label-banish { color: #cba6ff; }
+.fx-label-discard { color: #cfe0ef; }
+.fx-label-revive { color: #8effc0; }
+.fx-label-move { color: #7fd4ff; }
+
+.fx-burst {
+    position: fixed;
+    z-index: 388;
+    pointer-events: none;
+    font-size: 40px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+.fx-burst-defeat { text-shadow: 0 0 18px rgba(255, 90, 60, 0.9); }
+.fx-burst-banish { text-shadow: 0 0 18px rgba(178, 116, 255, 0.9); }
+.fx-burst-revive { text-shadow: 0 0 18px rgba(120, 255, 180, 0.9); }
+
+.fx-ring {
+    position: fixed;
+    z-index: 384;
+    pointer-events: none;
+    border-radius: 12px;
+    border: 3px solid rgba(255, 214, 120, 0.9);
+    box-shadow: 0 0 18px rgba(255, 214, 120, 0.7), inset 0 0 14px rgba(255, 214, 120, 0.5);
 }
 
 /* --- Matchup statistics (settings sheet) ---------------------------------- */
@@ -3902,6 +3957,24 @@ details[open]>.cos-summary::before {
     color: var(--ink);
 }
 
+.passplay-seat-name {
+    flex: 0 0 110px;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    background: rgba(6, 20, 33, 0.6);
+    border: 1px solid rgba(120, 180, 220, 0.28);
+    border-radius: 10px;
+    padding: 8px 10px;
+}
+
+.passplay-seat-name:focus {
+    outline: none;
+    border-color: rgba(23, 182, 255, 0.6);
+    box-shadow: 0 0 0 2px rgba(23, 182, 255, 0.18);
+}
+
 .passplay-deck {
     flex: 1;
     min-width: 0;
@@ -4177,6 +4250,27 @@ details[open]>.cos-summary::before {
     border-color: rgba(255, 200, 79, 0.5);
 }
 
+/* FFA lanes wear their number: the board is a ring of outposts around a
+   shared center, so "left/middle/right" means nothing there. */
+.lane-number {
+    flex: none;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(159, 195, 218, 0.45);
+    background: rgba(8, 24, 38, 0.85);
+    color: #cfe4f2;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.lane-number-center {
+    border-color: rgba(255, 200, 79, 0.75);
+    color: #ffd98a;
+    background: rgba(48, 34, 8, 0.85);
+}
+
 .lane-value-badge {
     color: #ffc84f;
     font-size: 14px;
@@ -4237,25 +4331,32 @@ details[open]>.cos-summary::before {
     padding: 6px 0 2px;
 }
 
+/* The carousel dots carry the same lane numbers as the lane heads, so
+   "Lane 3" on screen and "lane 3" in a prompt point at the same place. */
 .lane-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
     border: 1px solid rgba(150, 175, 195, 0.5);
-    background: rgba(150, 175, 195, 0.25);
-    padding: 0;
+    background: rgba(150, 175, 195, 0.2);
+    color: #c3d7e6;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0 5px;
     cursor: pointer;
 }
 
 .lane-dot.reachable {
     border-color: rgba(255, 200, 79, 0.9);
-    background: rgba(255, 200, 79, 0.55);
+    background: rgba(255, 200, 79, 0.35);
+    color: #ffe6ae;
     box-shadow: 0 0 6px rgba(255, 200, 79, 0.35);
 }
 
 .lane-dot.center {
-    width: 11px;
-    height: 11px;
+    border-color: rgba(255, 200, 79, 0.9);
+    color: #ffd98a;
 }
 
 /* --- FFA score panel (3-5 crown tracks) -------------------------------------- */
@@ -4683,4 +4784,336 @@ details[open]>.cos-summary::before {
 
 .update-banner-close:hover {
     color: var(--ink);
+}
+
+/* --- Card references in effect text (js/cardrefs.js) ----------------------- */
+/* A card name printed inside another card's effect ("Draw 'Kur-Jara' and
+   'Gala-Tura'") is a chip: hover it on desktop, tap it on touch, and the
+   referenced card shows in a floating preview. */
+.card-ref {
+    display: inline;
+    margin: 0;
+    padding: 0 1px;
+    border: 0;
+    border-bottom: 1px dashed rgba(255, 200, 79, 0.75);
+    border-radius: 3px;
+    background: none;
+    color: #ffd98a;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.card-ref:hover,
+.card-ref:focus-visible {
+    background: rgba(255, 200, 79, 0.16);
+    border-bottom-style: solid;
+    outline: none;
+}
+
+.card-ref-preview {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 2600;
+    display: none;
+    width: min(260px, 78vw);
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(20, 55, 85, 0.99), rgba(11, 33, 53, 0.99));
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+.card-ref-preview.open {
+    display: grid;
+    gap: 8px;
+}
+
+.card-ref-preview-art {
+    display: block;
+    width: 100%;
+    max-height: 34vh;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.card-ref-preview-effect {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #d9edf9;
+}
+
+/* --- Sandbox mode ------------------------------------------------------------
+   Sandbox mode deliberately adds nothing to the layout: it is the same game
+   screen with a tool card at the end of the hand, a small 🧪 button on every
+   location, and clickable mana gems / crowns. Everything else happens in one
+   sheet (.sbx-menu), styled like the rest of the game's sheets. */
+
+.sandbox-card {
+    cursor: pointer;
+    border-color: rgba(120, 230, 200, 0.7);
+    background: linear-gradient(165deg, rgba(16, 74, 68, 0.95), rgba(8, 38, 44, 0.95));
+    box-shadow: 0 0 14px rgba(84, 226, 195, 0.25);
+}
+
+.sandbox-card .stat-badge.cost,
+.sandbox-card .stat-badge.power {
+    background: rgba(10, 46, 44, 0.9);
+    border-color: rgba(120, 230, 200, 0.6);
+}
+
+.sandbox-card-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 145px;
+    font-size: 62px;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+
+.sandbox-card-hint {
+    font-size: 10px;
+    line-height: 1.25;
+    color: #a9e8dc;
+    text-align: center;
+}
+
+/* The per-location tool button sits in the lane header, next to the lock/star. */
+.lane-sandbox-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    border: 1px solid rgba(120, 230, 200, 0.6);
+    background: rgba(10, 46, 44, 0.9);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.lane-sandbox-btn:hover {
+    border-color: rgba(150, 255, 225, 0.95);
+}
+
+/* Anything the sandbox makes tappable gets the same faint teal hint. */
+.sandbox-mode .sbx-target {
+    cursor: pointer;
+}
+
+.sandbox-mode .peek-pile.sbx-target,
+.sandbox-mode .peek-hand.sbx-target {
+    outline: 1px dashed rgba(120, 230, 200, 0.5);
+    outline-offset: 3px;
+    border-radius: 10px;
+}
+
+.sandbox-mode .mana-gem.sbx-target:hover,
+.sandbox-mode .vp-dot.sbx-target:hover {
+    filter: brightness(1.5);
+}
+
+/* The switch at the bottom of the History sheet. */
+.history-foot {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.16);
+    display: grid;
+    gap: 6px;
+}
+
+.sandbox-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.sandbox-switch.active {
+    border-color: rgba(120, 230, 200, 0.75);
+    color: #b8f4e6;
+}
+
+/* The one sheet every sandbox menu renders into. */
+.sbx-hint {
+    margin: 0 0 10px;
+    color: var(--muted);
+}
+
+.sbx-menu {
+    display: grid;
+    gap: 12px;
+}
+
+.sbx-group {
+    display: grid;
+    gap: 6px;
+}
+
+.sbx-group-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.sbx-items {
+    display: grid;
+    gap: 5px;
+}
+
+.sbx-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(6, 20, 33, 0.8);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.sbx-btn:hover:not(:disabled) {
+    border-color: rgba(120, 230, 200, 0.8);
+}
+
+.sbx-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.sbx-btn.danger {
+    border-color: rgba(255, 138, 138, 0.5);
+}
+
+.sbx-btn-icon {
+    flex: 0 0 22px;
+    font-size: 16px;
+    text-align: center;
+}
+
+.sbx-btn-text {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.sbx-btn-label {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sbx-btn-note {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.3;
+}
+
+/* A card row: used both in the menus and in the "add any card" picker. */
+.sbx-card-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(6, 20, 33, 0.8);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.sbx-card-row:hover {
+    border-color: rgba(120, 230, 200, 0.8);
+}
+
+.sbx-card-art {
+    display: block;
+}
+
+.sbx-art {
+    width: 44px;
+    border-radius: 6px;
+    display: block;
+}
+
+.sbx-card-text {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.sbx-card-name {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sbx-card-meta {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.sbx-card-effect {
+    color: #cfe6f5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbx-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #ffd67f;
+}
+
+.sbx-search {
+    width: 100%;
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(4, 14, 24, 0.9);
+    color: var(--ink);
+    font: inherit;
+}
+
+.sbx-picker-list {
+    display: grid;
+    gap: 5px;
+    max-height: 58vh;
+    overflow-y: auto;
+}
+
+.sbx-empty {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 2px;
+}
+
+/* A menu that drilled down offers "‹" next to its title. */
+.sheet-back {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(10, 25, 39, 0.85);
+    color: var(--ink);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
 }

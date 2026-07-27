@@ -20,6 +20,7 @@ src/
                              flood, troy, odin, osiris) registering each card's behavior
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
+      sandbox.py             Sandbox mode: scenario edits on a live match
       ai.py                  Search AI: greedy one-ply + positional evaluation
       policy.py              Neural featurization + torch-free inference
       training.py            Neural-network self-play training (PyTorch)
@@ -38,6 +39,16 @@ zone operations in `primitives.py`. Register interactive choices with
 `register_choice` right next to the card. Never branch on card names inside
 `transitions.py`.
 
+**Owner vs controller:** ownership is fixed by the decklist
+(`catalog.card_owner_idx`) and decides one thing only — whose hand, deck or
+underworld a card returns to when it leaves play. Control is positional
+(`primitives.controller_idx`): whoever's side of a location a card stands on
+commands it, so a card that switched sides is counted, targeted, buffed and
+activated for its new camp, and every "your"/"friendly" check reads the side.
+Infiltrators (`CardBehavior.ability_follows_owner` — Sinon, Dolon, the Trojan
+Horse, the Greek Soldiers) are the single exception: control of them passes,
+but their own printed ability keeps resolving for the player who sent them.
+
 **Editing engine/webapp/card data:** run `python scripts/sync_mobile.py`
 afterwards — the copies under `mobile-apk/` are generated, never edit them by
 hand. `tests/test_mobile_sync.py` fails if they drift.
@@ -51,6 +62,8 @@ uv run --group dev pytest
 - `tests/test_playout_invariants.py` — seeded random playouts of all finished
   deck pairings: termination, no crashes, capacity and card-conservation.
 - `tests/test_card_effects.py` — targeted tests for individual card behaviors.
+- `tests/test_sandbox.py` — sandbox mode: zone/stat edits, undo, and switching a
+  live match into a sandbox.
 - `tests/test_mobile_sync.py` — mobile tree matches the masters.
 
 ## Android APK (fully offline)
@@ -96,6 +109,30 @@ Known limitation: mirror matches (both players using the same deck) are not
 supported — card ownership is derived from decklists, so both sides would
 resolve to player 1.
 
+## Windows desktop build
+
+Every push to `main` also packages a standalone `MyTCG.exe` (PyInstaller +
+the FastAPI server, built by `.github/workflows/build-apk.yml`) and attaches
+it to the same GitHub Release as the APK. Double-clicking it starts the
+server and opens `/play` in your default browser — no Python install needed.
+
+To build it locally on Windows:
+
+```powershell
+uv sync --group desktop
+uv run python scripts/make_windows_icon.py
+uv run pyinstaller --noconfirm --onefile --name MyTCG `
+    --icon build/icon.ico --paths . `
+    --add-data "tables;tables" --add-data "decklists;decklists" `
+    --add-data "images/color;images/color" `
+    --add-data "src/server/webapp;src/server/webapp" `
+    --add-data "src/server/model;src/server/model" `
+    --collect-all uvicorn --collect-all fastapi --collect-all starlette `
+    scripts/desktop_app.py
+```
+
+-> `dist/MyTCG.exe`
+
 ## AI opponents
 
 The mobile app and the server share the same AI code in the engine:
@@ -128,6 +165,62 @@ combo evaluation landed in `engine/ai.py`): minimax beats search 68%, search
 beats neural 93% and random 99%. The neural policy is still the weakest
 trained tier — see "Training the AI & balancing the decks" below to improve
 it.
+
+## Sandbox mode (playtesting inside a real game)
+
+Sandbox mode is not a separate mode with a screen of its own: it is a switch you
+throw *inside* a normal game against the AI. Open the **history sheet** (the
+clock icon, top right), scroll past the log, and tap **🧪 Activate Sandbox
+Mode**. The board, the rules and the AI stay exactly what they were — the game
+screen just grows a few affordances:
+
+- **A sandbox card at the end of your hand.** Tap it for the toolbox: add any
+  printed card to your hand, draw, discard, hand a seat to the AI or take one
+  over, undo the last step, or open any seat's zones.
+- **Every pile is editable.** Tap your own or the opponent's hand, deck or
+  underworld to see what is really in it (decks in draw order) and act on a card:
+  return it to hand, put it on top of or under a deck, send it to the underworld,
+  put it in play on either side of any location, banish it out of the game, nudge
+  its power, or flip it face down. Adding a card the other seat already owns mints
+  a copy that plays exactly like the original.
+- **A 🧪 button on every location.** Add a card to either side, move or banish
+  what is standing there, clear a side, or protect the location from the flood.
+- **Mana and crowns, one by one.** Tap a mana gem to spend or refresh exactly
+  that one (and the seat's cap follows if you go past it); tap a crown in the
+  score panel to set the count. Both also have a menu with ±1 / refresh / spend
+  all.
+- **Switch control or let the AI play.** Taking a seat over flips the board to
+  its point of view — its hand included — and hands every other seat to the AI so
+  the match keeps flowing. Any seat's AI can be switched off to drive two seats by
+  hand, and "let the AI play this turn" plays a single move for the seat you hold.
+- **Undo.** Every edit, play and AI move is one step on the match's undo stack.
+- **Escape hatches**: skip the mulligan, cancel a pending choice, and play on
+  after a match has already ended.
+
+Nothing in a sandbox match touches the profile: no Elo, no crowns banked, no
+quests, no matchup stats. The switch stays in the history sheet to put the tools
+away again (the edits stay); the next match is a normal match.
+
+Implementation: `engine/sandbox.py` (the edits and the omniscient view, shared
+with Android), `services/game_service.py` (`enable_sandbox`, `apply_sandbox_ops`,
+`undo_sandbox`), `api/endpoints.py` (`/api/sandbox/*`), `webapp/js/sandbox.js`
+(the tools). Headless use:
+
+```python
+from server.engine import sandbox
+from server.services import GameService
+
+service = GameService()
+service.create_match("scratch", seed=7, deck_a="epic_of_gilgamesh", deck_b="siege_of_troy")
+service.enable_sandbox("scratch")
+service.apply_sandbox_ops("scratch", [
+    {"op": "skip_mulligan"},
+    {"op": "add_card", "card_name": "Gilgamesh", "zone": "location", "player_id": 1, "location_id": 1},
+    {"op": "set_stat", "stat": "mana_pool", "player_id": 1, "value": 7},
+])
+print(sandbox.reveal_all(service._matches["scratch"].state)["seats"][0]["hand"])
+service.undo_sandbox("scratch")
+```
 
 ## Training the AI & balancing the decks
 
@@ -415,7 +508,9 @@ uv run uvicorn src.server.main:app --host 0.0.0.0 --port 8000 --reload
 
 - Set `checkpoint_path` to a model file you want to use.
 - Click `Start / Refresh`.
-- Drag cards from your hand onto your side of a location to play them.
+- Drag cards from your hand onto your side of a location to play them. Dragging
+  is the only way to play a card; tapping one opens it full size instead, so a
+  stray tap can never commit a play.
 - Card visuals are rendered from SVG assets in `output_svgs/` (served at `/assets/cards`).
 - Use `Run AI Move` (single action) or `Run AI Turn` (AI continues until your turn).
 

@@ -51,6 +51,35 @@ def test_random_playout_invariants(deck_a: str, deck_b: str, seed: int) -> None:
     assert max(state.victory_points) >= 4 or state.phase == "GAME_OVER"
 
 
+@pytest.mark.parametrize(
+    "decks",
+    [
+        FINISHED[:3],
+        FINISHED[:4],
+        FINISHED[2:6],
+    ],
+)
+@pytest.mark.parametrize("seed", [0, 1])
+def test_ffa_random_playout_invariants(decks: list[str], seed: int) -> None:
+    """Free-for-all tables run the same gauntlet: several seats hold heroes and
+    monsters at once, and cards cross sides (the Trojan Horse), which is where
+    the ownership rules around monsters and immortality get exercised."""
+    state = create_initial_state(seed=seed, player_ids=tuple(range(1, len(decks) + 1)), decks=decks)
+    rng = random.Random(seed * 31337 + 5)
+
+    steps = 0
+    while not is_terminal(state) and steps < MAX_STEPS:
+        actions = legal_actions(state)
+        assert actions, f"stuck at step {steps}, phase={state.phase}"
+        state = apply_action(state, rng.choice(actions))
+        steps += 1
+        for location in state.locations:
+            total = sum(len(stack) for stack in location.stacks)
+            assert total <= location.capacity
+
+    assert is_terminal(state), f"game did not terminate in {MAX_STEPS} steps"
+
+
 @pytest.mark.parametrize("deck_a,deck_b", [("epic_of_gilgamesh", "the_flood"), ("the_flood", "inannas_descent")])
 @pytest.mark.parametrize("seed", [0, 1, 2, 3])
 def test_every_legal_action_applies(deck_a: str, deck_b: str, seed: int) -> None:

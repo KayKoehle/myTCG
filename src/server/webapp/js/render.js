@@ -10,7 +10,7 @@ import {
     findCardById,
     handTitleScale,
     humanLegalActions,
-    laneLabel,
+    laneNumberLabel,
     ordinalLabel,
     preloadCardArt,
     stackPower,
@@ -176,7 +176,8 @@ function renderCards(cards, options = {}) {
 }
 
 function renderVpTrack(vpValue) {
-    const totalDots = Math.max(3, Number(vpValue) || 0);
+    // The game ends at 4 crowns, so always show at least 4 slots as placeholders.
+    const totalDots = Math.max(4, Number(vpValue) || 0);
     const filled = Number(vpValue) || 0;
     const crownIcon = (isFilled) => {
         const fill = isFilled ? '#ffc84f' : 'rgba(255,255,255,0.12)';
@@ -280,9 +281,11 @@ function renderActionHistory(snapshot, ui, config) {
     // now, so the shared history names every seat instead.
     const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
 
+    const localNames = Array.isArray(config.local_seat_names) ? config.local_seat_names : [];
+    const localSeatName = (i) => (localNames[i] && String(localNames[i]).trim()) || `Player ${i + 1}`;
     const nameByPid = new Map(players.map((pid, i) => [
         pid,
-        isLocal ? `Player ${i + 1}` : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
+        isLocal ? localSeatName(i) : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
     ]));
     const relabelPlayers = (text) => {
         let out = String(text);
@@ -408,7 +411,9 @@ function renderActionHistory(snapshot, ui, config) {
 export function layoutHand(ui) {
     const handEl = ui.hand;
     if (!handEl) return;
-    const cards = Array.from(handEl.querySelectorAll('.hand-card[data-card-id]'));
+    // Every card in the row, including the sandbox card (which carries no card
+    // id — it is a tool, not a game card).
+    const cards = Array.from(handEl.querySelectorAll('.hand-card'));
     if (!cards.length) {
         // An empty hand keeps its space (the CSS min-height stays in charge)
         // so the layout doesn't jump when the last card is played.
@@ -449,7 +454,12 @@ export function updateEndTurnButton(ui, app, config) {
 
     if (opponentTurn) {
         ui.btnEndTurn.disabled = true;
-        ui.btnEndTurn.textContent = "Opponent's Turn";
+        // Distinguish "it's simply their turn" from "they've been handed a
+        // decision and everyone is waiting on it" so a remote/AI choice doesn't
+        // look like a stall.
+        const opponentChoosing = Boolean(snapshot.pending_choice)
+            && Number(snapshot.pending_choice.player_id) !== config.player_id;
+        ui.btnEndTurn.textContent = opponentChoosing ? 'Opponent choosing…' : "Opponent's Turn";
     } else {
         ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
         ui.btnEndTurn.textContent = isGameOver ? 'Rematch' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
@@ -465,6 +475,27 @@ export function updateEndTurnButton(ui, app, config) {
         'ready-endturn',
         !opponentTurn && !isGameOver && !isOpeningMulligan && canEndTurn && !hasPlay,
     );
+}
+
+// The sandbox card that sits at the end of the hand while sandbox mode is on:
+// the entry point to every tool (see js/sandbox.js). It is deliberately shaped
+// like a hand card — the whole point of sandbox mode is that the screen stays
+// the game screen.
+function renderSandboxCard() {
+    return `
+        <div class="hand-card sandbox-card" data-sandbox-card="1" title="Sandbox tools">
+            <div class="hand-card-headline">
+                <span class="stat-badge cost">🧪</span>
+                <div class="hand-title-main" style="--title-scale: 1;"><span class="hand-title-text">Sandbox</span></div>
+                <span class="stat-badge power">∞</span>
+            </div>
+            <div class="card-type">Playtest tools</div>
+            <div class="hand-media">
+                <div class="sandbox-card-art" aria-hidden="true">🧪</div>
+            </div>
+            <div class="sandbox-card-hint">Tap for add / draw / discard, seats &amp; undo</div>
+        </div>
+    `;
 }
 
 export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, cardStack }) {
@@ -497,7 +528,12 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     // Local pass-and-play: several humans share the screen, so sides are named
     // by seat ("Player 2") instead of You/Opp, and no one carries an Elo tag.
     const isLocal = Array.isArray(config.local_seat_ids) && config.local_seat_ids.length > 0;
-    const seatName = (pid) => `Player ${players.indexOf(String(pid)) + 1}`;
+    const localSeatNames = Array.isArray(config.local_seat_names) ? config.local_seat_names : [];
+    const seatName = (pid) => {
+        const idx = players.indexOf(String(pid));
+        const custom = idx >= 0 ? (localSeatNames[idx] || '').trim() : '';
+        return custom || `Player ${idx + 1}`;
+    };
     // Per-rival display info: short name, seat color class, engine side index.
     const rivalInfo = new Map(opponents.map((pid, i) => [pid, {
         name: isLocal ? seatName(pid) : (isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp'),
@@ -511,6 +547,11 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const elo = String(pid) === human ? app.playerElo : (app.aiElos || {})[Number(pid)];
         return Number.isFinite(elo) ? `<span class="score-elo">${Math.round(elo)}</span>` : '';
     };
+    // Sandbox mode: the same board, plus a tool card in the hand and a 🧪 button
+    // on every location. The server decides whether a match is a sandbox; the
+    // player can tuck the tools away again without ending the sandbox.
+    const sandboxOn = Boolean(snapshot.sandbox) && !app.sandboxToolsHidden;
+    ui.gameScreen.classList.toggle('sandbox-mode', sandboxOn);
     const mana = snapshot.mana_pool;
     const manaCap = snapshot.mana_cap || {};
     const deckSizes = snapshot.deck_sizes || {};
@@ -707,7 +748,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
         const canChoose = Number(p.player_id) === config.player_id && p.choice_kind !== 'opening_mulligan';
         const listedOptions = (p.options || []).map((opt) => ({
             value: opt,
-            label: describeChoiceOption(opt, app.cardNameById, humanSideIdx),
+            label: describeChoiceOption(opt, app.cardNameById, humanSideIdx, (snapshot.locations || []).length),
         }));
         // The old orange "Pending choice ..." banner is gone: the human sees
         // the choice modal / card-stack popup, the opponent's choices resolve
@@ -836,12 +877,22 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             }).join('<span class="lane-score-sep">·</span>')}${youCanReach ? ` / <span class="you">${yourPower}</span>` : ''}</span>`
             : `<span class="lane-score ${laneLeadClass}"><span class="opp">${oppPowers.length ? oppPowers[0].power : 0}</span> / <span class="you">${yourPower}</span></span>`;
 
+        // FFA lanes are a ring, not a left/middle/right row, so each one wears
+        // its number (the shared center is named rather than numbered) — the
+        // same label choices and prompts use.
+        const laneTag = isFfa
+            ? `<span class="lane-number ${isCenter ? 'lane-number-center' : ''}">${escapeHtml(laneNumberLabel(loc.location_id, orderedLocations.length))}</span>`
+            : '';
+
         return `
             <article class="lane ${isFfa && !youCanReach ? 'lane-locked' : ''} ${isFfa && isCenter ? 'lane-center' : ''}" data-location-id="${loc.location_id}">
                 <div class="lane-head">
+                    ${laneTag}
                     <div class="lane-head-left">${renderLaneSlots(laneSlotSegments, Number(loc.capacity) || 7)}</div>
                     ${isFfa && isCenter ? '<span class="lane-value-badge" title="Worth more when scoring">★</span>' : ''}
                     ${isFfa && !youCanReach ? '<span class="lane-lock" title="Out of your reach">🔒</span>' : ''}
+                    ${sandboxOn ? `<button class="lane-sandbox-btn" data-sandbox-lane="${loc.location_id}"
+                        aria-label="Sandbox tools for this location" title="Sandbox: move, banish, add a card">🧪</button>` : ''}
                 </div>
                 ${laneOpponents.map((pid) => laneRowHtml(loc, pid, false, isFfa && isCenter)).join('')}
                 <div class="lane-mid">${scoreHtml}</div>
@@ -857,8 +908,10 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const accessibleIds = Array.isArray(loc.accessible) && loc.accessible.length ? loc.accessible : players;
             const youCanReach = accessibleIds.includes(human);
             const isCenter = Number(loc.weight) > 1;
+            const label = laneNumberLabel(loc.location_id, orderedLocations.length);
             return `<button class="lane-dot ${youCanReach ? 'reachable' : ''} ${isCenter ? 'center' : ''}"
-                data-location-id="${loc.location_id}" aria-label="Scroll to lane"></button>`;
+                data-location-id="${loc.location_id}" aria-label="Scroll to ${escapeHtml(label)}"
+                title="${escapeHtml(label)}">${escapeHtml(isCenter ? '★' : String(Number(loc.location_id) + 1))}</button>`;
         }).join('') : '';
     }
 
@@ -892,15 +945,13 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                     <div class="hand-media">
                         ${cardArtTag(c.name, 'hand-art')}
                     </div>
-                    <div class="hand-body">
-                        <div class="tiny">${effectLabel(c)}</div>
-                    </div>
                     <div class="mulligan-x">X</div>
                     ${canActMulligan ? `<button type="button" class="mull-toggle">${app.mulliganSelected.has(c.id) ? 'Redraw' : 'Keep'}</button>` : ''}
                 </div>
             `;
         }).join('')
         : '';
+    if (sandboxOn) ui.hand.innerHTML += renderSandboxCard();
 
     // The mulligan instruction banner was removed; mulligan mode is now shown
     // purely by the red X marks on cards and the teal "Confirm mulligan" button.

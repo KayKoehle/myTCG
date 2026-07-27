@@ -37,6 +37,10 @@ BEACON_INTERVAL = 2.0  # seconds between broadcasts
 PEER_TTL = 6.0  # drop a peer not heard from within this window
 BROADCAST_ADDR = "255.255.255.255"
 
+# A match needs at least two players; the engine tops out at five seats.
+MIN_PLAYERS = 2
+MAX_PLAYERS = 5
+
 
 @dataclass
 class Peer:
@@ -51,6 +55,9 @@ class Peer:
 class Lobby:
     lobby_id: str
     host_name: str
+    # Seat capacity: the most players the lobby will admit before it stops
+    # advertising / accepting joins. The *actual* match size is whoever is
+    # seated when the host starts, so a lobby is open-ended up to this cap.
     num_players: int
     # Seat order (index 0 == player id 1). Each entry: {player_id, name, deck}.
     seats: list[dict[str, Any]] = field(default_factory=list)
@@ -64,8 +71,10 @@ class Lobby:
         return {
             "lobby_id": self.lobby_id,
             "host_name": self.host_name,
-            "num_players": self.num_players,
+            "num_players": self.num_players,  # capacity (max seats)
+            "capacity": self.num_players,
             "joined": len(self.seats),
+            "can_start": len(self.seats) >= MIN_PLAYERS,
             "seats": self.seats,
             "started": self.started,
             "match_id": self.lobby_id if self.started else None,
@@ -244,12 +253,16 @@ class LanService:
         self,
         host_name: str,
         deck_name: str,
-        num_players: int,
+        num_players: int | None = None,
         deck_cards: list[str] | None = None,
         seed: int | None = None,
     ) -> dict[str, Any]:
         lobby_id = f"lan-{uuid.uuid4().hex[:10]}"
-        num_players = max(2, min(5, int(num_players)))
+        # ``num_players`` is a capacity, not a target. Hosting without one opens
+        # the lobby to the full engine cap; the match starts with whoever has
+        # joined, so a host never has to commit to a headcount up front.
+        capacity = MAX_PLAYERS if num_players is None else int(num_players)
+        num_players = max(MIN_PLAYERS, min(MAX_PLAYERS, capacity))
         lobby = Lobby(
             lobby_id=lobby_id,
             host_name=host_name or "Host",
@@ -314,8 +327,8 @@ class LanService:
             lobby = self._lobbies.get(lobby_id)
             if lobby is None:
                 raise KeyError("Lobby not found")
-            if len(lobby.seats) < 2:
-                raise ValueError("Need at least 2 players")
+            if len(lobby.seats) < MIN_PLAYERS:
+                raise ValueError(f"Need at least {MIN_PLAYERS} players")
             if self._register_deck:
                 for deck_name, cards in lobby.custom_decks.items():
                     self._register_deck(deck_name, cards)

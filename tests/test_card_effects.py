@@ -605,3 +605,277 @@ def test_achilles_destroys_one_being_of_each_opponent():
     assert victim_1 in done.underworlds[1]
     assert victim_2 in done.underworlds[2]
     assert done.pending_choice is None
+
+
+# --- Ownership: whose heroes, whose monsters, whose beings --------------------
+
+
+def test_a_hero_who_switched_sides_defeats_the_monster_of_his_new_camp():
+    """"Defeated when you have heroes here" means heroes *you control*: a hero
+    who walked onto your side now fights for you, monsters included."""
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    defector = by_name(TROY, "Odysseus")
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, defector, 0, 0)  # p1's hero, now under p0's command
+
+    after = _resolve_monster_rewards(state, 0, 0)
+    assert lions not in after.locations[0].stacks[0]
+    assert lions in after.underworlds[0], "the monster still goes to its owner's underworld"
+    assert after.pending_choice is not None, "p0 collects the reward"
+
+
+def test_your_own_hero_who_left_no_longer_defeats_your_monster():
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    hero = by_name(GIL, "Gilgamesh")
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, hero, 0, 1)  # your hero, standing in the enemy camp
+
+    after = _resolve_monster_rewards(state, 0, 0)
+    assert lions in after.locations[0].stacks[0]
+    assert after.pending_choice is None
+
+
+def test_monster_placement_asks_who_commands_the_heroes_here():
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+
+    # A rival's hero standing on your side is yours now, so he bars the monster.
+    defector = put_in_play(state, by_name(TROY, "Odysseus"), 0, 0)
+    assert not rules._can_play_at(defector, 0, lions, 0)
+
+    # Your own hero who walked over to the enemy no longer bars anything.
+    departed = put_in_play(state, by_name(GIL, "Gilgamesh"), 0, 1)
+    assert rules._can_play_at(departed, 0, lions, 0)
+
+
+def test_mountain_lions_reward_offers_every_hero_you_command():
+    state = start_game(GIL, TROY)
+    lions = by_name(GIL, "Mountain Lions")
+    own_hero = by_name(GIL, "Gilgamesh")
+    defector = by_name(TROY, "Odysseus")     # a rival's hero on your side: yours
+    departed = by_name(GIL, "Enkidu")        # your hero on theirs: no longer yours
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, defector, 0, 0)
+    state = put_in_play(state, own_hero, 0, 0)
+    state = put_in_play(state, departed, 0, 1)
+
+    after = _resolve_monster_rewards(state, 0, 0)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "move_hero_after_monster"
+    moved_cards = {option.split("|")[0] for option in pending.options if option != "PASS"}
+    assert moved_cards == {own_hero, defector}
+
+
+def test_greek_soldiers_raid_everything_the_defenders_command():
+    """The raid hits "their beings" — everything on that side, including a
+    card of yours that had already walked over and now serves them."""
+    state = start_game(TROY, GIL)
+    soldiers = by_name(TROY, "Greek Soldiers")
+    defected_earlier = by_name(TROY, "Sinon the Deceiver")  # power -2, theirs now
+    defender = by_name(GIL, "Clay")                         # power 1
+    state = put_in_play(state, defected_earlier, 0, 1)
+    state = put_in_play(state, defender, 0, 1)
+    state = put_in_play(state, soldiers, 0, 0)
+
+    after = rules.move_card(state, soldiers, 0, 1)
+    pending = after.pending_choice
+    assert pending is not None and pending.choice_kind == "greek_soldiers_destroy_weaklings"
+    assert pending.chooser_idx == 0, "the raid is still run by the soldiers' owner"
+    targets = {cid for option in pending.options if option != "NONE" for cid in option.split("|")}
+    assert targets == {defected_earlier, defender}
+
+
+# --- Immortality ---------------------------------------------------------------
+
+
+def test_gilgamesh_and_enkidu_lose_immortality_when_one_switches_sides():
+    """The bond is between one player's pair: once Gilgamesh serves the enemy
+    he is not Enkidu's twin any more, and both become mortal."""
+    state = start_game(GIL, TROY)
+    gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
+    state = put_in_play(state, gil, 0, 1)
+    state = put_in_play(state, enk, 0, 0)
+
+    assert not rules.is_immortal(state, gil, 0)
+    assert not rules.is_immortal(state, enk, 0)
+    assert gil not in rules.banish_card(state, gil).locations[0].stacks[1]
+    assert gil in rules.banish_card(state, gil).underworlds[0], "back to his owner"
+
+    # Standing together again under one command restores it.
+    reunited = put_in_play(state, gil, 0, 0)
+    assert rules.is_immortal(reunited, gil, 0)
+    assert rules.is_immortal(reunited, enk, 0)
+
+
+def test_mandatory_banish_skips_immortal_beings():
+    """"Banish one of their beings if possible" must not be dodgeable by
+    naming an immortal: an untouchable board offers no options at all."""
+    state = start_game(INA, GIL)
+    inanna = by_name(INA, "Inanna, Goddess of Love and War")
+    gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
+    state = put_in_underworld(state, inanna, 0)
+    state = put_in_play(state, gil, 0, 1)
+    state = put_in_play(state, enk, 0, 1)
+
+    after = rules.revive_from_underworld(state, 0, 0, lambda cid: cid == inanna)
+    assert after.pending_choice is None, "no legal victim, so no choice to make"
+
+    # Break the bond and the mortal half is a legal target again.
+    apart = rules.move_card(state, enk, 2)
+    after = rules.revive_from_underworld(apart, 0, 0, lambda cid: cid == inanna)
+    pending = after.pending_choice
+    assert pending is not None and set(pending.options) == {gil, enk}
+
+
+# --- Trigger ordering -----------------------------------------------------------
+
+
+def test_monster_reward_does_not_overwrite_a_pending_choice():
+    """Ninsun's move wakes Ishtar *and* hands Gilgamesh to a waiting monster;
+    the monster's reward must queue behind Ishtar's demand, not replace it."""
+    state = start_game(GIL, TROY)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")
+    gil, ishtar = by_name(GIL, "Gilgamesh"), by_name(GIL, "Ishtar")
+    lions = by_name(GIL, "Mountain Lions")
+    state = put_in_play(state, gil, 1, 0)
+    state = put_in_play(state, ishtar, 1, 0)          # Ishtar tops p0's stack at lane 1
+    state = put_in_play(state, lions, 0, 0)
+    state = put_in_play(state, by_name(TROY, "Greek Soldiers"), 0, 1)
+    state = put_in_play(state, ninsun, 0, 0)
+
+    after = _apply_on_enter(state, 0, ninsun, 0)
+    assert after.pending_choice is not None
+    assert after.pending_choice.choice_kind == "ishtar_banish_small_enemy"
+    assert lions in after.locations[0].stacks[0], "the monster waits for the choice to settle"
+
+    # Once Ishtar is paid, the monster sweep still runs.
+    resolved = apply_action(after, ChooseOptionAction(
+        player_id=after.player_ids[1], option_id=after.pending_choice.options[0],
+    ))
+    assert lions in resolved.underworlds[0]
+
+
+def test_ninsun_brings_gilgamesh_home_to_her_own_side():
+    state = start_game(GIL, TROY)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")
+    gil = by_name(GIL, "Gilgamesh")
+    state = put_in_play(state, gil, 1, 0)   # her son, one location over
+    state = put_in_play(state, ninsun, 0, 0)
+
+    after = _apply_on_enter(state, 0, ninsun, 0)
+    assert gil in after.locations[0].stacks[0]
+    assert gil not in after.locations[1].stacks[0]
+
+
+def test_ninsun_cannot_recall_a_gilgamesh_who_switched_sides():
+    """He is not "your" Gilgamesh while he fights for the enemy."""
+    state = start_game(GIL, TROY)
+    ninsun = by_name(GIL, "Ninsun, Mother of Gilgamesh")
+    gil = by_name(GIL, "Gilgamesh")
+    state = put_in_play(state, gil, 1, 1)
+    state = put_in_play(state, ninsun, 0, 0)
+
+    after = _apply_on_enter(state, 0, ninsun, 0)
+    assert gil in after.locations[1].stacks[1]
+
+
+# --- Owner vs controller: cards that switched sides ---------------------------
+
+
+def test_gilgamesh_reads_the_underworld_of_the_camp_he_now_serves():
+    """"the power of all monsters in your underworld" follows control: a
+    Gilgamesh who switched sides counts his new camp's trophies, not his old
+    ones."""
+    state = start_game(GIL, TROY)
+    gil = by_name(GIL, "Gilgamesh")
+    own_trophy = by_name(GIL, "Bull of Heaven")        # power 9, owner's underworld
+    enemy_trophy = by_name(GIL, "Mountain Lions")      # power 2, captor's underworld
+    state = put_in_underworld(state, own_trophy, 0)
+    state = put_in_underworld(state, enemy_trophy, 1)
+
+    at_home = put_in_play(state, gil, 0, 0)
+    assert dynamic_card_power(at_home, gil, 0, 0) == 1 + 9
+
+    defected = put_in_play(state, gil, 0, 1)
+    assert dynamic_card_power(defected, gil, 0, 1) == 1 + 2
+
+
+def test_a_card_that_switched_sides_still_returns_to_its_owner():
+    """Control moves with the card; ownership never does."""
+    state = start_game(GIL, TROY)
+    clay = by_name(GIL, "Clay")
+    state = put_in_play(state, clay, 0, 1)  # p0's card, commanded by p1
+
+    banished = rules.banish_card(state, clay)
+    assert clay in banished.underworlds[0]
+    assert clay not in banished.underworlds[1]
+
+    state = put_in_play(state, clay, 0, 1)
+    returned = rules.return_from_play_to_hand(state, clay)
+    assert clay in returned.hands[0]
+
+
+def test_a_top_ability_serves_whoever_commands_the_card():
+    state = start_game(GIL, TROY)
+    ferryman = by_name(GIL, "Ferryman Urshanabi")   # p0's card
+    passenger = by_name(TROY, "Odysseus")
+    state = put_in_play(state, passenger, 0, 1)
+    state = put_in_play(state, ferryman, 0, 1)      # on top, standing in p1's camp
+    state = replace(state, phase="MAIN", mana_pool=(5, 5))
+
+    for_captor = rules.legal_actions(replace(state, current_player_idx=1))
+    assert any(getattr(a, "card_id", None) == ferryman for a in for_captor)
+
+    for_owner = rules.legal_actions(replace(state, current_player_idx=0))
+    assert not any(getattr(a, "card_id", None) == ferryman for a in for_owner)
+
+
+def test_an_infiltrators_ability_stays_with_the_player_who_sent_him():
+    """Sinon, Dolon, the Trojan Horse and the Greek Soldiers switch sides on
+    purpose: control passes, but their own ability is the whole point."""
+    state = start_game(GIL, TROY)
+    dolon = by_name(TROY, "Dolon the Scout")        # p1's card
+    state = put_in_play(state, dolon, 0, 0)         # commanded by p0 now
+    state = replace(state, phase="MAIN")
+
+    for_owner = rules.legal_actions(replace(state, current_player_idx=1))
+    assert any(getattr(a, "card_id", None) == dolon for a in for_owner)
+
+    for_captor = rules.legal_actions(replace(state, current_player_idx=0))
+    assert not any(getattr(a, "card_id", None) == dolon for a in for_captor)
+
+
+def test_enkidu_will_not_join_a_gilgamesh_who_switched_sides():
+    state = start_game(GIL, TROY)
+    gil, enk = by_name(GIL, "Gilgamesh"), by_name(GIL, "Enkidu")
+    state = put_in_play(state, enk, 0, 0)
+    state = put_in_play(state, gil, 1, 1)           # serving the enemy elsewhere
+    state = replace(state, phase="MAIN")
+
+    assert rules.effects.behavior_named("Enkidu").top_ability(
+        rules.RT, state, 0, 0, enk
+    ) is None
+
+
+def test_round_result_names_the_player_the_crown_went_to_after_the_flood():
+    """The flood resolves at end of turn, before the round is scored: the
+    logged round result must come from that same post-flood board, or the
+    banner (and the shop payout) credits a crown the VP track gave elsewhere."""
+    state = start_game(FLOOD, GIL)
+    # p0's lead rests entirely on humans the flood will wash away; p1 holds
+    # every location with beings that survive it.
+    for name, loc in (("Slave", 0), ("Shepherd", 1), ("Citizen of Shruppak", 2)):
+        state = put_in_play(state, by_name(FLOOD, name), loc, 0)
+    for name, loc in (("Ninsun, Mother of Gilgamesh", 0), ("Enkidu", 1), ("Bull of Heaven", 2)):
+        state = put_in_play(state, by_name(GIL, name), loc, 1)
+    state = replace(state, phase="MAIN", current_player_idx=1, turn_number=2, flood_pending_turn=2)
+
+    assert rules._round_winner_idx(state) == 0, "p0 leads while their humans still stand"
+
+    after = apply_action(state, rules.EndTurnAction(player_id=state.player_ids[1]))
+    result = [e for e in after.action_history if e.startswith("round_result:")][-1]
+    crowned = [i for i, vp in enumerate(after.victory_points) if vp > 0]
+    assert crowned == [1], "the flood hands the round to p1"
+    assert result == f"round_result:1:{state.player_ids[1]}"

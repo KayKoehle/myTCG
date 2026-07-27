@@ -30,9 +30,14 @@ from .state import GameState, LocationState, PendingChoice
 _load_data_if_needed = catalog.load_data_if_needed
 
 
+# Testing mode gives every seat a private, editable decklist (see
+# engine/sandbox.py). Those are match scratch space, never a deck to pick.
+SANDBOX_DECK_PREFIX = "sandbox:"
+
+
 def available_decks() -> tuple[str, ...]:
     _load_data_if_needed()
-    return tuple(sorted(DECK_LIBRARY.keys()))
+    return tuple(sorted(name for name in DECK_LIBRARY if not name.startswith(SANDBOX_DECK_PREFIX)))
 
 
 def deck_card_ids(deck_names: Iterable[str]) -> tuple[str, ...]:
@@ -276,6 +281,8 @@ def power_before_overrides(state: GameState, card_id: str, location_idx: int, si
         # printing or other modifiers, not a -6 penalty off the base stat.
         return TROJAN_HORSE_PAYLOAD_POWER
     base = _card(card_id).power
+    # Modifier maps are filed under the owner purely as storage — a buff is
+    # printed on the card and travels with it across the line.
     mods = prim.mod_map(state, _card_owner_idx(state, card_id))
     base += mods.get(card_id, 0)
     power_hook = effects.behavior_of(card_id).power
@@ -319,6 +326,27 @@ def _location_power_for_side(state: GameState, location, side_idx: int) -> int:
 def is_immortal(state: GameState, card_id: str, location_idx: int | None = None) -> bool:
     immortal_hook = effects.behavior_of(card_id).immortal
     return immortal_hook is not None and immortal_hook(RT, state, card_id, location_idx)
+
+
+def can_be_banished(state: GameState, card_id: str) -> bool:
+    """Whether banishing `card_id` would actually move it.
+
+    Effects that *must* hit something ("banish one of your beings") build their
+    option lists from this, so an immortal card can never be offered up as a
+    no-op sacrifice that quietly voids the effect.
+    """
+    found = prim.find_card_in_play(state, card_id)
+    if found is None:
+        return False
+    return not is_immortal(state, card_id, found[0])
+
+
+def can_be_destroyed(state: GameState, card_id: str) -> bool:
+    """Same as `can_be_banished`, but for destruction — which indestructible
+    cards (The Ark) also shrug off."""
+    if effects.behavior_of(card_id).indestructible:
+        return False
+    return can_be_banished(state, card_id)
 
 
 def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:
@@ -392,10 +420,10 @@ def _underworld_entries_this_turn(state: GameState, player_idx: int) -> int:
 
 
 def _fire_first_underworld_entry_witness(state: GameState, player_idx: int, first_card_id: str) -> GameState:
-    """Wake the owner's `on_first_underworld_entry_while_top` watcher (Nephthys)."""
+    """Wake the player's `on_first_underworld_entry_while_top` watcher (Nephthys)."""
     for location_idx, location in enumerate(state.locations):
         top = prim.top_card(location, player_idx)
-        if top is None or _card_owner_idx(state, top) != player_idx:
+        if top is None:
             continue
         witness_hook = effects.behavior_of(top).on_first_underworld_entry_while_top
         if witness_hook is None:
@@ -511,65 +539,75 @@ def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:
     return replace(state, hands=prim.replace_tuple_index(state.hands, owner_idx, tuple(hand)), beings_left_world_this_turn=True)
 
 
-def move_card(state: GameState, card_id: str, target_location_idx: int, target_side_idx: int | None = None, source_effect_owner_idx: int | None = None) -> GameState:
+def move_card(state: GameState, card_id: str, target_location_idx: int, target_side_idx: int | None = None, moving_player_idx: int | None = None) -> GameState:
     found = prim.find_card_in_play(state, card_id)
     if found is None:
         return state
     source_location_idx, source_side_idx, _ = found
     owner_idx = _card_owner_idx(state, card_id)
+    # The card is commanded by the side it stands on, not by whoever it was
+    # printed for; the owner still decides where it goes when it leaves play.
+    controller_idx = source_side_idx
     target_side_idx = source_side_idx if target_side_idx is None else target_side_idx
     if source_location_idx == target_location_idx and source_side_idx == target_side_idx:
         return state
-    # FFA: cards may never be moved to a location their owner cannot reach.
-    if owner_idx not in state.locations[target_location_idx].accessible:
+    # FFA: cards may never be moved to a location their controller cannot reach.
+    if controller_idx not in state.locations[target_location_idx].accessible:
         return state
     # Stack caps (e.g. Agamemnon) also stop cards arriving by move.
     if enemy_stack_capped(state, target_location_idx, target_side_idx):
         return state
 
     # Protection auras (e.g. Ajax) veto moves forced by enemy effects.
-    if source_effect_owner_idx is not None and source_effect_owner_idx != owner_idx and catalog.is_being(card_id):
-        owner_top = prim.top_card(state.locations[source_location_idx], owner_idx)
-        if owner_top is not None and effects.behavior_of(owner_top).blocks_enemy_move_while_top:
+    if moving_player_idx is not None and moving_player_idx != controller_idx and catalog.is_being(card_id):
+        guard_top = prim.top_card(state.locations[source_location_idx], controller_idx)
+        if guard_top is not None and effects.behavior_of(guard_top).blocks_enemy_move_while_top:
             return state
 
-    # Detect "hero leaves here" watchers (e.g. Ishtar) before mutating.
+    # Detect "hero leaves here" watchers (e.g. Ishtar) before mutating: the
+    # hero and the watcher must be on the same side — that is what makes the
+    # departing hero "yours".
     hero_left_watcher: str | None = None
-    if (
-        source_location_idx != target_location_idx
-        and catalog.is_hero(card_id)
-        and source_side_idx == owner_idx
-    ):
-        owner_top = prim.top_card(state.locations[source_location_idx], owner_idx)
-        if owner_top is not None and effects.behavior_of(owner_top).on_friendly_hero_left_while_top is not None:
-            hero_left_watcher = owner_top
+    if source_location_idx != target_location_idx and catalog.is_hero(card_id):
+        watcher_top = prim.top_card(state.locations[source_location_idx], controller_idx)
+        if (
+            watcher_top is not None
+            and watcher_top != card_id
+            and effects.behavior_of(watcher_top).on_friendly_hero_left_while_top is not None
+        ):
+            hero_left_watcher = watcher_top
 
     moved = prim.remove_from_stack(state, card_id, source_location_idx, source_side_idx)
     with_target = prim.append_to_stack(moved, card_id, target_location_idx, target_side_idx)
     if with_target is None:
         return state
     facedown = set(with_target.facedown_cards)
+    # A smuggled card that makes it back to its owner's side is among friends
+    # again: it flips face up and sheds the Trojan Horse penalty.
     if target_side_idx == owner_idx:
         facedown.discard(card_id)
     state = replace(
         with_target,
         facedown_cards=tuple(sorted(facedown)),
-        action_history=with_target.action_history + (f"move_card:{state.player_ids[owner_idx]}:{card_id}:{target_location_idx}",),
+        action_history=with_target.action_history + (f"move_card:{state.player_ids[controller_idx]}:{card_id}:{target_location_idx}",),
     )
 
     if hero_left_watcher is not None:
         watcher_hook = effects.behavior_of(hero_left_watcher).on_friendly_hero_left_while_top
-        result = watcher_hook(RT, state, owner_idx, card_id, source_location_idx, hero_left_watcher)
+        result = watcher_hook(RT, state, controller_idx, card_id, source_location_idx, hero_left_watcher)
         if result is not None:
             state = result
     if state.pending_choice is None:
         moved_hook = effects.behavior_of(card_id).on_self_moved
         if moved_hook is not None:
-            state = moved_hook(RT, state, owner_idx, card_id, source_location_idx, source_side_idx, target_location_idx, target_side_idx)
+            # Infiltrators keep their own trigger (the Trojan Horse is still
+            # loaded by the player who built it, not by the camp it rolls into).
+            actor_idx = effects.ability_actor_idx(state, card_id, source_side_idx)
+            state = moved_hook(RT, state, actor_idx, card_id, source_location_idx, source_side_idx, target_location_idx, target_side_idx)
     # Monsters are defeated as soon as enough heroes stand with them — also
     # when the heroes arrive by moving, not only when they are played.
     if state.pending_choice is None:
-        state = _resolve_monster_rewards(state, target_location_idx, target_side_idx)
+        state = _resolve_monster_rewards_here(state, target_location_idx)
     return state
 
 
@@ -646,7 +684,11 @@ def _apply_on_enter(state: GameState, player_idx: int, card_id: str, location_id
         if isinstance(result, Halt):
             return result.state
         state = result
-    return _resolve_monster_rewards(state, location_idx, player_idx)
+    # An enter hook can open a choice without halting (e.g. Ninsun's move
+    # waking Ishtar); the monster sweep must not overwrite it.
+    if state.pending_choice is not None:
+        return state
+    return _resolve_monster_rewards_here(state, location_idx)
 
 
 def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
@@ -659,9 +701,14 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
         if isinstance(result, Halt):
             return result.state
         state = result
-    # Revival witnesses (e.g. Anunnaki) react while on top of the reviver's stacks.
+    # Revival witnesses (e.g. Anunnaki) react while on top of the reviver's
+    # stacks — a card that defected onto this side now watches for its new camp.
+    if state.pending_choice is not None:
+        return state
     for loc_idx, side_idx, witness_id in prim.find_cards_in_play(state, lambda cid: effects.behavior_of(cid).on_friendly_revive_while_top is not None):
-        if side_idx == player_idx and prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
+        if side_idx != player_idx:
+            continue
+        if prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
             witness_hook = effects.behavior_of(witness_id).on_friendly_revive_while_top
             result = witness_hook(RT, state, player_idx, card_id, witness_id, loc_idx)
             if result is not None:
@@ -676,7 +723,9 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
             result = underworld_hook(RT, state, player_idx, card_id, witness_id, location_idx)
             if result is not None:
                 return result
-    return _resolve_monster_rewards(state, location_idx, player_idx)
+    if state.pending_choice is not None:
+        return state
+    return _resolve_monster_rewards_here(state, location_idx)
 
 
 def _resolve_all_monster_rewards(state: GameState) -> GameState:
@@ -684,17 +733,45 @@ def _resolve_all_monster_rewards(state: GameState) -> GameState:
     so a second monster still dies when the first one's reward paused the
     pipeline with a PendingChoice)."""
     for location_idx in range(len(state.locations)):
-        for side_idx in range(state.n_players):
-            state = _resolve_monster_rewards(state, location_idx, side_idx)
-            if state.pending_choice is not None:
-                return state
+        state = _resolve_monster_rewards_here(state, location_idx)
+        if state.pending_choice is not None:
+            return state
     return state
+
+
+def _resolve_monster_rewards_here(state: GameState, location_idx: int) -> GameState:
+    """Check every seat's monsters at one location.
+
+    A card arriving here can hand a hero to any seat (the Trojan Horse drops
+    cards on a rival's side), so the whole location is re-checked rather than
+    only the side that was just played to.
+    """
+    for side_idx in range(state.n_players):
+        state = _resolve_monster_rewards(state, location_idx, side_idx)
+        if state.pending_choice is not None:
+            return state
+    return state
+
+
+def heroes_of_player_at(state: GameState, location_idx: int, player_idx: int) -> list[str]:
+    """The heroes `player_idx` commands at this location.
+
+    Control is what "you have heroes here" means: an enemy hero smuggled onto
+    your side fights for you now, and a hero of yours that defected to a rival
+    stands with them instead — so it counts for the location it is at, on the
+    side it is on.
+    """
+    return [card_id for card_id in state.locations[location_idx].stacks[player_idx] if catalog.is_hero(card_id)]
 
 
 def _resolve_monster_rewards(state: GameState, location_idx: int, player_idx: int) -> GameState:
     while True:
+        # Never overwrite a decision the players still owe an answer to: a
+        # trigger earlier in this chain may already have opened one.
+        if state.pending_choice is not None:
+            return state
         stack = list(state.locations[location_idx].stacks[player_idx])
-        heroes_here = [cid for cid in stack if catalog.is_hero(cid)]
+        heroes_here = heroes_of_player_at(state, location_idx, player_idx)
         changed = False
         for card_id in stack:
             reward_hook = effects.behavior_of(card_id).monster_reward
@@ -734,14 +811,14 @@ def _maybe_schedule_flood(state: GameState) -> GameState:
     return state
 
 
-def flood_protected(state: GameState, owner_idx: int, location_idx: int) -> bool:
-    """Whether `owner_idx`'s humans at `location_idx` are shielded from the
-    flood. The Ark's shield is "While on top": it only holds while the
-    protector still tops one of its owner's stacks."""
-    if state.protected_locations[owner_idx] != location_idx:
+def flood_protected(state: GameState, player_idx: int, location_idx: int) -> bool:
+    """Whether the humans `player_idx` commands at `location_idx` are shielded
+    from the flood. The Ark's shield is "While on top": it only holds while the
+    protector still tops one of that player's stacks."""
+    if state.protected_locations[player_idx] != location_idx:
         return False
     for location in state.locations:
-        top = prim.top_card(location, owner_idx)
+        top = prim.top_card(location, player_idx)
         if top is not None and effects.behavior_of(top).flood_protector_while_top:
             return True
     return False
@@ -751,10 +828,10 @@ def _resolve_flood(state: GameState) -> GameState:
     # The flood hits everyone at once: protection is judged on the pre-flood
     # board, so a banish cannot re-expose a buried Ark mid-flood.
     protected = {
-        (owner_idx, location_idx)
-        for owner_idx in range(state.n_players)
+        (player_idx, location_idx)
+        for player_idx in range(state.n_players)
         for location_idx in range(len(state.locations))
-        if flood_protected(state, owner_idx, location_idx)
+        if flood_protected(state, player_idx, location_idx)
     }
     for location_idx, location in enumerate(state.locations):
         for side_idx in range(state.n_players):
@@ -763,8 +840,8 @@ def _resolve_flood(state: GameState) -> GameState:
                     continue
                 if catalog.is_hero(card_id):
                     continue
-                owner_idx = _card_owner_idx(state, card_id)
-                if (owner_idx, location_idx) in protected:
+                # The Ark shelters whoever stands on its side of the board.
+                if (side_idx, location_idx) in protected:
                     continue
                 if is_immortal(state, card_id, location_idx):
                     continue
@@ -825,8 +902,6 @@ def _top_deck_play_granter(state: GameState, player_idx: int) -> str | None:
             continue
         if not effects.behavior_of(top).plays_top_deck_card_while_top:
             continue
-        if _card_owner_idx(state, top) != player_idx:
-            continue
         name = _card(top).name
         if name not in state.used_top_abilities[player_idx]:
             return name
@@ -864,14 +939,17 @@ def _artifact_top_discount(state: GameState, player_idx: int) -> int:
 
 
 def _sacrifice_discount_tops(state: GameState, player_idx: int) -> list[tuple[str, int]]:
-    """Cards on top of the player's stacks that can be banished for an artifact discount."""
+    """Cards on top of the player's stacks that can be banished for an artifact
+    discount — including one that defected onto this side, which is theirs to
+    spend now (it still returns to its owner's underworld)."""
     tops: list[tuple[str, int]] = []
     for location in state.locations:
         top = prim.top_card(location, player_idx)
-        if top is not None:
-            discount = effects.behavior_of(top).sacrifice_artifact_discount_while_top
-            if discount:
-                tops.append((top, discount))
+        if top is None:
+            continue
+        discount = effects.behavior_of(top).sacrifice_artifact_discount_while_top
+        if discount:
+            tops.append((top, discount))
     return tops
 
 
@@ -926,7 +1004,9 @@ def _can_play_at(state: GameState, player_idx: int, card_id: str, location_idx: 
         return False
     if prim.location_total_cards(location) >= location.capacity:
         return False
-    if catalog.is_monster(card_id) and any(catalog.is_hero(cid) for cid in location.stacks[player_idx]):
+    # "Cannot be played at a location where you have heroes": your own heroes.
+    # An enemy hero smuggled onto your side is not one of yours.
+    if catalog.is_monster(card_id) and heroes_of_player_at(state, location_idx, player_idx):
         return False
     if enemy_stack_capped(state, location_idx, player_idx):
         return False
@@ -985,7 +1065,9 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
                 ability_hook = effects.behavior_of(top).top_ability
                 if ability_hook is None:
                     continue
-                if _card_owner_idx(state, top) != idx:
+                # A card that switched sides serves its new camp — except the
+                # infiltrators, whose ability is why their owner sent them.
+                if effects.ability_actor_idx(state, top, side_idx) != idx:
                     continue
                 if _card(top).name in state.used_top_abilities[idx]:
                     continue
@@ -1080,10 +1162,12 @@ def _apply_use_ability(state: GameState, action: UseAbilityAction) -> GameState:
     idx = _active_index(state, action.player_id)
     found = prim.find_card_in_play(state, action.card_id)
     if found is not None:
-        location_idx, _, _ = found
+        location_idx, side_idx, _ = found
         ability_hook = effects.behavior_of(action.card_id).top_ability
         if ability_hook is None:
             raise ValueError("Card has no top ability")
+        if effects.ability_actor_idx(state, action.card_id, side_idx) != idx:
+            raise ValueError("Card's ability belongs to another player")
         result = ability_hook(RT, state, idx, location_idx, action.card_id)
     elif action.card_id in effects.revealed_deck_cards(state, idx):
         deck_hook = effects.behavior_of(action.card_id).deck_ability
@@ -1257,15 +1341,26 @@ def _is_round_boundary(state: GameState) -> bool:
     return state.turn_number % state.n_players == 0
 
 
-def _advance_turn(state: GameState) -> GameState:
+def _advance_turn(state: GameState) -> tuple[GameState, int | None]:
+    """Advance to the next turn, returning the new state and — on a round
+    boundary — the index of the player who won that round (None on a draw).
+
+    The winner is returned rather than recomputed by the caller: end-of-turn
+    effects (the flood) can banish beings and flip who controls a location, so
+    the standings only settle *after* they resolve. Deciding twice let the
+    crown and the logged/animated round result disagree.
+    """
     state = _resolve_end_turn_effects(state)
     next_turn_number = state.turn_number + 1
     next_round = state.round_number
     next_starter = state.round_starter_idx
     next_current = (state.current_player_idx + 1) % state.n_players
     victory_points = list(state.victory_points)
-    if _is_round_boundary(state):
+    round_winner: int | None = None
+    is_boundary = _is_round_boundary(state)
+    if is_boundary:
         winner = _round_winner_idx(state)
+        round_winner = winner
         if winner is not None:
             victory_points[winner] += 1
             next_starter = winner
@@ -1276,7 +1371,7 @@ def _advance_turn(state: GameState) -> GameState:
     # winner of the last round takes it (their round VP already counts).
     if max(victory_points) >= 4 or next_round > 7:
         next_phase = "GAME_OVER"
-    return replace(
+    advanced = replace(
         state,
         current_player_idx=next_current,
         round_starter_idx=next_starter,
@@ -1285,21 +1380,23 @@ def _advance_turn(state: GameState) -> GameState:
         victory_points=tuple(victory_points),
         phase=next_phase,
     )
+    return advanced, (round_winner if is_boundary else None)
 
 
 def _apply_end_turn(state: GameState, action: EndTurnAction) -> GameState:
     _active_index(state, action.player_id)
-    advanced = _advance_turn(state)
+    advanced, round_winner_idx = _advance_turn(state)
     # End-of-turn effects (the flood) log their own entries during
     # _advance_turn; keep them, with the end_turn entry first.
     history_entries = [f"end_turn:{action.player_id}"]
     history_entries.extend(advanced.action_history[len(state.action_history):])
     if _is_round_boundary(state):
-        winner_idx = _round_winner_idx(state)
-        if winner_idx is None:
+        # Logged from the same decision that awarded the crown, so the banner,
+        # the shop payout and the VP track can never name different winners.
+        if round_winner_idx is None:
             history_entries.append(f"round_result:{state.round_number}:DRAW")
         else:
-            history_entries.append(f"round_result:{state.round_number}:{state.player_ids[winner_idx]}")
+            history_entries.append(f"round_result:{state.round_number}:{state.player_ids[round_winner_idx]}")
     if advanced.phase == "GAME_OVER":
         outcome = returns(advanced)
         best = max(outcome)
@@ -1410,8 +1507,8 @@ class _Runtime:
     """Trigger-aware operations exposed to card behaviors as `rt`."""
 
     @staticmethod
-    def move_card(state: GameState, card_id: str, target_location_idx: int, target_side_idx: int | None = None, source_effect_owner_idx: int | None = None) -> GameState:
-        return move_card(state, card_id, target_location_idx, target_side_idx, source_effect_owner_idx)
+    def move_card(state: GameState, card_id: str, target_location_idx: int, target_side_idx: int | None = None, moving_player_idx: int | None = None) -> GameState:
+        return move_card(state, card_id, target_location_idx, target_side_idx, moving_player_idx)
 
     @staticmethod
     def destroy_card(state: GameState, card_id: str) -> GameState:
@@ -1460,6 +1557,18 @@ class _Runtime:
     @staticmethod
     def flood_protected(state: GameState, owner_idx: int, location_idx: int) -> bool:
         return flood_protected(state, owner_idx, location_idx)
+
+    @staticmethod
+    def can_be_banished(state: GameState, card_id: str) -> bool:
+        return can_be_banished(state, card_id)
+
+    @staticmethod
+    def can_be_destroyed(state: GameState, card_id: str) -> bool:
+        return can_be_destroyed(state, card_id)
+
+    @staticmethod
+    def heroes_of_player_at(state: GameState, location_idx: int, player_idx: int) -> list[str]:
+        return heroes_of_player_at(state, location_idx, player_idx)
 
     @staticmethod
     def enemy_stack_capped(state: GameState, location_idx: int, side_idx: int) -> bool:

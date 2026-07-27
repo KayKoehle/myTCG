@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .. import catalog, primitives as prim
-from ..catalog import card, is_being, is_hero, is_human, is_monster, named
+from .. import primitives as prim
+from ..catalog import card, is_being, is_human, is_monster, named
 from ..effects import (
     CardBehavior,
     EffectResult,
@@ -25,19 +25,26 @@ from ..state import GameState
 # --- Gilgamesh & Enkidu ----------------------------------------------------
 
 def _gilgamesh_enkidu_immortal(rt: Any, state: GameState, card_id: str, location_idx: int | None) -> bool:
-    """Gilgamesh and Enkidu are immortal while they stand together."""
+    """Gilgamesh and Enkidu are immortal while they stand together.
+
+    The bond is between one player's pair: both must be commanded by the same
+    side. A Gilgamesh who switches sides fights for the enemy, so the Enkidu
+    left behind is nobody's twin any more and the immortality lapses for both.
+    """
     found = prim.find_card_in_play(state, card_id)
     if found is None:
         return False
-    current_location_idx, side_idx, _ = found
+    current_location_idx, current_side_idx, _ = found
     use_location = current_location_idx if location_idx is None else location_idx
-    names = {card(cid).name for cid in state.locations[use_location].stacks[side_idx]}
+    names = {card(cid).name for cid in state.locations[use_location].stacks[current_side_idx]}
     return {"Gilgamesh", "Enkidu"}.issubset(names)
 
 
 def _gilgamesh_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
-    owner_idx = catalog.card_owner_idx(state, card_id)
-    return 1 + sum(card(cid).power for cid in state.underworlds[owner_idx] if is_monster(cid))
+    # "the power of all monsters in your underworld" — read from whoever
+    # commands him now, so a Gilgamesh who switched sides draws his strength
+    # from his new camp's trophies instead.
+    return 1 + sum(card(cid).power for cid in state.underworlds[side_idx] if is_monster(cid))
 
 
 def _enkidu_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
@@ -48,8 +55,10 @@ def _enkidu_power(rt: Any, state: GameState, card_id: str, location_idx: int, si
 
 def _enkidu_top_ability(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> GameState | None:
     """While on top: Enkidu may move to Gilgamesh."""
+    # Only a Gilgamesh under the same command: once he switches sides he is
+    # not "your" Gilgamesh any more and Enkidu has nobody to join.
     for gil_loc, gil_side, gil_id in prim.find_cards_in_play(state, named("Gilgamesh")):
-        if catalog.card_owner_idx(state, gil_id) != player_idx:
+        if gil_side != player_idx:
             continue
         gil_location = state.locations[gil_loc]
         if prim.location_total_cards(gil_location) >= gil_location.capacity:
@@ -82,11 +91,14 @@ def _clay_enter(rt: Any, state: GameState, player_idx: int, card_id: str, locati
 
 
 def _ninsun_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
+    # "Search your deck for Gilgamesh and add him to your hand. If he is
+    # already in play, move him to this location instead." He comes home to
+    # his mother's side of the location, wherever he was standing before.
     if any(card(cid).name == "Gilgamesh" for cid in state.decks[player_idx]):
         return prim.draw_from_deck(state, player_idx, 1, named("Gilgamesh"))
-    for _, gil_side_idx, gil_card_id in prim.find_cards_in_play(state, named("Gilgamesh")):
-        if catalog.card_owner_idx(state, gil_card_id) == player_idx:
-            return rt.move_card(state, gil_card_id, location_idx, gil_side_idx)
+    for _, gil_side, gil_card_id in prim.find_cards_in_play(state, named("Gilgamesh")):
+        if gil_side == player_idx:
+            return rt.move_card(state, gil_card_id, location_idx, player_idx)
     return state
 
 
@@ -123,7 +135,7 @@ def _handle_ferryman_ferry(rt: Any, state: GameState, chooser_idx: int, option: 
         return state
     mana_pool[chooser_idx] -= 1
     state = replace(state, mana_pool=tuple(mana_pool))
-    return rt.move_card(state, moved_card_id, int(target_location), int(target_side), source_effect_owner_idx=chooser_idx)
+    return rt.move_card(state, moved_card_id, int(target_location), int(target_side), moving_player_idx=chooser_idx)
 
 
 def _shamhat_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
@@ -145,8 +157,8 @@ register("Utnapishtim, Survivor of the Flood", CardBehavior(immortal=lambda rt, 
 def _ishtar_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     options = [
         cid
-        for _, _, cid in prim.find_cards_in_play(state, lambda cid: is_being(cid) and card(cid).cost <= 2)
-        if catalog.card_owner_idx(state, cid) == opp_idx
+        for _, side_idx, cid in prim.find_cards_in_play(state, lambda cid: is_being(cid) and card(cid).cost <= 2)
+        if side_idx == opp_idx and rt.can_be_banished(state, cid)
     ]
     if not options:
         return None
@@ -168,7 +180,9 @@ register_choice("ishtar_banish_small_enemy", lambda rt, state, chooser_idx, opti
 
 def _mountain_lions_reward(rt: Any, state: GameState, player_idx: int, location_idx: int, card_id: str) -> EffectResult:
     state = prim.draw_from_deck(state, player_idx, 1)
-    heroes_here_ids = [cid for cid in state.locations[location_idx].stacks[player_idx] if is_hero(cid)]
+    # "You may move a hero from here" — one of yours, never a rival's that
+    # happens to stand at this location.
+    heroes_here_ids = rt.heroes_of_player_at(state, location_idx, player_idx)
     if heroes_here_ids:
         return Halt(
             prim.with_pending_choice(
@@ -207,8 +221,8 @@ def _humbaba_reward(rt: Any, state: GameState, player_idx: int, location_idx: in
 def _bull_chain_step(rt: Any, state: GameState, actor_idx: int, opp_idx: int, source_card_id: str, location_idx: int | None):
     enemy_beings = [
         cid
-        for _, _, cid in prim.find_cards_in_play(state, is_being)
-        if catalog.card_owner_idx(state, cid) == opp_idx
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == opp_idx and rt.can_be_banished(state, cid)
     ]
     if len(enemy_beings) >= 2:
         return ("opponent", "banish_two_enemies", prim.pair_choice_options(enemy_beings), "Banish two of your beings")
