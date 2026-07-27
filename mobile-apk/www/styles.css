@@ -11,76 +11,54 @@
     --lane-bg: linear-gradient(160deg, rgba(15, 48, 78, 0.9), rgba(8, 26, 43, 0.95));
     /* Fixed (not swapped by [data-cardback]): the AI opponent always shows this
        card back, regardless of what the player has bought/equipped for themself. */
-    --card-back-opponent:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    --card-back-opponent: url("images/cardbacks/classic.png") center / cover no-repeat;
 }
 
 /* --- Cosmetics (shop) -------------------------------------------------------
    Card backs and board themes are CSS variables switched by data attributes.
    The same [data-cardback]/[data-board] rules style both the whole app (the
-   attribute sits on <body>) and the shop's small preview tiles. */
+   attribute sits on <body>) and the shop's small preview tiles. Art is
+   generated via ComfyUI (see comfyui_workflows/image_z_image_turbo_int8.json). */
 
 :root,
 [data-cardback="classic"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(128, 216, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(18, 59, 95, 0.9), rgba(18, 59, 95, 0.9) 6px, rgba(11, 36, 58, 0.92) 6px, rgba(11, 36, 58, 0.92) 12px);
+    --card-back: url("images/cardbacks/classic.png") center / cover no-repeat;
 }
 
 [data-cardback="cedar"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(154, 255, 173, 0.5), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(24, 74, 44, 0.92), rgba(24, 74, 44, 0.92) 6px, rgba(12, 44, 26, 0.94) 6px, rgba(12, 44, 26, 0.94) 12px);
+    --card-back: url("images/cardbacks/cedar.png") center / cover no-repeat;
 }
 
 [data-cardback="ember"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(255, 176, 97, 0.55), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(105, 36, 22, 0.92), rgba(105, 36, 22, 0.92) 6px, rgba(58, 16, 12, 0.94) 6px, rgba(58, 16, 12, 0.94) 12px);
+    --card-back: url("images/cardbacks/ember.png") center / cover no-repeat;
 }
 
 [data-cardback="aegean"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(133, 246, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(90deg, rgba(12, 84, 112, 0.92), rgba(12, 84, 112, 0.92) 5px, rgba(6, 44, 66, 0.94) 5px, rgba(6, 44, 66, 0.94) 10px);
+    --card-back: url("images/cardbacks/aegean.png") center / cover no-repeat;
 }
 
 [data-cardback="royal"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(255, 232, 145, 0.6), transparent 45%),
-        repeating-linear-gradient(45deg, rgba(122, 92, 24, 0.94), rgba(122, 92, 24, 0.94) 6px, rgba(74, 52, 10, 0.95) 6px, rgba(74, 52, 10, 0.95) 12px);
+    --card-back: url("images/cardbacks/royal.png") center / cover no-repeat;
 }
 
 [data-cardback="obsidian"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(178, 116, 255, 0.55), transparent 45%),
-        repeating-linear-gradient(120deg, rgba(45, 15, 74, 0.92), rgba(45, 15, 74, 0.92) 6px, rgba(18, 6, 32, 0.94) 6px, rgba(18, 6, 32, 0.94) 12px);
+    --card-back: url("images/cardbacks/obsidian.png") center / cover no-repeat;
 }
 
 [data-cardback="bronze"] {
-    --card-back:
-        repeating-linear-gradient(45deg, rgba(196, 132, 58, 0.85) 0, rgba(196, 132, 58, 0.85) 4px, transparent 4px, transparent 8px),
-        repeating-linear-gradient(-45deg, rgba(120, 72, 28, 0.85) 0, rgba(120, 72, 28, 0.85) 4px, transparent 4px, transparent 8px),
-        linear-gradient(160deg, #3a2410, #1c1206);
+    --card-back: url("images/cardbacks/bronze.png") center / cover no-repeat;
 }
 
 [data-cardback="starlit"] {
-    --card-back:
-        repeating-radial-gradient(circle at 10px 10px, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 1.5px 20px),
-        linear-gradient(160deg, #131a42, #060a1e);
+    --card-back: url("images/cardbacks/starlit.png") center / cover no-repeat;
 }
 
 [data-cardback="crimson"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(255, 130, 130, 0.5), transparent 45%),
-        repeating-linear-gradient(135deg, rgba(120, 20, 24, 0.92), rgba(120, 20, 24, 0.92) 6px, rgba(60, 8, 10, 0.94) 6px, rgba(60, 8, 10, 0.94) 12px);
+    --card-back: url("images/cardbacks/crimson.png") center / cover no-repeat;
 }
 
 [data-cardback="verdant"] {
-    --card-back:
-        radial-gradient(circle at 30% 25%, rgba(150, 255, 200, 0.5), transparent 45%),
-        repeating-linear-gradient(60deg, rgba(20, 90, 55, 0.92), rgba(20, 90, 55, 0.92) 6px, rgba(8, 46, 28, 0.94) 6px, rgba(8, 46, 28, 0.94) 12px);
+    --card-back: url("images/cardbacks/verdant.png") center / cover no-repeat;
 }
 
 :root,
