@@ -170,7 +170,9 @@
                 <div class="peek-pile">
                     <div class="peek-label">Deck <span class="peek-count" id="oppDeckCount">0</span></div>
                     <div class="peek-window">
-                        <div class="deck-stack deck-stack-opp" id="oppDeckStack">
+                        <div class="deck-stack deck-stack-opp" id="oppDeckStack"
+                            data-cardback-view="opponent" role="button" tabindex="0"
+                            aria-label="View the opponent's card back full size">
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
@@ -217,7 +219,9 @@
                 <div class="peek-pile">
                     <div class="peek-label">Your Deck <span class="peek-count" id="yourDeckCount">0</span></div>
                     <div class="peek-window">
-                        <div class="deck-stack" id="yourDeckStack">
+                        <div class="deck-stack" id="yourDeckStack"
+                            data-cardback-view="player" role="button" tabindex="0"
+                            aria-label="View your card back full size">
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
                             <span class="deck-card"></span>
@@ -361,9 +365,15 @@
             <div class="inspector-media" id="inspectorMedia"></div>
             <p class="inspector-effect" id="inspectorEffect"></p>
             <p class="inspector-anecdote hidden" id="inspectorAnecdote"></p>
-            <p class="inspector-hint hidden" id="inspectorHint"></p>
             <button class="btn inspector-action hidden" id="inspectorAction"></button>
         </div>
+    </div>
+
+    <div id="cardBackViewer" class="cardback-viewer" aria-hidden="true">
+        <figure class="cardback-viewer-card" role="dialog" aria-modal="true" aria-labelledby="cardBackViewerName">
+            <div class="cardback-viewer-art" id="cardBackViewerArt"></div>
+            <figcaption class="cardback-viewer-name" id="cardBackViewerName"></figcaption>
+        </figure>
     </div>
 
     <div id="choiceModal" class="choice-modal" aria-hidden="true">
