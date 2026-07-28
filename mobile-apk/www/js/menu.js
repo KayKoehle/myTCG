@@ -1708,7 +1708,11 @@ export function createMenuController(ui, game, cardStack) {
     // --- Shop screen ---------------------------------------------------------
 
     function shopPreviewHtml(kind, item) {
-        if (kind === 'cardBack') return `<div class="cardback-preview" data-cardback="${item.id}"></div>`;
+        // Tapping the tile shows that back full size, bought or not (js/cardback.js).
+        if (kind === 'cardBack') {
+            return `<div class="cardback-preview" data-cardback="${item.id}" data-cardback-view="${item.id}"
+                role="button" tabindex="0" aria-label="View ${escapeHtml(item.name)} full size"></div>`;
+        }
         if (kind === 'board') return `<div class="board-preview" data-board="${item.id}"></div>`;
         return `<div class="emote-preview">${escapeHtml(item.text)}</div>`;
     }

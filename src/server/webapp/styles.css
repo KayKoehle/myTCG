@@ -99,8 +99,14 @@ summary,
 .card,
 .lane-row,
 .option-chip,
-.choice-option-btn {
+.choice-option-btn,
+[data-cardback-view] {
     touch-action: manipulation;
+}
+
+/* Face-down cards that open the full-size card back viewer. */
+[data-cardback-view] {
+    cursor: pointer;
 }
 
 .hand-card,
@@ -1763,28 +1769,63 @@ select {
     display: none;
 }
 
-/* How a card gets played, stated on the card itself: drag it to a lane. */
-.inspector-hint {
-    margin: 0;
-    padding: 8px 10px;
-    border-radius: 8px;
-    border: 1px solid rgba(45, 212, 169, 0.45);
-    background: rgba(16, 62, 55, 0.55);
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-    color: #b6f0e0;
-}
-
-.inspector-hint.hidden {
-    display: none;
-}
-
 .inspector-action {
     width: 100%;
     padding: 12px;
     font-size: 15px;
     background: linear-gradient(135deg, #3fd6b0, #1c9c86);
+}
+
+/* --- Card back viewer -------------------------------------------------------
+   Tapping a face-down card (deck piles, opponent hand, shop tiles) shows that
+   back at full size; tapping anywhere dismisses it. The art is the same
+   [data-cardback] background the rest of the app uses. */
+
+.cardback-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 260;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(2, 8, 14, 0.86);
+    backdrop-filter: blur(3px);
+}
+
+.cardback-viewer.open {
+    display: flex;
+}
+
+.cardback-viewer-card {
+    margin: 0;
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+}
+
+.cardback-viewer-art {
+    /* Card backs are 5:7; fill whichever of the two axes runs out first. */
+    aspect-ratio: 5 / 7;
+    width: min(78vw, calc((100vh - 120px) * 5 / 7), 460px);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--card-back);
+    box-shadow: 0 26px 52px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    animation: cardBackPop 160ms ease both;
+}
+
+.cardback-viewer-name {
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    color: #eaf7ff;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes cardBackPop {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 /* Phone layout: the whole board fits portrait, with three compact lanes

@@ -392,13 +392,6 @@ export function createGameController(ui, cardStack) {
         const anecdote = anecdoteText(card);
         ui.inspectorAnecdote.textContent = anecdote;
         ui.inspectorAnecdote.classList.toggle('hidden', !anecdote);
-        // Cards are played by dragging them onto a lane — nothing else. Say so
-        // on the cards that can actually be played right now.
-        if (ui.inspectorHint) {
-            const canPlay = Boolean(card.id) && app.playableCardSet.has(card.id);
-            ui.inspectorHint.textContent = canPlay ? 'Drag this card onto a lane to play it.' : '';
-            ui.inspectorHint.classList.toggle('hidden', !canPlay);
-        }
         const abilityAction = (card.id && app.snapshot)
             ? humanLegalActions(app.snapshot, cfg().player_id).find((a) => a.kind === 'use_ability' && a.card_id === card.id)
             : null;

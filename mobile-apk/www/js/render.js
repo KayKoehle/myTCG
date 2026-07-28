@@ -228,7 +228,8 @@ function renderOpponentHand(cardCount, revealedCards) {
     }
     const count = Math.max(0, Number(cardCount) || 0);
     if (count === 0) return '<div class="tiny">No cards</div>';
-    return Array.from({ length: count }, () => '<div class="opp-card-back" aria-hidden="true"></div>').join('');
+    // Face-down: tapping one shows that card back full size (js/cardback.js).
+    return Array.from({ length: count }, () => '<div class="opp-card-back" data-cardback-view="opponent" aria-hidden="true"></div>').join('');
 }
 
 // The deck pile, plus any revealed top cards (Odin's High Seat mechanic):

@@ -1,4 +1,5 @@
 import { createCardStackPopup } from './cardstack.js';
+import { initCardBackViewer } from './cardback.js';
 import { initCardRefs } from './cardrefs.js';
 import { createGameController } from './controller.js';
 import { createMenuController } from './menu.js';
@@ -12,6 +13,9 @@ initPeek();
 // Card names inside effect text become hover/tap references to those cards;
 // this also warms the card catalog they resolve against.
 initCardRefs();
+// Tapping a face-down card (deck piles, opponent hand, shop tiles) shows that
+// card back full size.
+initCardBackViewer(ui);
 // One shared card-stack popup: in-game choices and the collection's card
 // reader both use it (its DOM listeners must only be bound once).
 const cardStack = createCardStackPopup(ui);
