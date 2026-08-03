@@ -1,5 +1,5 @@
 import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
-import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, stackPower, typeLabel } from './helpers.js';
+import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, showToast, stackPower, typeLabel } from './helpers.js';
 import { hideCardRefPreview, setEffectText } from './cardrefs.js';
 import { eloDelta, placementsFromVp, sampleAiElo, streakMultiplier } from './elo.js';
 import { activeEmotes, addCrowns, applyEloDelta, getElo, getWinStreak, recordCasualGame, recordGameResult } from './profile.js';
@@ -15,6 +15,7 @@ import {
     questOnRoundWon,
 } from './quests.js';
 import { renderSnapshot, layoutHand, updateEndTurnButton } from './render.js';
+import { fetchReplay, saveReplay } from './replay.js';
 import { createSandboxTools } from './sandbox.js';
 import { buildConfig, createAppState } from './state.js';
 
@@ -699,6 +700,10 @@ export function createGameController(ui, cardStack) {
             } else if (raw.startsWith('game_result:')) {
                 recordFinishedGame(raw, snapshot);
                 animateGameResult(raw);
+                // Exactly one game_result lands per match, so this keeps the
+                // finished game once, quietly — the toast belongs to the
+                // explicit "Save replay" button, not to every game ending.
+                captureReplay({ announce: false });
             } else if (raw.startsWith('draw_card:')) {
                 animateCardDraw(Number(parts[1]));
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardDrawn();
@@ -893,6 +898,56 @@ export function createGameController(ui, cardStack) {
         if (won && delta > 0) delta = Math.round(delta * streakMultiplier(getWinStreak()));
         app.lastEloDelta = delta;
         applyEloDelta(delta);
+    }
+
+    // --- Replays -------------------------------------------------------------
+    // The server records every match; the client is what decides to keep one.
+    // Finished games are kept automatically, and the History sheet can keep a
+    // match that is still running — which is the case that matters, because a
+    // game wedged by a bug never reaches game over.
+
+    // Context the engine can't know: who sat where, which mode this was, what
+    // build played it. It rides along in the replay so a bug report is legible.
+    function replayClientMeta() {
+        const config = cfg();
+        const players = ((app.snapshot && app.snapshot.players) || []).map(Number);
+        const localNames = Array.isArray(config.local_seat_names) ? config.local_seat_names : [];
+        const seatNames = players.map((playerId, seatIdx) => {
+            const custom = (localNames[seatIdx] || '').trim();
+            if (custom) return custom;
+            if (playerId === config.player_id) return 'You';
+            if (aiIds().includes(playerId)) {
+                const elo = (app.aiElos || {})[playerId];
+                return Number.isFinite(elo) ? `AI (${Math.round(elo)})` : 'AI';
+            }
+            return `Player ${seatIdx + 1}`;
+        });
+        let mode = players.length > 2 ? `${players.length}P Free-for-All` : '1v1';
+        if (isLanGame()) mode = `LAN ${mode}`;
+        else if (isLocalGame()) mode = `Pass & Play ${mode}`;
+        return {
+            mode,
+            seat_names: seatNames,
+            viewer_player_id: config.player_id,
+            sandbox: isSandbox(),
+            player_elo: app.playerElo ?? null,
+            ai_elos: app.aiElos || {},
+            deck_id: app.statsMeta ? app.statsMeta.deckId : null,
+        };
+    }
+
+    async function captureReplay({ announce = true } = {}) {
+        try {
+            const replay = await fetchReplay(app.matchId, replayClientMeta());
+            const entry = saveReplay(replay);
+            if (announce) showToast('Replay saved — find it under Replays.');
+            return entry;
+        } catch (error) {
+            // Never let a failed recording disturb the game: a missing replay
+            // is a nuisance, an error mid-match is a bug of its own.
+            if (announce) showToast(error.message || 'The replay could not be saved.');
+            return null;
+        }
     }
 
     // A card back flies from the drawing player's deck pile into their hand.
@@ -2285,6 +2340,16 @@ export function createGameController(ui, cardStack) {
         if (ui.btnSandboxSwitch) {
             ui.btnSandboxSwitch.onclick = () => {
                 onSandboxSwitch();
+            };
+        }
+        if (ui.btnSaveReplay) {
+            ui.btnSaveReplay.onclick = async () => {
+                ui.btnSaveReplay.disabled = true;
+                try {
+                    await captureReplay();
+                } finally {
+                    ui.btnSaveReplay.disabled = false;
+                }
             };
         }
         sandboxTools.init();

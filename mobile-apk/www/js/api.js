@@ -3,7 +3,8 @@
 // base URL (e.g. "http://192.168.1.5:8123") while a guest is in a LAN match;
 // null means same-origin (the host itself, and every non-LAN game).
 let lanHostBase = null;
-const HOST_ROUTED = ['/api/state', '/api/action', '/api/ai-move'];
+// A LAN guest's match — and therefore its recording — lives on the host.
+const HOST_ROUTED = ['/api/state', '/api/action', '/api/ai-move', '/api/replay'];
 
 export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;

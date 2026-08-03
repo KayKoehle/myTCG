@@ -90,3 +90,18 @@ class MatchupStatsResponse(BaseModel):
 class CollectionResponse(BaseModel):
     ok: bool = True
     decks: list[dict[str, Any]]
+
+
+class ReplayRequest(BaseModel):
+    match_id: str = Field(default="default")
+    # The build that played the match. The server can't know it (the Android
+    # app ships its own version), so the client says who it is.
+    app_version: Optional[str] = None
+    # Free-form context the engine never reads: game mode, seat labels, Elo —
+    # whatever makes the recording legible in a bug report.
+    client_meta: Optional[dict[str, Any]] = None
+
+
+class ReplayResponse(BaseModel):
+    ok: bool = True
+    replay: dict[str, Any]

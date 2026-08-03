@@ -22,6 +22,8 @@ from .schemas import (
     DrawResponse,
     ErrorResponse,
     MatchupStatsResponse,
+    ReplayRequest,
+    ReplayResponse,
     StateRequest,
     StateResponse,
 )
@@ -128,6 +130,24 @@ def register_ws_routes(app: FastAPI):
     @app.post("/api/collection", response_model=CollectionResponse)
     async def collection(request: dict | None = None):
         return CollectionResponse(decks=game_service.collection()["decks"])
+
+    @app.post("/api/replay")
+    async def match_replay(request: ReplayRequest):
+        """The recording of a match, for the client to keep or export.
+
+        Every match records; this hands over what has been captured so far, so
+        it works on a game that is still running (a match wedged by a bug never
+        reaches game over — that is exactly when a replay is worth having).
+        """
+        try:
+            replay = game_service.replay(
+                match_id=request.match_id,
+                app_version=request.app_version,
+                client_meta=request.client_meta,
+            )
+        except KeyError as exc:
+            return {"ok": False, "error": exc.args[0] if exc.args else str(exc)}
+        return ReplayResponse(replay=replay)
 
     @app.post("/api/ai-move", response_model=AiMoveResponse)
     async def apply_ai_move(request: AiMoveRequest):

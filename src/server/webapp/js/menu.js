@@ -2,6 +2,7 @@ import { postJson, lanPost, isLocalBridge, setLanSelfBase } from './api.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
+import { createReplayScreens } from './replayview.js';
 import {
     BOARDS,
     CARD_BACKS,
@@ -107,6 +108,13 @@ export function createMenuController(ui, game, cardStack) {
     // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
     // my_pid, num_players, seats, started }.
     let lanLobby = null;
+
+    // The Replays library and player (js/replayview.js). Opening one is a
+    // navigation like any other, so it goes through pushNav/handleNav.
+    const replays = createReplayScreens(ui, {
+        cardStack,
+        onOpenPlayer: (replayId) => openReplay(replayId),
+    });
 
     // Embedding models, fitted once on the loaded collection.
     let cardSearch = null; // (query) -> [{card, score}] | null
@@ -219,6 +227,14 @@ export function createMenuController(ui, game, cardStack) {
         } else if (target.screen === 'shop' && shopUnlocked()) {
             showScreen('shop');
             renderShop();
+        } else if (target.screen === 'replays') {
+            replays.renderLibrary();
+            showScreen('replays');
+        } else if (target.screen === 'replay' && target.replayId) {
+            // A replay that no longer loads (deleted, or storage cleared under
+            // us) falls back to the library rather than an empty player.
+            if (replays.load(target.replayId)) showScreen('replay');
+            else { navCurrent = { screen: 'replays' }; replays.renderLibrary(); showScreen('replays'); }
         } else if (target.screen === 'game') {
             showScreen('game');
         } else {
@@ -242,7 +258,13 @@ export function createMenuController(ui, game, cardStack) {
             decks: ui.decksScreen,
             shop: ui.shopScreen,
             game: ui.gameScreen,
+            replays: ui.replaysScreen,
+            replay: ui.replayScreen,
         };
+        // Every way off the replay player runs through here, so this is the one
+        // place that has to stop auto-play — a timer redrawing a hidden board
+        // would otherwise outlive the screen.
+        if (name !== 'replay') replays.close();
         for (const el of Object.values(screens)) {
             if (el) el.classList.remove('active');
         }
@@ -1792,10 +1814,30 @@ export function createMenuController(ui, game, cardStack) {
         renderShop();
     }
 
+    // --- Replays -----------------------------------------------------------------
+
+    function openReplays() {
+        pushNav({ screen: 'replays' });
+        replays.renderLibrary();
+        showScreen('replays');
+    }
+
+    function openReplay(replayId) {
+        if (!replays.load(replayId)) return;
+        pushNav({ screen: 'replay', replayId });
+        showScreen('replay');
+    }
+
     // --- Wiring ------------------------------------------------------------------
 
     function init() {
         applyCosmetics();
+        replays.init();
+        if (ui.btnMenuReplays) {
+            ui.btnMenuReplays.addEventListener('click', () => { openReplays(); });
+        }
+        if (ui.btnReplaysBack) ui.btnReplaysBack.addEventListener('click', () => { navBack(); });
+        if (ui.btnReplayBack) ui.btnReplayBack.addEventListener('click', () => { navBack(); });
         ui.btnMenuPlay.addEventListener('click', () => {
             play();
         });
