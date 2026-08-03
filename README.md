@@ -21,6 +21,7 @@ src/
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
       sandbox.py             Sandbox mode: scenario edits on a live match
+      replay.py              Match recording: version-proof replay files
       ai.py                  Search AI: greedy one-ply + positional evaluation
       policy.py              Neural featurization + torch-free inference
       training.py            Neural-network self-play training (PyTorch)
@@ -220,6 +221,56 @@ service.apply_sandbox_ops("scratch", [
 ])
 print(sandbox.reveal_all(service._matches["scratch"].state)["seats"][0]["hand"])
 service.undo_sandbox("scratch")
+```
+
+## Replays (and how to report a bug with one)
+
+Every match records itself. A finished game is saved automatically; a game that
+is still running can be saved from the **history sheet** (the clock icon, top
+right) with **🎬 Save replay** — which is the case that matters, because a match
+wedged by a bug never reaches game over. Saved games live under **Replays** on
+the main menu, where they can be watched step by step, exported, and imported.
+
+**A replay is a recording, not a script.** Playback never re-runs the rules. Each
+step stores the board exactly as it was, and the file bundles the card printings
+(name, effect text, cost, power, type) that were in force while the match was
+played. So a replay taken on an older build still shows *that* build's Achilles —
+his old stats, his old effect, and the numbers the old engine actually computed —
+no matter how far the cards have moved on since. That is what makes a replay
+attachable to a bug report weeks later.
+
+The player shows everything a live game hides: every seat's hand, every deck in
+draw order, live power per card and per side, the cost each hand card had at that
+instant, and the pending choice the engine was waiting on. Tap any card to read
+it as it was printed then; tap a line in the log to jump to the step that wrote
+it. The header carries the build that recorded the match and a fingerprint of its
+card data, so two replays that disagree can be told apart at a glance.
+
+**Export/import.** Export hands the file to the system share sheet, a download,
+or the clipboard — whichever the platform allows. The file is plain JSON
+(`.mytcgreplay`), readable without the app. Import takes that file, or the
+compact gzipped share code that **Paste code** reads, which is small enough to
+paste into an issue. A file from a newer format version is refused with a clear
+message instead of being half-rendered.
+
+Implementation: `engine/replay.py` (the recorder, the frame format, the card
+table — shared with Android), `services/game_service.py` (`replay`),
+`api/endpoints.py` (`/api/replay`), `webapp/js/replay.js` (format, library,
+import/export) and `webapp/js/replayview.js` (the screens). Frames are stored as
+deltas against the previous step, which keeps a full match well under 100 KB.
+Headless use:
+
+```python
+from server.engine.replay import expand_frames
+from server.services import GameService
+
+service = GameService()
+service.create_match("scratch", seed=7)
+# ... play the match through submit_action / apply_ai_action ...
+replay = service.replay("scratch", app_version="dev")
+steps = expand_frames(replay)          # one complete board per step
+print(steps[-1]["state"]["victory_points"], steps[-1]["log"][-1])
+print(replay["cards"][some_card_id])   # the printing as it was, not as it is
 ```
 
 ## Training the AI & balancing the decks

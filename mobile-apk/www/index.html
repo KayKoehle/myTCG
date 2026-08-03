@@ -40,6 +40,13 @@
                     <span class="menu-passplay-sub">Find &amp; invite players on your network</span>
                 </span>
             </button>
+            <button class="menu-passplay" id="btnMenuReplays">
+                <span class="menu-passplay-icon" aria-hidden="true">🎬</span>
+                <span class="menu-passplay-text">
+                    <span class="menu-passplay-title">Replays</span>
+                    <span class="menu-passplay-sub">Rewatch your games, import &amp; export for bug reports</span>
+                </span>
+            </button>
             <button class="menu-passplay menu-reconnect hidden" id="btnReconnect">
                 <span class="menu-passplay-icon" aria-hidden="true">🔌</span>
                 <span class="menu-passplay-text">
@@ -85,6 +92,64 @@
             <div class="collection-label" id="collectionLabel">Your collection</div>
             <div class="collection-controls" id="collectionControls"></div>
             <div class="collection-grid" id="collectionGrid"></div>
+        </div>
+    </div>
+
+    <!-- Replays (js/replay.js + js/replayview.js): the saved-recording library,
+         and the player that steps through one. A replay renders entirely from
+         its own file, including the card printings it was recorded with. -->
+    <div id="replaysScreen" class="screen replays-screen">
+        <header class="screen-head">
+            <button class="icon-btn" id="btnReplaysBack" aria-label="Back to menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+                </svg>
+            </button>
+            <h2 class="screen-title">Replays</h2>
+            <span class="screen-head-spacer"></span>
+        </header>
+        <div class="rp-library-tools">
+            <button class="btn ghost" id="btnReplayImport">Import file</button>
+            <button class="btn ghost" id="btnReplayPaste">Paste code</button>
+            <input type="file" id="replayFileInput" class="hidden" accept=".mytcgreplay,.json,application/json">
+        </div>
+        <p class="tiny rp-library-hint">Replays play back exactly as they were recorded — old card
+            text and old numbers included — so one from an older build still shows the bug you hit.</p>
+        <div class="rp-list" id="replayList"></div>
+    </div>
+
+    <div id="replayScreen" class="screen replay-screen">
+        <header class="screen-head">
+            <button class="icon-btn" id="btnReplayBack" aria-label="Back to replays">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+                </svg>
+            </button>
+            <h2 class="screen-title" id="replayTitle">Replay</h2>
+            <button class="btn ghost tiny" id="btnReplayExportCurrent">Export</button>
+        </header>
+        <div class="rp-meta" id="replayMeta"></div>
+        <div class="rp-status" id="replayStatus"></div>
+        <div id="replayPending"></div>
+        <div class="rp-board">
+            <div class="rp-lanes" id="replayLanes"></div>
+            <div class="rp-seats" id="replaySeats"></div>
+        </div>
+        <div class="rp-logwrap">
+            <div class="rp-log" id="replayLog"></div>
+        </div>
+        <div class="rp-bar">
+            <div class="rp-step-label" id="replayStepLabel"></div>
+            <input type="range" class="rp-range" id="replayRange" min="0" max="0" value="0" step="1"
+                aria-label="Replay position">
+            <div class="rp-transport">
+                <button class="btn ghost" id="btnReplayFirst" aria-label="First step">⏮</button>
+                <button class="btn ghost" id="btnReplayPrev" aria-label="Previous step">◀</button>
+                <button class="btn" id="btnReplayPlay" aria-label="Play">▶</button>
+                <button class="btn ghost" id="btnReplayNext" aria-label="Next step">▶</button>
+                <button class="btn ghost" id="btnReplayLast" aria-label="Last step">⏭</button>
+                <button class="btn ghost" id="btnReplaySpeed" aria-label="Playback speed">1×</button>
+            </div>
         </div>
     </div>
 
@@ -327,6 +392,16 @@
                 <button class="sheet-close" id="btnCloseHistory" aria-label="Close past actions">&times;</button>
             </div>
             <div class="history-list" id="actionHistory"></div>
+            <!-- Saving mid-match is the point: a game wedged by a bug never
+                 reaches game over, and a finished game saves itself. -->
+            <div class="history-foot">
+                <button class="btn ghost" id="btnSaveReplay">
+                    <span aria-hidden="true">🎬</span>
+                    <span>Save replay</span>
+                </button>
+                <p class="tiny">Keeps this match — as it stands right now — in Replays, where it can
+                    be exported and attached to a bug report.</p>
+            </div>
             <!-- Scroll past the log to find the sandbox switch: it turns this
                  very match into an editable position (js/sandbox.js). -->
             <div class="history-foot hidden" id="sandboxSwitchRow">

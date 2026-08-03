@@ -11,6 +11,7 @@ from ..engine.ai import choose_heuristic_action
 from ..engine.ladder import choose_ladder_action
 from ..engine.matchup_stats import MatchupStats
 from ..engine.openspiel_adapter import parse_action
+from ..engine.replay import ReplayRecorder
 from ..engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from ..engine.state import GameState
 from ..engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
@@ -19,6 +20,11 @@ from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 # How many sandbox edits of one match stay undoable. GameState is immutable, so
 # a step on this stack is a pointer, not a copy.
 MAX_SANDBOX_UNDO = 60
+
+
+def _describe_ops(ops: list[dict[str, Any]]) -> str:
+    """A one-line summary of a sandbox edit, for the replay's step list."""
+    return ", ".join(str(op.get("op") or op.get("kind") or "edit") for op in ops) or "edit"
 
 
 @dataclass
@@ -30,6 +36,9 @@ class Match:
     # undo stack holds the states the sandbox edits replaced, newest last.
     sandbox: bool = False
     sandbox_undo: list[GameState] = field(default_factory=list)
+    # Every state this match has been in, for /api/replay. Recording is
+    # unconditional: a bug is only worth a replay after it has already happened.
+    replay: ReplayRecorder | None = None
 
     @property
     def deck_a(self) -> str:
@@ -38,6 +47,10 @@ class Match:
     @property
     def deck_b(self) -> str:
         return self.deck_names[1] if len(self.deck_names) > 1 else self.deck_names[0]
+
+    def record(self, action: Any = None) -> None:
+        if self.replay is not None:
+            self.replay.record(self.state, action)
 
 
 class GameService:
@@ -87,7 +100,9 @@ class GameService:
             match_id=match_id,
             state=create_initial_state(seed=seed, decks=deck_names),
             deck_names=deck_names,
+            replay=ReplayRecorder(match_id, deck_names),
         )
+        match.record()
         self._matches[match_id] = match
         return match
 
@@ -136,6 +151,7 @@ class GameService:
         action = parse_action(player_id=player_id, kind=action_kind, card_id=card_id, location_id=location_id, option_id=option_id)
         previous_state = match.state
         match.state = apply_action(match.state, action)
+        match.record(action)
         self._push_sandbox_undo(match, previous_state)
         self._record_if_finished(match, previous_state)
         return match.state
@@ -177,6 +193,7 @@ class GameService:
             # match must stop sharing the stock lists with every other match.
             match.state = sandbox.claim_private_decks(match.state, match_id)
             match.sandbox = True
+            match.record({"kind": "sandbox_enable", "player_id": None})
         return match
 
     def apply_sandbox_ops(self, match_id: str, ops: list[dict[str, Any]]) -> Match:
@@ -186,6 +203,7 @@ class GameService:
         state = sandbox.apply_ops(match.state, ops)
         self._push_sandbox_undo(match, match.state)
         match.state = state
+        match.record({"kind": "sandbox_edit", "player_id": None, "option_id": _describe_ops(ops)})
         return match
 
     def _push_sandbox_undo(self, match: Match, previous_state: GameState) -> None:
@@ -205,7 +223,22 @@ class GameService:
         if not match.sandbox_undo:
             raise ValueError("There is no sandbox edit left to undo.")
         match.state = match.sandbox_undo.pop()
+        match.record({"kind": "sandbox_undo", "player_id": None})
         return match
+
+    # --- Replays --------------------------------------------------------------
+
+    def replay(
+        self,
+        match_id: str,
+        app_version: str | None = None,
+        client_meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """The finished replay file for a match, ready to store or export."""
+        match = self._matches.get(match_id)
+        if match is None or match.replay is None:
+            raise KeyError(f"No replay for match '{match_id}'.")
+        return match.replay.to_dict(app_version=app_version, client_meta=client_meta)
 
     def _sandbox_match(self, match_id: str) -> Match:
         match = self._matches.get(match_id)
@@ -266,6 +299,7 @@ class GameService:
             rng = random.Random((seed << 20) ^ (len(state.action_history) * 2654435761) ^ ai_player_id)
             chosen = choose_ladder_action(state, ai_player_id, ai_elo, rng)
             match.state = apply_action(state, chosen)
+            match.record(chosen)
             self._push_sandbox_undo(match, state)
             self._record_if_finished(match, state)
             action_payload = {
@@ -298,6 +332,7 @@ class GameService:
             # No checkpoint or no torch: fall back to the built-in search AI.
             chosen = choose_heuristic_action(state, ai_player_id)
         match.state = apply_action(state, chosen)
+        match.record(chosen)
         self._push_sandbox_undo(match, state)
         self._record_if_finished(match, state)
         action_payload = {

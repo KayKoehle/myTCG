@@ -108,3 +108,45 @@ def test_http_server_serves_peers(mobile_api):
 
     # start_lan_server is idempotent: the port stays put on repeat calls.
     assert json.loads(mobile_api.start_lan_server(0))["port"] == port
+
+
+def test_replay_route_records_the_offline_match(mobile_api):
+    """The Android build has no FastAPI server, so `/api/replay` is answered by
+    the in-process bridge — and it has to record from the deal, exactly as the
+    server does (mobile_api.py is a hand-maintained mirror of GameService)."""
+    # The game routes answer with the payload alone (the client only treats an
+    # explicit ok=false as a failure), unlike the lan/* routes above.
+    state = call(mobile_api, "/api/state", {
+        "match_id": "replay-mobile", "player_id": 1, "seed": 3,
+    })
+    assert "snapshot" in state
+
+    first = call(mobile_api, "/api/replay", {"match_id": "replay-mobile", "app_version": "android-test"})
+    assert first["replay"]["format"] == "mytcg-replay"
+    assert first["replay"]["app_version"] == "android-test"
+    assert len(first["replay"]["frames"]) == 1
+
+    action = state["snapshot"]["legal_actions"][0]
+    assert "snapshot" in call(mobile_api, "/api/action", {
+        "match_id": "replay-mobile",
+        "player_id": action["player_id"],
+        "action_kind": action["kind"],
+        "card_id": action["card_id"],
+        "location_id": action["location_id"],
+        "option_id": action["option_id"],
+        "seed": 3,
+    })
+
+    second = call(mobile_api, "/api/replay", {
+        "match_id": "replay-mobile", "client_meta": {"mode": "1v1"},
+    })
+    assert len(second["replay"]["frames"]) == 2
+    assert second["replay"]["frames"][1]["action"]["kind"] == action["kind"]
+    assert second["replay"]["client_meta"] == {"mode": "1v1"}
+    assert second["replay"]["cards"], "the recording bundled no card printings"
+
+
+def test_replay_route_reports_an_unknown_match(mobile_api):
+    answer = call(mobile_api, "/api/replay", {"match_id": "never-played-here"})
+    assert answer["ok"] is False
+    assert "never-played-here" in answer["error"]
