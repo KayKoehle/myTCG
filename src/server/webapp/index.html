@@ -118,26 +118,115 @@
         <div class="rp-list" id="replayList"></div>
     </div>
 
-    <div id="replayScreen" class="screen replay-screen">
-        <header class="screen-head">
+    <!-- The replay player is the game board. Its markup mirrors #gameScreen
+         section for section (own ids, no game listeners), so js/render.js draws
+         a recorded step exactly as it draws a live one — lanes, hand, piles,
+         crowns and mana all read the way they did in the match. What a replay
+         adds sits around that board: the meta strip, the transport bar, and the
+         seat switch that picks whose side of the table you watch from. -->
+    <div id="replayScreen" class="app screen replay-screen">
+        <header class="status-panel">
             <button class="icon-btn" id="btnReplayBack" aria-label="Back to replays">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
                 </svg>
             </button>
-            <h2 class="screen-title" id="replayTitle">Replay</h2>
-            <button class="btn ghost tiny" id="btnReplayExportCurrent">Export</button>
+            <div class="score-panel" id="rpScorePanel"></div>
+            <button class="icon-btn" id="btnReplayHistory" aria-label="Open past actions">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor"
+                        d="M13 3a9 9 0 1 0 8.94 10h-2.02A7 7 0 1 1 13 5c1.93 0 3.68.78 4.95 2.05L15 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 13 3zm-1 5v5l4.25 2.52.75-1.23-3.5-2.08V8h-1.5z" />
+                </svg>
+            </button>
         </header>
+
+        <div class="rp-idbar">
+            <div class="rp-idbar-title" id="replayTitle">Replay</div>
+            <button class="btn ghost tiny" id="btnReplayExportCurrent">Export</button>
+        </div>
         <div class="rp-meta" id="replayMeta"></div>
-        <div class="rp-status" id="replayStatus"></div>
-        <div id="replayPending"></div>
-        <div class="rp-board">
-            <div class="rp-lanes" id="replayLanes"></div>
-            <div class="rp-seats" id="replaySeats"></div>
-        </div>
-        <div class="rp-logwrap">
-            <div class="rp-log" id="replayLog"></div>
-        </div>
+
+        <main class="board">
+            <section class="opp-chips hidden" id="rpOppChips"></section>
+            <section class="opp-strip">
+                <div class="peek-pile">
+                    <div class="peek-label">Deck <span class="peek-count" id="rpOppDeckCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="deck-stack deck-stack-opp" id="rpOppDeckStack">
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="peek-hand">
+                    <div class="peek-label">Opponent Hand <span class="peek-count" id="rpOppHandCount">0</span></div>
+                    <div class="peek-window peek-window-hand">
+                        <div class="opponent-hand" id="rpOppHand"></div>
+                    </div>
+                </div>
+
+                <div class="peek-pile">
+                    <div class="peek-label">Underworld <span class="peek-count" id="rpOppUnderworldCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="underworld-grid" id="rpOppUnderworld"></div>
+                    </div>
+                </div>
+            </section>
+            <div class="mana-zone" id="rpOppMana"></div>
+
+            <div class="hud" id="rpHud"></div>
+            <!-- The decision a seat was handed at this step. A live game opens
+                 it as a modal to be answered; a recording has already answered
+                 it, so it reads inline with the pick marked. -->
+            <div id="rpChoice"></div>
+
+            <div class="status" id="rpStatus"></div>
+
+            <section>
+                <div class="lanes" id="rpLanes"></div>
+                <div class="lane-dots hidden" id="rpLaneDots" aria-hidden="true"></div>
+            </section>
+
+            <!-- Where the live board puts End Turn, the replay puts what this
+                 step actually was. -->
+            <section class="center-action">
+                <div class="rp-action" id="rpAction"></div>
+            </section>
+
+            <section class="hand-wrap your-hand-wrap">
+                <div class="mana-zone" id="rpYourMana"></div>
+                <div class="hand" id="rpHand"></div>
+            </section>
+
+            <section class="your-strip">
+                <div class="peek-pile">
+                    <div class="peek-label">Deck <span class="peek-count" id="rpYourDeckCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="deck-stack" id="rpYourDeckStack">
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                            <span class="deck-card"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn ghost rp-seat-switch" id="btnReplaySeat"
+                    aria-label="Watch from another seat">
+                    <span class="rp-seat-switch-label">Watching</span>
+                    <span class="rp-seat-switch-name" id="rpSeatName">Player 1</span>
+                </button>
+
+                <div class="peek-pile">
+                    <div class="peek-label">Underworld <span class="peek-count" id="rpYourUnderworldCount">0</span></div>
+                    <div class="peek-window">
+                        <div class="underworld-grid" id="rpYourUnderworld"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
         <div class="rp-bar">
             <div class="rp-step-label" id="replayStepLabel"></div>
             <input type="range" class="rp-range" id="replayRange" min="0" max="0" value="0" step="1"
@@ -150,6 +239,19 @@
                 <button class="btn ghost" id="btnReplayLast" aria-label="Last step">⏭</button>
                 <button class="btn ghost" id="btnReplaySpeed" aria-label="Playback speed">1×</button>
             </div>
+        </div>
+    </div>
+
+    <!-- The replay's Past Actions sheet: the game's history panel, holding the
+         log as it stood at the current step. Its own sheet rather than the
+         match one, which carries in-match tools (sandbox, save replay). -->
+    <div id="replayHistoryModal" class="sheet-modal" aria-hidden="true">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="replayHistoryTitle">
+            <div class="sheet-head">
+                <h2 class="sheet-title" id="replayHistoryTitle">Past Actions</h2>
+                <button class="sheet-close" id="btnCloseReplayHistory" aria-label="Close past actions">&times;</button>
+            </div>
+            <div class="history-list" id="replayActionHistory"></div>
         </div>
     </div>
 

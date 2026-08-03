@@ -1,34 +1,48 @@
 // The Replays screens: the saved-replay library, and the player that steps
 // through a recording.
 //
-// Everything drawn here reads from the replay file alone — the boards it
-// recorded and the card printings it bundled (js/replay.js). The live catalog
-// and the rules engine are deliberately not consulted, which is what lets a
-// replay from an older build show that build's cards and that build's numbers.
+// The player is the game screen. A recorded step is turned into the same
+// snapshot a live match produces (js/replaysnapshot.js) and handed to the same
+// renderer (js/render.js), so a replay reads exactly like the match it came
+// from — same lanes, same hand, same crowns and mana — instead of a private
+// summary of it. What the replay adds is the transport bar, the seat switch,
+// and the fact that nothing on the board can be touched.
+//
+// The board still draws from the replay file alone: its recorded states and
+// the card printings it bundled. The live catalog and the rules engine are
+// deliberately not consulted, which is what lets a replay from an older build
+// show that build's cards and that build's numbers.
 
-import { cardArtTag, escapeHtml, showToast, statChangeClass } from './helpers.js';
+import { escapeHtml, showToast } from './helpers.js';
+import { layoutHand, renderSnapshot } from './render.js';
 import {
     ReplayError,
-    deckLabel,
     deleteReplay,
+    describeOption,
     exportReplay,
     expandFrames,
     formatAction,
-    formatLogEntry,
     getReplay,
-    laneName,
     listReplays,
     parseReplayText,
     readFileText,
     replayCard,
     saveReplay,
-    seatOfCard,
     summarizeReplay,
 } from './replay.js';
+import { replaySnapshot, seatNames } from './replaysnapshot.js';
 
 // Auto-play pacing. Each press of the speed button moves one step down.
 const SPEEDS = [1, 2, 4, 0.5];
 const BASE_STEP_MS = 900;
+
+// The render pipeline writes into a handful of elements the replay screen has
+// no use for (the deck pickers, the End Turn button, the live choice modal).
+// They get detached stand-ins so nothing has to be special-cased in render.js
+// and nothing can leak onto the game screen.
+function stub(tag) {
+    return document.createElement(tag);
+}
 
 export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
     // The replay currently loaded into the player, its expanded steps, and
@@ -38,6 +52,64 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
     let position = 0;
     let timer = null;
     let speedIdx = 0;
+    // Whose side of the table we watch from. The board is egocentric, so this
+    // is what decides which hand is face-up in front of you.
+    let viewerSeat = 0;
+
+    // The board's own element map: the game screen's names pointing at the
+    // replay screen's copies. Built once — the elements never change.
+    const boardUi = {
+        gameScreen: ui.replayScreen,
+        scorePanel: ui.rpScorePanel,
+        oppChips: ui.rpOppChips,
+        laneDots: ui.rpLaneDots,
+        hud: ui.rpHud,
+        pending: stub('div'),
+        status: ui.rpStatus,
+        lanes: ui.rpLanes,
+        hand: ui.rpHand,
+        yourMana: ui.rpYourMana,
+        oppMana: ui.rpOppMana,
+        oppHand: ui.rpOppHand,
+        oppHandCount: ui.rpOppHandCount,
+        yourUnderworld: ui.rpYourUnderworld,
+        oppUnderworld: ui.rpOppUnderworld,
+        yourUnderworldCount: ui.rpYourUnderworldCount,
+        oppUnderworldCount: ui.rpOppUnderworldCount,
+        yourDeckCount: ui.rpYourDeckCount,
+        oppDeckCount: ui.rpOppDeckCount,
+        yourDeckStack: ui.rpYourDeckStack,
+        oppDeckStack: ui.rpOppDeckStack,
+        actionHistory: ui.replayActionHistory,
+        // Nothing to pick, nothing to start, nothing to end.
+        btnEndTurn: stub('button'),
+        deckA: stub('select'),
+        deckB: stub('select'),
+        checkpointPath: stub('select'),
+        checkpointField: stub('div'),
+        choiceModal: stub('div'),
+        choiceTitle: stub('div'),
+        choicePrompt: stub('div'),
+        choiceSub: stub('div'),
+        choiceOptions: stub('div'),
+    };
+
+    // The render pipeline's scratch state. Private to the replay, so watching
+    // one can never disturb a match left running underneath.
+    const boardApp = {
+        snapshot: null,
+        cardNameById: new Map(),
+        mulliganSelected: new Set(),
+        playableCardSet: new Set(),
+        abilityReadyCardSet: new Set(),
+        legalMoveChoiceSet: new Set(),
+        movableChoiceCardSet: new Set(),
+        opponentTurnActive: false,
+        sandboxToolsHidden: true,
+        lanesScrollMatchId: null,
+        playerElo: null,
+        aiElos: {},
+    };
 
     // --- Seat naming ------------------------------------------------------
 
@@ -47,21 +119,15 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
         return idx >= 0 ? idx : 0;
     }
 
+    function seatLabels() {
+        return replay ? seatNames(replay) : [];
+    }
+
     function seatLabel(seatIdx) {
-        const meta = (replay && replay.client_meta) || {};
-        const names = Array.isArray(meta.seat_names) ? meta.seat_names : [];
-        const custom = (names[seatIdx] || '').trim();
-        if (custom) return custom;
-        const deck = ((replay && replay.deck_names) || [])[seatIdx];
-        return deck ? deckLabel(deck) : `Player ${seatIdx + 1}`;
+        return seatLabels()[seatIdx] || `Player ${seatIdx + 1}`;
     }
 
-    function seatShort(seatIdx) {
-        return `P${seatIdx + 1}`;
-    }
-
-    // The log records player ids; formatLogEntry hands them straight back.
-    const namePlayer = (playerId) => seatShort(seatIdxOf(playerId));
+    const namePlayer = (playerId) => seatLabel(seatIdxOf(playerId));
 
     // --- Library ----------------------------------------------------------
 
@@ -166,6 +232,10 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
         }
         replay = loaded;
         position = 0;
+        // Open on the seat the recording was taken from, so a player watching
+        // their own match sits where they sat.
+        const meta = loaded.client_meta || {};
+        viewerSeat = Math.max(0, (loaded.player_ids || []).indexOf(Number(meta.viewer_player_id)));
         stop();
         renderHeader();
         render();
@@ -194,165 +264,101 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
         return ((replay && replay.player_ids) || []).length;
     }
 
-    // A card as it was printed when the match was played, with the live power
-    // the engine gave it at this step layered on top.
-    function cardTile(cardId, { power = null, facedown = false, highlight = false, extraClass = '', badge = '' } = {}) {
-        const card = replayCard(replay, cardId);
-        const seat = seatOfCard(replay, cardId);
-        if (facedown) {
-            return `<span class="rp-card rp-card-facedown" title="Face-down card">
-                <span class="rp-card-name">Face-down</span>
-            </span>`;
-        }
-        if (!card) {
-            // A card the recording never printed. Show the id rather than
-            // silently dropping it — in a bug report that gap is the finding.
-            return `<span class="rp-card rp-card-unknown" title="${escapeHtml(String(cardId))}">
-                <span class="rp-card-name">Unknown card</span>
-            </span>`;
-        }
-        const shown = power === null || power === undefined ? card.power : power;
-        const powerCls = statChangeClass(shown, card.power, true);
-        return `
-            <button type="button" class="rp-card seat-${seat} ${highlight ? 'rp-card-hot' : ''} ${extraClass}"
-                data-card-id="${escapeHtml(cardId)}" title="${escapeHtml(card.name)}">
-                <span class="rp-card-cost">${escapeHtml(String(card.cost ?? '?'))}</span>
-                <span class="rp-card-art">${cardArtTag(card.name, 'rp-card-img', { eager: true })}</span>
-                <span class="rp-card-name">${escapeHtml(card.name)}</span>
-                <span class="rp-card-power ${powerCls}">${escapeHtml(String(shown ?? '?'))}</span>
-                ${badge}
-            </button>
-        `;
-    }
-
-    function renderLanes(state, hotCardId) {
-        const locations = state.locations || [];
-        const seats = seatCount();
-        const facedown = new Set(state.facedown || []);
-        return locations.map((loc) => {
-            const rows = [];
-            for (let seat = 0; seat < seats; seat += 1) {
-                const stack = (loc.stacks || [])[seat] || [];
-                const cards = stack.map((cardId) => cardTile(cardId, {
-                    power: (loc.powers || {})[cardId],
-                    facedown: facedown.has(cardId),
-                    highlight: cardId === hotCardId,
-                })).join('');
-                rows.push(`
-                    <div class="rp-lane-row seat-${seat}">
-                        <span class="rp-lane-seat">${escapeHtml(seatShort(seat))}</span>
-                        <div class="rp-lane-cards">${cards || '<span class="rp-lane-empty">—</span>'}</div>
-                        <span class="rp-lane-power">${escapeHtml(String((loc.side_power || [])[seat] ?? 0))}</span>
-                    </div>
-                `);
-            }
-            const label = laneName(Number(loc.location_id), locations.length);
-            return `
-                <section class="rp-lane">
-                    <header class="rp-lane-head">
-                        <span>${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</span>
-                        <span class="tiny">capacity ${escapeHtml(String(loc.capacity ?? '?'))}${Number(loc.weight) > 1 ? ` · weight ${escapeHtml(String(loc.weight))}` : ''}</span>
-                    </header>
-                    ${rows.join('')}
-                </section>
-            `;
-        }).join('');
-    }
-
-    function renderSeats(state, hotCardId) {
-        const seats = seatCount();
-        const facedown = new Set(state.facedown || []);
-        const acting = state.acting_player_id;
-        const out = [];
-        for (let seat = 0; seat < seats; seat += 1) {
-            const playerId = (replay.player_ids || [])[seat];
-            const hand = (state.hands || [])[seat] || [];
-            const costs = (state.hand_costs || [])[seat] || [];
-            const underworld = (state.underworlds || [])[seat] || [];
-            const setAside = (state.set_aside || [])[seat] || [];
-            const deckSize = ((state.decks || [])[seat] || []).length;
-            const isActing = Number(acting) === Number(playerId);
-            out.push(`
-                <section class="rp-seat seat-${seat} ${isActing ? 'rp-seat-acting' : ''}">
-                    <header class="rp-seat-head">
-                        <span class="rp-seat-name">${escapeHtml(seatShort(seat))} · ${escapeHtml(seatLabel(seat))}</span>
-                        <span class="rp-seat-stats">
-                            <span title="Crowns">👑 ${escapeHtml(String((state.victory_points || [])[seat] ?? 0))}</span>
-                            <span title="Mana">💧 ${escapeHtml(String((state.mana_pool || [])[seat] ?? 0))}/${escapeHtml(String((state.mana_cap || [])[seat] ?? 0))}</span>
-                            <span title="Cards left in deck">🂠 ${deckSize}</span>
-                        </span>
-                    </header>
-                    <div class="rp-zone">
-                        <span class="rp-zone-label">Hand ${hand.length}</span>
-                        <div class="rp-zone-cards">${hand.map((cardId, i) => cardTile(cardId, {
-                            highlight: cardId === hotCardId,
-                            extraClass: 'rp-card-hand',
-                            // The cost after the discounts that were live at
-                            // this exact moment, not the printed one.
-                            badge: costs[i] === undefined ? '' : `<span class="rp-card-live-cost" title="What this cost to play at this moment">${escapeHtml(String(costs[i]))}</span>`,
-                        })).join('') || '<span class="rp-lane-empty">—</span>'}</div>
-                    </div>
-                    <div class="rp-zone">
-                        <span class="rp-zone-label">Underworld ${underworld.length}</span>
-                        <div class="rp-zone-cards">${underworld.map((cardId) => cardTile(cardId, { highlight: cardId === hotCardId })).join('') || '<span class="rp-lane-empty">—</span>'}</div>
-                    </div>
-                    ${setAside.length ? `<div class="rp-zone">
-                        <span class="rp-zone-label">Set aside ${setAside.length}</span>
-                        <div class="rp-zone-cards">${setAside.map((cardId) => cardTile(cardId, { facedown: facedown.has(cardId) })).join('')}</div>
-                    </div>` : ''}
-                    <div class="rp-zone rp-zone-deck">
-                        <span class="rp-zone-label">Deck ${deckSize}</span>
-                        <div class="rp-zone-cards rp-deck-order">${((state.decks || [])[seat] || []).map((cardId) => cardTile(cardId)).join('') || '<span class="rp-lane-empty">—</span>'}</div>
-                    </div>
-                </section>
-            `);
-        }
-        return out.join('');
-    }
+    // --- The board --------------------------------------------------------
 
     function render() {
+        if (!replay) return;
         const step = current();
         const state = step.state || {};
-        const hotCardId = (step.action && step.action.card_id) || null;
+        const snapshot = replaySnapshot(replay, step, viewerSeat);
+        const names = seatLabels();
+        const config = {
+            player_id: Number((replay.player_ids || [])[viewerSeat]),
+            // A recording is watched from the outside, so every seat is named
+            // rather than split into "You" and "Opp" — the same way a
+            // pass-and-play match names the humans sharing the screen.
+            local_seat_ids: (replay.player_ids || []).map(Number),
+            local_seat_names: names,
+        };
 
-        ui.replayStatus.innerHTML = `
-            <span>Round ${escapeHtml(String(state.round_number ?? '?'))}</span>
-            <span>Turn ${escapeHtml(String(state.turn_number ?? '?'))}</span>
-            <span>${escapeHtml(String(state.phase || ''))}</span>
-            ${state.acting_player_id !== null && state.acting_player_id !== undefined
-                ? `<span>waiting on ${escapeHtml(namePlayer(state.acting_player_id))}</span>` : ''}
-            ${state.flood_used ? '<span class="rp-warn">the flood has come</span>'
-                : (state.flood_pending_turn ? '<span class="rp-warn">flood pending</span>' : '')}
+        // What the watched seat had marked for redraw, so a recorded mulligan
+        // shows its red X marks.
+        boardApp.mulliganSelected = new Set((state.mulligan_selected || [])[viewerSeat] || []);
+        renderSnapshot({
+            snapshot,
+            ui: boardUi,
+            app: boardApp,
+            config,
+            // Reachable only from the live choice modal, which the replay
+            // never opens (see boardUi).
+            onChooseOption: () => {},
+            cardStack: null,
+        });
+        layoutHand(boardUi);
+
+        markStepCard(step);
+        renderChoice(step);
+        renderCaption(step);
+        renderTransport();
+        if (ui.rpSeatName) ui.rpSeatName.textContent = seatLabel(viewerSeat);
+        if (ui.btnReplaySeat) ui.btnReplaySeat.disabled = seatCount() < 2;
+    }
+
+    // The card this step acted on, lit the way the board lights a card it is
+    // asking about — the one thing a still frame can't say for itself.
+    function markStepCard(step) {
+        const cardId = (step.action && step.action.card_id) || null;
+        if (!cardId) return;
+        const selector = `[data-board-card-id="${CSS.escape(cardId)}"], .hand-card[data-card-id="${CSS.escape(cardId)}"]`;
+        for (const el of ui.replayScreen.querySelectorAll(selector)) {
+            el.classList.add('rp-hot');
+        }
+    }
+
+    // The decision a seat faced at this step, with the option they went on to
+    // take marked. A live game asks this in a modal; a recording has the
+    // answer already, so it reads inline.
+    function renderChoice(step) {
+        const pending = (step.state || {}).pending_choice;
+        if (!pending) {
+            ui.rpChoice.innerHTML = '';
+            return;
+        }
+        const next = steps[position + 1];
+        const taken = next && next.action && next.action.kind === 'choose_option'
+            ? String(next.action.option_id)
+            : null;
+        const options = (pending.options || []).map((option) => {
+            const chosen = String(option) === taken;
+            return `<span class="rp-choice-option ${chosen ? 'rp-choice-taken' : ''}">${escapeHtml(describeOption(replay, option))}</span>`;
+        }).join('');
+        // Laid out like the live choice sheet — who it is for, what it asked,
+        // then the options — so the same decision reads the same way.
+        ui.rpChoice.innerHTML = `
+            <div class="rp-choice">
+                <div class="rp-choice-who">Choice for <strong>${escapeHtml(namePlayer(pending.player_id))}</strong></div>
+                <div class="rp-choice-prompt">${escapeHtml(pending.prompt || pending.choice_kind || '')}</div>
+                <div class="rp-choice-options">${options}</div>
+            </div>
         `;
+    }
 
-        const pending = state.pending_choice;
-        ui.replayPending.innerHTML = pending
-            ? `<div class="rp-pending"><strong>${escapeHtml(namePlayer(pending.player_id))} must choose:</strong>
-                 ${escapeHtml(pending.prompt || pending.choice_kind || '')}</div>`
-            : '';
+    // Where a live board offers End Turn, the replay says what this step was.
+    function renderCaption(step) {
+        const text = formatAction(replay, step.action, namePlayer);
+        const fresh = (step.newLog || []).length;
+        ui.rpAction.innerHTML = text
+            ? `<span class="rp-action-text">${escapeHtml(text)}</span>`
+            : `<span class="rp-action-text rp-action-quiet">${escapeHtml(position === 0 ? 'The opening hands are dealt' : 'The board settles')}</span>`;
+        ui.rpAction.classList.toggle('rp-action-live', fresh > 0);
+    }
 
-        ui.replayLanes.innerHTML = renderLanes(state, hotCardId);
-        ui.replaySeats.innerHTML = renderSeats(state, hotCardId);
-
-        const actionText = formatAction(replay, step.action, namePlayer);
-        ui.replayStepLabel.textContent = `Step ${position + 1} / ${steps.length}${actionText ? ` — ${actionText}` : ''}`;
+    function renderTransport() {
+        ui.replayStepLabel.textContent = `Step ${position + 1} / ${steps.length}`;
         ui.replayRange.value = String(position);
         ui.btnReplayPlay.textContent = timer ? '⏸' : '▶';
         ui.btnReplayPlay.setAttribute('aria-label', timer ? 'Pause' : 'Play');
         ui.btnReplaySpeed.textContent = `${SPEEDS[speedIdx]}×`;
-
-        renderLog(step);
-    }
-
-    function renderLog(step) {
-        const freshFrom = step.log.length - step.newLog.length;
-        ui.replayLog.innerHTML = step.log.map((entry, i) => `
-            <button type="button" class="rp-log-line ${i >= freshFrom ? 'rp-log-fresh' : ''}"
-                data-log-index="${i}">${escapeHtml(formatLogEntry(replay, entry, namePlayer))}</button>
-        `).join('') || '<div class="tiny rp-lane-empty">Nothing has happened yet.</div>';
-        const fresh = ui.replayLog.querySelector('.rp-log-fresh');
-        if (fresh) fresh.scrollIntoView({ block: 'nearest' });
-        else ui.replayLog.scrollTop = ui.replayLog.scrollHeight;
     }
 
     // --- Transport --------------------------------------------------------
@@ -382,16 +388,27 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
         if (timer) { stop(); render(); } else { play(); }
     }
 
-    // Leaving the screen must not leave a timer redrawing a hidden board.
+    // Leaving the screen must not leave a timer redrawing a hidden board, and
+    // must not leave the history sheet open over whatever comes next.
     function close() {
         stop();
+        closeHistory();
     }
 
-    // The first log line a step produced jumps the playhead to that step.
-    function jumpToLogIndex(logIndex) {
-        for (let i = 0; i < steps.length; i += 1) {
-            if (steps[i].log.length > logIndex) { seek(i); return; }
-        }
+    function switchSeat() {
+        if (seatCount() < 2) return;
+        viewerSeat = (viewerSeat + 1) % seatCount();
+        render();
+    }
+
+    function openHistory() {
+        ui.replayHistoryModal.classList.add('open');
+        ui.replayHistoryModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeHistory() {
+        ui.replayHistoryModal.classList.remove('open');
+        ui.replayHistoryModal.setAttribute('aria-hidden', 'true');
     }
 
     function openCard(cardId) {
@@ -441,16 +458,21 @@ export function createReplayScreens(ui, { cardStack, onOpenPlayer }) {
         });
         ui.replayRange.addEventListener('input', () => { stop(); seek(Number(ui.replayRange.value)); });
 
-        ui.replayLog.addEventListener('click', (event) => {
-            const line = event.target.closest('[data-log-index]');
-            if (line) { stop(); jumpToLogIndex(Number(line.getAttribute('data-log-index'))); }
+        ui.btnReplaySeat.addEventListener('click', switchSeat);
+        ui.btnReplayHistory.addEventListener('click', openHistory);
+        ui.btnCloseReplayHistory.addEventListener('click', closeHistory);
+        ui.replayHistoryModal.addEventListener('click', (event) => {
+            if (event.target === ui.replayHistoryModal) closeHistory();
         });
-        for (const zone of [ui.replayLanes, ui.replaySeats]) {
-            zone.addEventListener('click', (event) => {
-                const tile = event.target.closest('[data-card-id]');
-                if (tile) openCard(tile.getAttribute('data-card-id'));
-            });
-        }
+
+        // The board is a recording, so a card can only be looked at — never
+        // dragged, played or targeted. Board cards carry the game's
+        // data-board-card-id, hand cards the game's data-card-id.
+        ui.replayScreen.addEventListener('click', (event) => {
+            const tile = event.target.closest('[data-board-card-id], .hand-card[data-card-id]');
+            if (!tile) return;
+            openCard(tile.getAttribute('data-board-card-id') || tile.getAttribute('data-card-id'));
+        });
     }
 
     return { init, renderLibrary, load, close };
