@@ -211,18 +211,22 @@ export function laneName(locationId, lanes = 3) {
 
 // The action that produced a step, for steps the log stays silent about
 // (choices, sandbox edits).
+//
+// Past tense throughout, and never a pronoun of its own: the subject is a seat
+// name the recording chose, which may well be "You" — only "You ended the
+// turn" reads for every seat, "You ends the turn" reads for none.
 export function formatAction(replay, action, seatName) {
     if (!action || !action.kind) return '';
     const actor = Number.isInteger(action.player_id) ? seatName(action.player_id) : '';
     const card = action.card_id ? replayCardName(replay, action.card_id) : '';
     switch (action.kind) {
         case 'play_card':
-            return `${actor} plays ${card} to ${laneName(Number(action.location_id), laneCount(replay))}`;
-        case 'draw_card': return `${actor} draws`;
-        case 'end_turn': return `${actor} ends the turn`;
-        case 'use_ability': return `${actor} activates ${card}`;
-        case 'surrender': return `${actor} surrenders`;
-        case 'choose_option': return `${actor} chooses ${describeOption(replay, action.option_id)}`;
+            return `${actor} played ${card} to ${laneName(Number(action.location_id), laneCount(replay))}`;
+        case 'draw_card': return `${actor} drew a card`;
+        case 'end_turn': return `${actor} ended the turn`;
+        case 'use_ability': return `${actor} activated ${card}`;
+        case 'surrender': return `${actor} surrendered`;
+        case 'choose_option': return `${actor} chose “${describeOption(replay, action.option_id)}”`;
         case 'sandbox_enable': return 'Sandbox mode switched on';
         case 'sandbox_edit': return `Sandbox edit (${action.option_id || 'edit'})`;
         case 'sandbox_undo': return 'Sandbox undo';
@@ -230,13 +234,19 @@ export function formatAction(replay, action, seatName) {
     }
 }
 
-function describeOption(replay, optionId) {
+/**
+ * One option of a pending choice, as a label.
+ *
+ * Options are "|"-joined tuples of card ids, lane indexes and keywords; naming
+ * the card ids — from the replay's own printings, so a card renamed since
+ * still reads the way it was played — is what makes them legible.
+ */
+export function describeOption(replay, optionId) {
     const raw = String(optionId || '');
     if (!raw) return 'an option';
-    if (raw === 'KEEP') return 'to keep the hand';
-    if (raw === 'PASS') return 'to pass';
-    // Options are "|"-joined tuples of card ids, lane indexes and keywords;
-    // naming the card ids is what makes them readable.
+    if (raw === 'KEEP') return 'Keep the hand';
+    if (raw === 'PASS') return 'Pass';
+    if (raw === 'NONE') return 'None';
     return raw.split('|').map((part) => {
         const card = replayCard(replay, part);
         return card ? card.name : part;

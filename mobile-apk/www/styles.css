@@ -5165,8 +5165,7 @@ details[open]>.cos-summary::before {
    shares the app's look but none of the game screen's markup — a change to the
    live board can never alter how an old recording reads. */
 
-.replays-screen,
-.replay-screen {
+.replays-screen {
     max-width: 760px;
     margin: 0 auto;
     padding: 12px;
@@ -5177,15 +5176,13 @@ details[open]>.cos-summary::before {
     min-height: 100vh;
 }
 
-/* Seat colors for the replay screens only. A replay has no "you" — every seat
-   is watched from the outside — so seats are colored by index rather than by
-   the game screen's you/opponent split. */
-.replay-screen .seat-0 { --seat-color: #17b6ff; }
-.replay-screen .seat-1 { --seat-color: #ff8a3a; }
-.replay-screen .seat-2 { --seat-color: #b78cff; }
-.replay-screen .seat-3 { --seat-color: #6fe08e; }
-.replay-screen .seat-4 { --seat-color: #ffc84f; }
-.replay-screen .seat-5 { --seat-color: #ff7a5c; }
+/* The player screen *is* the game board (.app), so it inherits the board's
+   grid, spacing and every rule the lanes, hand and piles are built from. Only
+   what a recording adds is styled below. */
+.replay-screen {
+    align-content: start;
+    min-height: 100vh;
+}
 
 .rp-library-tools {
     display: flex;
@@ -5286,25 +5283,59 @@ details[open]>.cos-summary::before {
 
 /* --- Player ---------------------------------------------------------------- */
 
-.rp-meta,
-.rp-status {
+/* Identity strip: which match this is, and what it was recorded against. Kept
+   between the crown panel and the board because a bug report is read here. */
+.rp-idbar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px 12px;
-    font-size: 12px;
-    color: var(--muted);
+    align-items: center;
+    gap: 10px;
 }
 
-.rp-status {
-    font-weight: 700;
-    color: var(--ink);
+.rp-idbar-title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rp-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 12px;
+    color: var(--muted);
 }
 
 .rp-warn {
     color: var(--warn);
 }
 
-.rp-pending {
+/* A recorded board is looked at, never played: no card lifts, glows as
+   playable, or offers a grab cursor, and the mulligan keep/redraw buttons
+   belong to a decision that was made long ago. */
+.replay-screen .hand-card,
+.replay-screen .card {
+    cursor: pointer;
+}
+
+.replay-screen .mull-toggle {
+    display: none;
+}
+
+/* The card this step acted on — the one thing a still frame cannot say for
+   itself. */
+.replay-screen .rp-hot {
+    border-color: rgba(255, 200, 79, 0.9);
+    box-shadow: 0 0 0 2px rgba(255, 200, 79, 0.3), 0 0 20px rgba(255, 200, 79, 0.28);
+}
+
+/* The decision a seat faced, with the option they took marked. */
+.rp-choice {
+    display: grid;
+    gap: 6px;
     padding: 8px 10px;
     border-radius: 12px;
     border: 1px solid rgba(255, 200, 79, 0.4);
@@ -5312,248 +5343,101 @@ details[open]>.cos-summary::before {
     font-size: 13px;
 }
 
-.rp-board {
-    display: grid;
-    gap: 10px;
+.rp-choice-who {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
-.rp-lanes {
-    display: grid;
-    gap: 8px;
+.rp-choice-who strong {
+    color: var(--ink);
 }
 
-.rp-lane,
-.rp-seat {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: var(--lane-bg);
-    padding: 8px;
-    display: grid;
-    gap: 6px;
+.rp-choice-prompt {
+    font-weight: 700;
 }
 
-.rp-lane-head,
-.rp-seat-head {
+.rp-choice-options {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.rp-choice-option {
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(9, 24, 37, 0.6);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.rp-choice-taken {
+    border-color: rgba(45, 212, 169, 0.8);
+    background: rgba(12, 60, 50, 0.7);
+    color: #b6ffd8;
+    font-weight: 700;
+}
+
+/* Where a live board puts End Turn, the replay puts what this step was. */
+.rp-action {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(9, 24, 37, 0.75);
+    text-align: center;
+}
+
+.rp-action-text {
     font-weight: 700;
     font-size: 13px;
 }
 
-.rp-lane-head .tiny,
-.rp-seat-stats {
-    font-weight: 400;
+.rp-action-quiet {
+    font-weight: 500;
     color: var(--muted);
 }
 
-.rp-seat-stats {
-    display: flex;
-    gap: 10px;
-    font-size: 12px;
+.rp-action-live {
+    border-color: rgba(23, 182, 255, 0.55);
+    box-shadow: 0 0 16px rgba(23, 182, 255, 0.18);
 }
 
-.rp-lane-row {
+/* Which seat the board is drawn for. Sits where a live match keeps the emote
+   button, so the strip below the hand keeps its three columns. */
+.rp-seat-switch {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 34px;
-    align-items: center;
-    gap: 6px;
-    padding: 4px;
-    border-radius: 10px;
-    border-left: 3px solid var(--seat-color, var(--line));
-    background: rgba(4, 14, 24, 0.4);
-}
-
-.rp-lane-seat,
-.rp-lane-power {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--seat-color, var(--muted));
-    text-align: center;
-}
-
-.rp-lane-power {
-    font-size: 15px;
-    color: var(--ink);
-}
-
-/* Card rows scroll sideways rather than widening the page — a full lane or a
-   15-card deck must never push the layout out of the viewport. */
-.rp-lane-cards,
-.rp-zone-cards {
-    display: flex;
-    gap: 4px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-}
-
-.rp-lane-empty {
-    color: var(--muted);
-    font-size: 12px;
-    padding: 0 4px;
-}
-
-.rp-seats {
-    display: grid;
-    gap: 8px;
-}
-
-.rp-seat-acting {
-    border-color: color-mix(in srgb, var(--hero) 60%, var(--line));
-    box-shadow: 0 0 12px rgba(23, 182, 255, 0.22);
-}
-
-.rp-zone {
-    display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
-    align-items: center;
-    gap: 6px;
-}
-
-.rp-zone-label {
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-/* The deck is shown in draw order, which is exactly the kind of thing a bug
-   report needs and a live game must never reveal. */
-.rp-zone-deck .rp-card {
-    opacity: 0.72;
-}
-
-.rp-card {
-    position: relative;
-    flex: 0 0 auto;
-    width: 58px;
-    display: grid;
-    gap: 2px;
-    justify-items: center;
-    padding: 3px 2px 2px;
-    border-radius: 8px;
-    border: 1px solid color-mix(in srgb, var(--seat-color, #46627a) 55%, transparent);
-    background: rgba(6, 18, 30, 0.85);
-    color: var(--ink);
-    font: inherit;
-    cursor: pointer;
-}
-
-.rp-card-art {
-    display: block;
-    width: 100%;
-    height: 40px;
-    overflow: hidden;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.rp-card-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.rp-card-name {
-    font-size: 9px;
+    gap: 1px;
+    padding: 6px 10px;
     line-height: 1.15;
-    text-align: center;
-    max-height: 22px;
-    overflow: hidden;
 }
 
-.rp-card-cost,
-.rp-card-power,
-.rp-card-live-cost {
-    position: absolute;
-    top: 2px;
-    min-width: 15px;
-    padding: 0 3px;
-    border-radius: 999px;
+.rp-seat-switch:disabled {
+    opacity: 0.5;
+}
+
+.rp-seat-switch-label {
     font-size: 10px;
-    font-weight: 800;
-    line-height: 15px;
-    text-align: center;
-    background: rgba(4, 14, 24, 0.92);
-    border: 1px solid var(--line);
-}
-
-.rp-card-cost { left: 2px; }
-.rp-card-power { right: 2px; }
-
-/* The cost after the discounts that were live at that instant, next to the
-   printed one — the pair is often the whole bug report. */
-.rp-card-live-cost {
-    top: auto;
-    bottom: 2px;
-    left: 2px;
-    color: var(--hero);
-    border-color: color-mix(in srgb, var(--hero) 50%, transparent);
-}
-
-.rp-card-power.stat-better { color: #8dffb0; border-color: rgba(70, 210, 70, 0.6); }
-.rp-card-power.stat-worse { color: #ffb0b0; border-color: rgba(210, 60, 60, 0.6); }
-
-.rp-card-hot {
-    border-color: var(--hero);
-    box-shadow: 0 0 10px rgba(23, 182, 255, 0.55);
-}
-
-.rp-card-facedown,
-.rp-card-unknown {
-    display: grid;
-    align-content: center;
-    width: 58px;
-    height: 68px;
-    flex: 0 0 auto;
-    border-radius: 8px;
-    border: 1px dashed var(--line);
-    background: var(--card-back-opponent);
-    font-size: 9px;
-    text-align: center;
-}
-
-.rp-card-unknown {
-    background: rgba(60, 20, 20, 0.6);
-    border-color: rgba(255, 120, 120, 0.5);
-    color: #ffc0b6;
-}
-
-/* --- Log + transport -------------------------------------------------------- */
-
-.rp-logwrap {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: var(--panel);
-    overflow: hidden;
-}
-
-.rp-log {
-    max-height: 30vh;
-    overflow-y: auto;
-    display: grid;
-}
-
-.rp-log-line {
-    text-align: left;
-    padding: 5px 10px;
-    border: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    background: none;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--muted);
-    font: inherit;
+}
+
+.rp-seat-switch-name {
     font-size: 12px;
-    cursor: pointer;
+    font-weight: 800;
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* What this step did, as opposed to everything that led up to it. */
-.rp-log-fresh {
-    color: var(--ink);
-    background: rgba(23, 182, 255, 0.12);
-    font-weight: 700;
-}
-
+/* Transport: the one control surface a recording has. */
 .rp-bar {
     position: sticky;
     bottom: 0;
