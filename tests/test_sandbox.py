@@ -103,6 +103,22 @@ def test_undo_walks_back_edits_and_plays_alike(service):
         service.undo_sandbox("m")
 
 
+def test_sandbox_edits_are_labelled_in_the_replay(service):
+    """A replay's step list has to say *what* was edited, not just "an edit"."""
+    match = _sandbox_match(service)
+    card_id = match.state.hands[0][0]
+    card_name = CARD_LIBRARY[card_id].name
+    service.apply_sandbox_ops("m", [{"op": "move_card", "card_id": card_id, "zone": "location", "location_id": 1, "player_id": 1}])
+    service.apply_sandbox_ops("m", [{"op": "set_stat", "stat": "mana_pool", "player_id": 1, "value": 9}])
+
+    labels = [
+        frame["action"]["option_id"]
+        for frame in service.replay("m")["frames"]
+        if (frame["action"] or {}).get("kind") == "sandbox_edit"
+    ]
+    assert labels == [f"move {card_name} -> P1 lane 2", "P1 mana_pool = 9"]
+
+
 def test_a_play_is_undoable_in_a_sandbox(service):
     _sandbox_match(service)
     match = service.apply_sandbox_ops("m", [{"op": "skip_mulligan"}])

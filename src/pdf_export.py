@@ -5,9 +5,6 @@ from src.utils import delete_contents
 
 
 def svg_to_pdf(input_path, output_dir):
-    # Full path to the Inkscape executable
-    inkscape_path = r"C:\Program Files\Inkscape\bin\inkscape.exe"
-
     # Ensure the output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

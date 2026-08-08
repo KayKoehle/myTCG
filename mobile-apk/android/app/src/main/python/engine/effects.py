@@ -63,6 +63,8 @@ HeroLeftHook = Callable[[Any, GameState, int, str, int, str], "GameState | None"
 TopPowerHook = Callable[[Any, GameState, LocationState, int, dict[str, int]], int]
 # (rt, state, location, side_idx, card_id, power) -> int (replacement power for that enemy card)
 EnemyPowerOverrideHook = Callable[[Any, GameState, LocationState, int, str, int], int]
+# (rt, state, location, side_idx, card_id) -> bool (is this card's "While on top:" text live?)
+WhileTopActiveHook = Callable[[Any, GameState, LocationState, int, str], bool]
 # (rt, state, player_idx, card_id) -> list of card ids that fulfil this card's "if" clause
 SynergyHook = Callable[[Any, GameState, int, str], list[str]]
 # (rt, state, reviver_idx, revived_card_id, trigger_card_id, trigger_location_idx) -> GameState | None (None: nothing to do)
@@ -117,6 +119,15 @@ class CardBehavior:
     # While on top: replaces the power of individual enemy cards here (applied
     # inside dynamic power, so both round scoring and the UI see it).
     enemy_card_power_override_while_top: EnemyPowerOverrideHook | None = None
+    # While on top: the hand of the side this card stands on is public (Sinon).
+    # Combined with `ability_follows_owner` that means an infiltrator exposes
+    # the camp it walked into, never its own.
+    reveals_enemy_hand_while_top: bool = False
+    # While on top: is this card's "While on top:" text changing anything right
+    # now? Purely informational (the UI highlights live abilities), never
+    # consulted by the rules. Only needed for conditional text that the flags
+    # above cannot answer on their own (Menelaus).
+    while_top_active: WhileTopActiveHook | None = None
     # Cards elsewhere that fulfil this card's "if" clause right now (used by
     # the UI to highlight live synergies; never consulted by the rules).
     synergy_partners: SynergyHook | None = None
@@ -281,23 +292,6 @@ def tutor_named(*names: str, count: int = 1) -> EnterHook:
     return tutor(count, None, *names)
 
 
-def enter_choice(
-    choice_kind: str,
-    options_builder: Callable[[Any, GameState, int, str, int], list[str]],
-    prompt: str,
-    min_options: int = 1,
-) -> EnterHook:
-    """On enter: offer a choice if the option list is long enough."""
-
-    def hook(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-        options = options_builder(rt, state, player_idx, card_id, location_idx)
-        if len(options) >= min_options:
-            return Halt(prim.with_pending_choice(state, player_idx, choice_kind, card_id, location_idx, options, prompt))
-        return state
-
-    return hook
-
-
 def revive_choice_on_enter(
     candidates: Callable[[GameState, int, int], list[str]],
     prompt: str,
@@ -365,10 +359,6 @@ def send_hand_being_to_underworld(prompt: str, include_pass: bool = True) -> Ent
         return state
 
     return hook
-
-
-def always_immortal() -> ImmortalHook:
-    return lambda rt, state, card_id, location_idx: True
 
 
 def monster(heroes_required: int, reward: Callable[[Any, GameState, int, int, str], "EffectResult | None"]) -> MonsterRewardHook:

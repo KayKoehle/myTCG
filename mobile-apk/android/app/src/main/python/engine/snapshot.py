@@ -9,19 +9,20 @@ from __future__ import annotations
 from typing import Any
 
 from . import effects, primitives as prim
-from .catalog import CARD_LIBRARY, DECK_LIBRARY, card as _card, card_owner_idx
+from .actions import action_payload
+from .catalog import CARD_LIBRARY, DECK_LIBRARY, card_owner_idx
 from .data_loader import FINISHED_DECK_FILES
-from .state import GameState
+from .state import GameState, LocationState
 from .transitions import (
     FLOOD_THRESHOLD,
     RT,
-    _location_power_for_side,
     available_decks,
     count_humans_in_play,
     deck_card_ids,
     deck_play_details,
     dynamic_card_power,
     legal_actions,
+    location_power_for_side,
     play_cost,
     power_before_overrides,
 )
@@ -84,14 +85,18 @@ def format_action_history_entry(entry: str) -> str:
 
 
 def hand_is_revealed(state: GameState, hand_owner_idx: int) -> bool:
-    """A player's hand is public while an enemy Sinon tops one of their stacks.
+    """A player's hand is public while an enemy spy tops one of their stacks.
 
     Sinon defects to the opponent's side on enter, so he sits on the stack of
-    the player whose hand he exposes.
+    the player whose hand he exposes — and, being an infiltrator, his ability
+    still belongs to the player who sent him. That is exactly the test: the
+    spy's ability must be someone else's, or he would be reading his own camp.
     """
     for location in state.locations:
-        top = location.stacks[hand_owner_idx][-1] if location.stacks[hand_owner_idx] else None
-        if top is not None and CARD_LIBRARY[top].name == "Sinon the Deceiver" and card_owner_idx(state, top) != hand_owner_idx:
+        top = prim.top_card(location, hand_owner_idx)
+        if top is None or not effects.behavior_of(top).reveals_enemy_hand_while_top:
+            continue
+        if effects.ability_actor_idx(state, top, hand_owner_idx) != hand_owner_idx:
             return True
     return False
 
@@ -126,23 +131,27 @@ def hand_synergies(state: GameState, viewer_idx: int) -> dict[str, list[str]]:
     return result
 
 
-def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -> bool:
+def _while_top_active(state: GameState, location: LocationState, side_idx: int, card_id: str) -> bool:
     """Is this card's "While on top:" text currently doing something?
 
-    Best-effort: structural flags (blocking moves, capping the enemy stack,
-    discounts) are active whenever the card sits on top; conditional ones
-    (Menelaus, Diomedes, Elders, Sinon) are only flagged once they'd actually
-    change something right now.
+    Purely cosmetic — the webapp highlights a card whose while-on-top text is
+    live. Best-effort: structural flags (blocking moves, capping the enemy
+    stack, discounts) are active whenever the card sits on top; conditional
+    ones (Diomedes, Elders, Sinon) are only flagged once they'd actually change
+    something right now. Text whose condition no generic flag captures answers
+    for itself through `while_top_active`, registered next to the card.
     """
     if prim.top_card(location, side_idx) != card_id:
         return False
     behavior = effects.behavior_of(card_id)
-    name = _card(card_id).name
 
-    if name == "Sinon the Deceiver":
-        # An infiltrator's ability stays with his owner, so he only works
+    if behavior.while_top_active is not None:
+        return behavior.while_top_active(RT, state, location, side_idx, card_id)
+
+    if behavior.reveals_enemy_hand_while_top:
+        # An infiltrator's ability stays with his owner, so he only spies
         # while standing in somebody else's camp.
-        return card_owner_idx(state, card_id) != side_idx
+        return effects.ability_actor_idx(state, card_id, side_idx) != side_idx
 
     if (
         behavior.blocks_enemy_move_while_top
@@ -169,22 +178,18 @@ def _while_top_active(state: GameState, location, side_idx: int, card_id: str) -
         return bool(behavior.friendly_power_bonus_while_top(RT, state, location, side_idx, powers))
 
     if behavior.enemy_card_power_override_while_top is not None:
-        # Matches transitions.dynamic_card_power's call convention: the hook
-        # is invoked with the *target* card's own side_idx, not the ability
-        # holder's.
+        # The whole enemy stack, not just its top card: the override picks its
+        # own target (Diomedes nullifies their strongest deity wherever in the
+        # stack it stands). Matches transitions.dynamic_card_power's call
+        # convention — the hook takes the *target* card's side_idx, not the
+        # ability holder's.
         for enemy_side in prim.other_side_indices(state, side_idx):
-            enemy_top = prim.top_card(location, enemy_side)
-            if enemy_top is None:
-                continue
-            base = power_before_overrides(state, enemy_top, location.location_id, enemy_side)
-            overridden = behavior.enemy_card_power_override_while_top(RT, state, location, enemy_side, enemy_top, base)
-            if overridden != base:
-                return True
+            for enemy_card_id in location.stacks[enemy_side]:
+                base = power_before_overrides(state, enemy_card_id, location.location_id, enemy_side)
+                overridden = behavior.enemy_card_power_override_while_top(RT, state, location, enemy_side, enemy_card_id, base)
+                if overridden != base:
+                    return True
         return False
-
-    if name == "Menelaus, the Wronged King":
-        enemy_count = sum(len(stack) for i, stack in enumerate(location.stacks) if i != side_idx)
-        return enemy_count > len(location.stacks[side_idx])
 
     return False
 
@@ -331,16 +336,7 @@ def build_state_snapshot(
             for card_id in known_card_ids
             if card_id in CARD_LIBRARY
         },
-        "legal_actions": [
-            {
-                "kind": a.kind,
-                "player_id": a.player_id,
-                "card_id": getattr(a, "card_id", None),
-                "location_id": getattr(a, "location_id", None),
-                "option_id": getattr(a, "option_id", None),
-            }
-            for a in legal_actions(state)
-        ],
+        "legal_actions": [action_payload(a) for a in legal_actions(state)],
         "pending_choice": None
         if state.pending_choice is None
         else {
@@ -367,7 +363,7 @@ def build_state_snapshot(
                 # The side's total as the scorer sees it — includes whole-side
                 # bonuses (e.g. Elders of Shuruppak's doubling) that no
                 # per-card power can carry.
-                "side_power": {pid[i]: _location_power_for_side(state, loc, i) for i in range(n)},
+                "side_power": {pid[i]: location_power_for_side(state, loc, i) for i in range(n)},
             }
             for loc in state.locations
         ],

@@ -109,7 +109,7 @@ def _handle_dolon_bottom(rt: Any, state: GameState, chooser_idx: int, option: st
 
 # Both scouts hand control of themselves to the camp they walk into, but the
 # spying is what they were sent to do: their abilities stay with their owner.
-register("Sinon the Deceiver", CardBehavior(on_enter=defect_to_enemy_side(), ability_follows_owner=True))
+register("Sinon the Deceiver", CardBehavior(on_enter=defect_to_enemy_side(), reveals_enemy_hand_while_top=True, ability_follows_owner=True))
 register("Dolon the Scout", CardBehavior(on_enter=defect_to_enemy_side(), top_ability=_dolon_top_ability, ability_follows_owner=True))
 register_choice("dolon_pick_opponent", _handle_dolon_pick_opponent)
 register_choice("dolon_bottom_top_card", _handle_dolon_bottom)
@@ -290,14 +290,25 @@ register_opponent_chain("patroclus_destroy", _patroclus_chain_step)
 register_opponent_chain("achilles_destroy", _achilles_chain_step)
 
 
+def _menelaus_bonus(location: LocationState, side_idx: int) -> int:
+    """+2 for every card the enemies outnumber this side by, here."""
+    own_cards = len(location.stacks[side_idx])
+    opp_cards = sum(len(stack) for i, stack in enumerate(location.stacks) if i != side_idx)
+    return max(0, opp_cards - own_cards) * 2
+
+
 def _menelaus_power(rt: Any, state: GameState, card_id: str, location_idx: int, side_idx: int, base: int) -> int:
     # "While on top": the bonus only applies from the top of the stack.
     location = state.locations[location_idx]
     if prim.top_card(location, side_idx) != card_id:
         return base
-    own_cards = len(location.stacks[side_idx])
-    opp_cards = sum(len(stack) for i, stack in enumerate(location.stacks) if i != side_idx)
-    return base + max(0, opp_cards - own_cards) * 2
+    return base + _menelaus_bonus(location, side_idx)
+
+
+def _menelaus_active(rt: Any, state: GameState, location: LocationState, side_idx: int, card_id: str) -> bool:
+    # Outnumbered or not is the whole condition, so the UI highlights him
+    # exactly while the bonus is worth something.
+    return _menelaus_bonus(location, side_idx) > 0
 
 
 def _diomedes_nullify_deity(rt: Any, state: GameState, location: LocationState, side_idx: int, card_id: str, power: int) -> int:
@@ -316,7 +327,7 @@ def _diomedes_nullify_deity(rt: Any, state: GameState, location: LocationState, 
 
 register("Patroclus", CardBehavior(on_enter=_patroclus_enter, synergy_partners=partners_in_play(None, "Achilles")))
 register("Achilles", CardBehavior(on_enter=_achilles_enter, synergy_partners=partners_in_underworld("Patroclus")))
-register("Menelaus, the Wronged King", CardBehavior(power=_menelaus_power))
+register("Menelaus, the Wronged King", CardBehavior(power=_menelaus_power, while_top_active=_menelaus_active))
 register("Ajax, the Great", CardBehavior(blocks_enemy_move_while_top=True))
 register("Agamemnon, King of Mycenae", CardBehavior(max_enemy_stack_while_top=3))
 register("Diomedes, the God-Smiter", CardBehavior(enemy_card_power_override_while_top=_diomedes_nullify_deity))

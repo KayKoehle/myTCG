@@ -275,7 +275,7 @@ def print_report(records: list[GameRecord], summary: dict) -> None:
         print(f"{row:<24}" + "".join(cells))
 
     first = summary["first_results"]
-    print(f"\n-- First-player advantage --")
+    print("\n-- First-player advantage --")
     print(f"{'overall (going first)':<24}{_pct(sum(first), len(first))}")
     for deck in decks:
         f_res, s_res = summary["deck_first"][deck], summary["deck_second"][deck]

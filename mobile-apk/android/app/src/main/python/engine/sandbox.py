@@ -440,8 +440,8 @@ def apply_ops(state: GameState, ops: Iterable[dict[str, Any]]) -> GameState:
     return state
 
 
-def describe_ops(state: GameState, ops: list[dict[str, Any]]) -> str:
-    """A one-line label for the edit, used by the undo stack and the logs."""
+def describe_ops(ops: list[dict[str, Any]]) -> str:
+    """A one-line label for the edit, used by the replay's step list."""
     if not ops:
         return "no-op"
     if len(ops) > 1:

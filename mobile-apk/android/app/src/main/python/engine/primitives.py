@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Iterable, TypeVar
 
 from . import catalog
-from .catalog import Predicate, card
+from .catalog import Predicate
 from .state import GameState, LocationState, PendingChoice
 
 T = TypeVar("T")
@@ -32,12 +32,6 @@ def set_mod_map(state: GameState, owner_idx: int, mapping: dict[str, int]) -> Ga
     mods = list(state.power_modifiers)
     mods[owner_idx] = tuple(sorted(mapping.items()))
     return replace(state, power_modifiers=tuple(mods))
-
-
-def add_power_modifier(state: GameState, owner_idx: int, card_id: str, delta: int) -> GameState:
-    mods = mod_map(state, owner_idx)
-    mods[card_id] = mods.get(card_id, 0) + delta
-    return set_mod_map(state, owner_idx, mods)
 
 
 # --- pending choices -----------------------------------------------------
@@ -115,20 +109,6 @@ def top_card(location: LocationState, side_idx: int) -> str | None:
     return location.stacks[side_idx][-1] if location.stacks[side_idx] else None
 
 
-def top_named(location: LocationState, side_idx: int, name: str) -> bool:
-    top = top_card(location, side_idx)
-    return top is not None and card(top).name == name
-
-
-def top_cards_named(state: GameState, owner_idx: int, name: str) -> list[tuple[int, str]]:
-    found: list[tuple[int, str]] = []
-    for location_idx, location in enumerate(state.locations):
-        top = top_card(location, owner_idx)
-        if top is not None and card(top).name == name:
-            found.append((location_idx, top))
-    return found
-
-
 def location_total_cards(location: LocationState) -> int:
     return sum(len(stack) for stack in location.stacks)
 
@@ -144,14 +124,6 @@ def friendly_cards_here(state: GameState, player_idx: int, location_idx: int, ex
 def other_side_indices(state: GameState, player_idx: int) -> list[int]:
     """All seats except `player_idx`, in seat order."""
     return [i for i in range(state.n_players) if i != player_idx]
-
-
-def enemy_cards_here(state: GameState, player_idx: int, location_idx: int, predicate: Predicate | None = None) -> list[str]:
-    location = state.locations[location_idx]
-    cards = [cid for side in other_side_indices(state, player_idx) for cid in location.stacks[side]]
-    if predicate is not None:
-        cards = [cid for cid in cards if predicate(cid)]
-    return cards
 
 
 def player_has_card_on_opponent_side(state: GameState, player_idx: int, location_idx: int) -> bool:
@@ -222,10 +194,6 @@ def put_specific_hand_card_to_underworld(state: GameState, player_idx: int, card
     underworld = list(state.underworlds[player_idx])
     underworld.append(card_id)
     return replace(state, hands=replace_tuple_index(state.hands, player_idx, tuple(hand)), underworlds=replace_tuple_index(state.underworlds, player_idx, tuple(underworld)))
-
-
-def discard_specific_from_hand(state: GameState, player_idx: int, card_id: str) -> GameState:
-    return put_specific_hand_card_to_underworld(state, player_idx, card_id)
 
 
 def draw_specific_cards_from_deck(state: GameState, player_idx: int, card_ids: Iterable[str]) -> GameState:

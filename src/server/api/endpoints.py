@@ -18,8 +18,6 @@ from .schemas import (
     AiMoveRequest,
     AiMoveResponse,
     CollectionResponse,
-    DrawRequest,
-    DrawResponse,
     ErrorResponse,
     MatchupStatsResponse,
     ReplayRequest,
@@ -367,42 +365,6 @@ def register_ws_routes(app: FastAPI):
                     continue
 
                 response = ActionResponse(snapshot=snapshot)
-                await manager.send_personal_message(response.model_dump_json(), websocket)
-
-        except WebSocketDisconnect:
-            manager.disconnect(websocket)
-
-    @app.websocket("/ws/draw")
-    async def draw_card_legacy(websocket: WebSocket):
-        """Backward-compatible endpoint that maps to action_kind='draw_card'."""
-        await manager.connect(websocket)
-        try:
-            while True:
-                data = await websocket.receive_text()
-                try:
-                    request = DrawRequest.model_validate_json(data)
-                except ValidationError as exc:
-                    await _send_error(websocket, f"Invalid draw payload: {exc}")
-                    continue
-
-                try:
-                    game_service.submit_action(
-                        match_id=request.match_id,
-                        player_id=request.player_id,
-                        action_kind="draw_card",
-                        seed=request.seed,
-                        deck_a=request.deck_a,
-                        deck_b=request.deck_b,
-                    )
-                    snapshot = game_service.state_snapshot(
-                        match_id=request.match_id,
-                        viewer_player_id=request.player_id,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    await _send_error(websocket, str(exc))
-                    continue
-
-                response = DrawResponse(snapshot=snapshot)
                 await manager.send_personal_message(response.model_dump_json(), websocket)
 
         except WebSocketDisconnect:
