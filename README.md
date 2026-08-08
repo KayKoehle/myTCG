@@ -1,8 +1,15 @@
 # My Trading Card Game
-<img src="./images/color/creatures/Arcane Disruptor.png">
 
-This repository contains code to generate the print-ready cards for my trading card game.
-Read the rules for the game [here](rules/main.pdf).
+<p align="center">
+  <img src="images/screenshots/menu.png" alt="The MyTCG main menu" width="40%">
+  <img src="images/screenshots/board.png" alt="A duel in progress: three contested locations, crowns in the header, your hand at the bottom" width="40%">
+</p>
+
+This repository contains code to generate the print-ready cards for my trading card game,
+plus the digital version of it: a browser app (FastAPI + plain ES modules), an offline
+Android APK, and a Windows desktop build, all sharing one Python rules engine and its AI
+opponents.
+Read the rules for the game [here](rules/rules.pdf).
 
 ## Architecture
 
@@ -608,6 +615,10 @@ Manu Vaivasvata Flood - Build boat, sail to himalaya
 
 
 ## Card types
+
+<p align="center">
+  <img src="images/screenshots/card.png" alt="A card opened full size in the app: Enkidu, a one-mana Human Hero" width="55%">
+</p>
 
 ### Beings
 Creatures are the core card type of this game. They cost mana and give power. They are played on a location.
