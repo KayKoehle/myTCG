@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Union
+from typing import Any, Literal, Union
 
 
 @dataclass(frozen=True)
@@ -51,3 +51,22 @@ class SurrenderAction:
 Action = Union[
     DrawCardAction, PlayCardAction, EndTurnAction, ChooseOptionAction, UseAbilityAction, SurrenderAction
 ]
+
+# Every action field any action type can carry. The wire shape is flat and
+# uniform (absent fields are null) so clients never have to branch on `kind`
+# just to read an action.
+ACTION_FIELDS = ("kind", "player_id", "card_id", "location_id", "option_id")
+
+
+def action_payload(action: "Action | dict[str, Any] | None") -> dict[str, Any] | None:
+    """An action in the shape the API, the snapshots and the replays speak.
+
+    Accepts an Action or an already-dict-shaped pseudo-action (the sandbox
+    records its edits as those), so every producer of the wire format goes
+    through one place.
+    """
+    if action is None:
+        return None
+    if isinstance(action, dict):
+        return {field: action.get(field) for field in ACTION_FIELDS}
+    return {field: getattr(action, field, None) for field in ACTION_FIELDS}

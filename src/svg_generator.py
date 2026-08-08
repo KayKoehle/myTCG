@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from src.utils import delete_contents
 
 from src.card_text_layout import layout_effect_and_lore
+from src.svg_utils import embed_svg
 
 
 # ---------------------------------------------------------------------------

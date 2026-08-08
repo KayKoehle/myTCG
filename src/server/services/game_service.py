@@ -7,6 +7,7 @@ from typing import Any
 import random
 
 from ..engine import sandbox
+from ..engine.actions import action_payload
 from ..engine.ai import choose_heuristic_action
 from ..engine.ladder import choose_ladder_action
 from ..engine.matchup_stats import MatchupStats
@@ -20,11 +21,6 @@ from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 # How many sandbox edits of one match stay undoable. GameState is immutable, so
 # a step on this stack is a pointer, not a copy.
 MAX_SANDBOX_UNDO = 60
-
-
-def _describe_ops(ops: list[dict[str, Any]]) -> str:
-    """A one-line summary of a sandbox edit, for the replay's step list."""
-    return ", ".join(str(op.get("op") or op.get("kind") or "edit") for op in ops) or "edit"
 
 
 @dataclass
@@ -203,7 +199,7 @@ class GameService:
         state = sandbox.apply_ops(match.state, ops)
         self._push_sandbox_undo(match, match.state)
         match.state = state
-        match.record({"kind": "sandbox_edit", "player_id": None, "option_id": _describe_ops(ops)})
+        match.record({"kind": "sandbox_edit", "player_id": None, "option_id": sandbox.describe_ops(ops)})
         return match
 
     def _push_sandbox_undo(self, match: Match, previous_state: GameState) -> None:
@@ -292,24 +288,30 @@ class GameService:
         if not actions:
             raise ValueError("No legal actions available for AI")
 
-        chosen = None
         if ai_elo is not None:
             # Rated opponent: the Elo ladder picks the agent (mix) per move.
             # Seeded per action so replays of the same match are stable.
             rng = random.Random((seed << 20) ^ (len(state.action_history) * 2654435761) ^ ai_player_id)
             chosen = choose_ladder_action(state, ai_player_id, ai_elo, rng)
-            match.state = apply_action(state, chosen)
-            match.record(chosen)
-            self._push_sandbox_undo(match, state)
-            self._record_if_finished(match, state)
-            action_payload = {
-                "kind": chosen.kind,
-                "player_id": chosen.player_id,
-                "card_id": getattr(chosen, "card_id", None),
-                "location_id": getattr(chosen, "location_id", None),
-                "option_id": getattr(chosen, "option_id", None),
-            }
-            return action_payload, self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
+        else:
+            chosen = self._choose_neural_action(state, ai_player_id, ai_idx, actions, checkpoint_path, device)
+        match.state = apply_action(state, chosen)
+        match.record(chosen)
+        self._push_sandbox_undo(match, state)
+        self._record_if_finished(match, state)
+        return action_payload(chosen), self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
+
+    def _choose_neural_action(
+        self,
+        state: GameState,
+        ai_player_id: int,
+        ai_idx: int,
+        actions: list[Any],
+        checkpoint_path: str,
+        device: str,
+    ) -> Any:
+        """The trained policy's move, or the built-in search AI's when no
+        checkpoint (or no torch) is available."""
         try:
             policy = self._get_cached_policy(checkpoint_path=checkpoint_path, device=device)
             torch, _, _, _ = _load_torch()
@@ -327,19 +329,7 @@ class GameService:
                     choice_idx = int(torch.argmax(logits + masked).item())
                     if choice_idx >= len(actions):
                         choice_idx = 0
-            chosen = actions[choice_idx]
+            return actions[choice_idx]
         except (FileNotFoundError, ImportError):
             # No checkpoint or no torch: fall back to the built-in search AI.
-            chosen = choose_heuristic_action(state, ai_player_id)
-        match.state = apply_action(state, chosen)
-        match.record(chosen)
-        self._push_sandbox_undo(match, state)
-        self._record_if_finished(match, state)
-        action_payload = {
-            "kind": chosen.kind,
-            "player_id": chosen.player_id,
-            "card_id": getattr(chosen, "card_id", None),
-            "location_id": getattr(chosen, "location_id", None),
-            "option_id": getattr(chosen, "option_id", None),
-        }
-        return action_payload, self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
+            return choose_heuristic_action(state, ai_player_id)

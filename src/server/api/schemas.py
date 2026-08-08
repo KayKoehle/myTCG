@@ -29,20 +29,6 @@ class ErrorResponse(BaseModel):
     error: str
 
 
-class DrawRequest(BaseModel):
-    # Legacy alias to keep existing test clients easy to migrate.
-    player_id: int
-    match_id: str = Field(default="default")
-    seed: int = 42
-    deck_a: str = "epic_of_gilgamesh"
-    deck_b: str = "siege_of_troy"
-
-
-class DrawResponse(BaseModel):
-    ok: bool = True
-    snapshot: dict[str, Any]
-
-
 class StateRequest(BaseModel):
     match_id: str = Field(default="default")
     player_id: int = 1

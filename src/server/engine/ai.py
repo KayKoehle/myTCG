@@ -25,7 +25,7 @@ from .state import GameState
 from .transitions import (
     FLOOD_THRESHOLD,
     TROJAN_HORSE_PAYLOAD_POWER,
-    _location_power_for_side,
+    location_power_for_side,
     apply_action,
     count_humans_in_play,
     dynamic_card_power,
@@ -230,8 +230,8 @@ def evaluate_state(state: GameState, ai_idx: int) -> float:
     lanes_ahead = 0.0
     power_margin = 0.0
     for location in state.locations:
-        own_power = _location_power_for_side(state, location, ai_idx)
-        enemy_power = max(_location_power_for_side(state, location, i) for i in opponents)
+        own_power = location_power_for_side(state, location, ai_idx)
+        enemy_power = max(location_power_for_side(state, location, i) for i in opponents)
         power_margin += own_power - enemy_power
         if own_power > enemy_power:
             lanes_ahead += location.weight

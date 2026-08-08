@@ -133,7 +133,9 @@ register(
 
 # --- Enki's creations ---------------------------------------------------------
 
-_UNDERWORLD_CHEAP = lambda cid: card(cid).cost <= 3
+def _underworld_cheap(cid: str) -> bool:
+    return card(cid).cost <= 3
+
 
 register(
     "Kur-Jara",
@@ -141,7 +143,7 @@ register(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Gala-Tura"),
         ),
-        synergy_partners=partners_in_play_if_revivable(named("Gala-Tura"), _UNDERWORLD_CHEAP),
+        synergy_partners=partners_in_play_if_revivable(named("Gala-Tura"), _underworld_cheap),
     ),
 )
 register(
@@ -150,7 +152,7 @@ register(
         on_enter=revive_choice_on_enter(
             underworld_costing_at_most(3), "Revive a cost 3 or less card", condition=partner_here("Kur-Jara"),
         ),
-        synergy_partners=partners_in_play_if_revivable(named("Kur-Jara"), _UNDERWORLD_CHEAP),
+        synergy_partners=partners_in_play_if_revivable(named("Kur-Jara"), _underworld_cheap),
     ),
 )
 register("Dirt under Enki's Fingernail", CardBehavior(on_enter=tutor_named("Kur-Jara", "Gala-Tura", count=2)))

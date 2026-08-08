@@ -91,7 +91,6 @@ function defaultStats() {
         crownsEarned: 0, // lifetime total, never reduced by spending
         modeWins: {}, // GAME_MODES id -> rated wins in that mode (FFA unlock chain)
         decks: {}, // deckId -> { games, wins }
-        cards: {}, // legacy global card stats (no longer written or read)
         deckCards: {}, // deckId -> cardId -> { games, wins, played, playedWins }
     };
 }
@@ -262,10 +261,6 @@ export function setFavoriteMode(modeId) {
     if (!modeUnlocked(modeId)) return;
     profile.favoriteMode = modeId;
     save();
-}
-
-export function getStats() {
-    return profile.stats;
 }
 
 // --- Elo ---------------------------------------------------------------------

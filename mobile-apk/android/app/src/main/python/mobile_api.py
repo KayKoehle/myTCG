@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from engine import sandbox
+from engine.actions import action_payload
 from engine.ai import choose_heuristic_action
 from engine.matchup_stats import MatchupStats
 from engine.openspiel_adapter import parse_action
@@ -62,11 +63,6 @@ def _get_neural_policy() -> PurePolicy | None:
 # How many sandbox edits of one match stay undoable (mirrors
 # src/server/services/game_service.py).
 MAX_SANDBOX_UNDO = 60
-
-
-def _describe_ops(ops: list[dict[str, Any]]) -> str:
-    """A one-line summary of a sandbox edit, for the replay's step list."""
-    return ", ".join(str(op.get("op") or op.get("kind") or "edit") for op in ops) or "edit"
 
 
 @dataclass
@@ -223,14 +219,7 @@ class MobileGameService:
         self._push_sandbox_undo(match, state)
         self._record_if_finished(match, state)
 
-        action_payload = {
-            "kind": chosen.kind,
-            "player_id": chosen.player_id,
-            "card_id": getattr(chosen, "card_id", None),
-            "location_id": getattr(chosen, "location_id", None),
-            "option_id": getattr(chosen, "option_id", None),
-        }
-        return action_payload, self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
+        return action_payload(chosen), self.state_snapshot(match_id=match_id, viewer_player_id=viewer_player_id)
 
     def state_snapshot(self, match_id: str, viewer_player_id: int) -> dict[str, Any]:
         match = self.get_or_create_match(match_id=match_id)
@@ -266,7 +255,7 @@ class MobileGameService:
         state = sandbox.apply_ops(match.state, ops)
         self._push_sandbox_undo(match, match.state)
         match.state = state
-        match.record({"kind": "sandbox_edit", "player_id": None, "option_id": _describe_ops(ops)})
+        match.record({"kind": "sandbox_edit", "player_id": None, "option_id": sandbox.describe_ops(ops)})
         return match
 
     def undo_sandbox(self, match_id: str) -> Match:

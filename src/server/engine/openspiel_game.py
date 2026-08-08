@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from .actions import Action
+from .catalog import card_owner_idx
 from .snapshot import hand_is_revealed
-from .transitions import _card_owner_idx, action_to_string, all_card_ids, apply_action, create_initial_state, is_terminal, legal_actions, returns
+from .transitions import action_to_string, all_card_ids, apply_action, create_initial_state, is_terminal, legal_actions, returns
 
 try:
     import pyspiel
@@ -146,7 +147,7 @@ def build_open_spiel_game(seed: int = 42, deck_a: str = "epic_of_gilgamesh", dec
 
         @staticmethod
         def _public_card_id(state, viewer_idx: int, card_id: str) -> str:
-            owner_idx = _card_owner_idx(state, card_id)
+            owner_idx = card_owner_idx(state, card_id)
             if card_id in state.facedown_cards and owner_idx != viewer_idx:
                 return "FACEDOWN"
             return card_id

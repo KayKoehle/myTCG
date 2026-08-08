@@ -7,7 +7,7 @@ from engine_utils import by_name, put_in_hand, put_in_play, put_in_underworld, s
 from server.engine import transitions as rules
 from server.engine.actions import ChooseOptionAction, UseAbilityAction
 from server.engine.catalog import CARD_LIBRARY
-from server.engine.snapshot import build_state_snapshot, hand_is_revealed
+from server.engine.snapshot import _while_top_active, build_state_snapshot, hand_is_revealed
 from server.engine.transitions import (
     _apply_on_enter,
     _resolve_monster_rewards,
@@ -279,12 +279,34 @@ def test_diomedes_zeroes_the_strongest_enemy_deity_in_dynamic_power():
     assert dynamic_card_power(state, ishtar, 0, 0) == 0, "strongest deity shows 0 in the UI"
     assert dynamic_card_power(state, ninsun, 0, 0) == CARD_LIBRARY[ninsun].power
     # Lane scoring uses the same per-card powers.
-    total = rules._location_power_for_side(state, state.locations[0], 0)
+    total = rules.location_power_for_side(state, state.locations[0], 0)
     assert total == CARD_LIBRARY[ninsun].power
 
     # Buried, Diomedes stops smiting.
     state = put_in_play(state, by_name(TROY, "Greek Soldiers"), 0, 1)
     assert dynamic_card_power(state, ishtar, 0, 0) == CARD_LIBRARY[ishtar].power
+
+
+def test_diomedes_is_flagged_active_while_smiting_a_buried_deity():
+    """The UI highlight must follow the whole enemy stack, not just its top:
+    Diomedes nullifies their strongest deity wherever in the stack it stands."""
+    state = start_game(GIL, TROY)
+    diomedes = by_name(TROY, "Diomedes, the God-Smiter")
+    ishtar = by_name(GIL, "Ishtar")
+    state = put_in_play(state, ishtar, 0, 0)
+    # A non-deity on top of Ishtar: she is still the enemy's strongest deity,
+    # so Diomedes is still doing something even though the top card is not her.
+    state = put_in_play(state, by_name(GIL, "Clay"), 0, 0)
+    state = put_in_play(state, diomedes, 0, 1)
+
+    assert dynamic_card_power(state, ishtar, 0, 0) == 0
+    assert _while_top_active(state, state.locations[0], 1, diomedes)
+
+    # Nothing to smite: no deity on the enemy side.
+    empty = start_game(GIL, TROY)
+    empty = put_in_play(empty, by_name(GIL, "Clay"), 0, 0)
+    empty = put_in_play(empty, diomedes, 0, 1)
+    assert not _while_top_active(empty, empty.locations[0], 1, diomedes)
 
 
 # --- Odysseus and move destinations ---------------------------------------------------

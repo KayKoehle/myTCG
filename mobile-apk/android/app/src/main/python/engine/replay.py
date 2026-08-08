@@ -30,10 +30,11 @@ import json
 import time
 from typing import Any, Iterable
 
+from .actions import action_payload
 from .catalog import CARD_LIBRARY, DECK_LIBRARY
 from .state import GameState
 from .transitions import (
-    _location_power_for_side,
+    location_power_for_side,
     dynamic_card_power,
     play_cost,
 )
@@ -116,7 +117,7 @@ def state_frame(state: GameState) -> dict[str, Any]:
                     for i in range(n)
                     for card_id in loc.stacks[i]
                 },
-                "side_power": [_location_power_for_side(state, loc, i) for i in range(n)],
+                "side_power": [location_power_for_side(state, loc, i) for i in range(n)],
             }
             for loc in state.locations
         ],
@@ -128,27 +129,6 @@ def state_frame(state: GameState) -> dict[str, Any]:
             "prompt": state.pending_choice.prompt,
             "options": list(state.pending_choice.options),
         },
-    }
-
-
-def action_payload(action: Any) -> dict[str, Any] | None:
-    """The action that produced a frame, in the same shape the API speaks."""
-    if action is None:
-        return None
-    if isinstance(action, dict):
-        return {
-            "kind": action.get("kind"),
-            "player_id": action.get("player_id"),
-            "card_id": action.get("card_id"),
-            "location_id": action.get("location_id"),
-            "option_id": action.get("option_id"),
-        }
-    return {
-        "kind": getattr(action, "kind", None),
-        "player_id": getattr(action, "player_id", None),
-        "card_id": getattr(action, "card_id", None),
-        "location_id": getattr(action, "location_id", None),
-        "option_id": getattr(action, "option_id", None),
     }
 
 

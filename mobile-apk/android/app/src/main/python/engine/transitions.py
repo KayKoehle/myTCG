@@ -305,7 +305,8 @@ def dynamic_card_power(state: GameState, card_id: str, location_idx: int, side_i
     return base
 
 
-def _location_power_for_side(state: GameState, location, side_idx: int) -> int:
+def location_power_for_side(state: GameState, location: LocationState, side_idx: int) -> int:
+    """A side's total power at one location, as the round scorer counts it."""
     location_idx = location.location_id
     powers = {cid: dynamic_card_power(state, cid, location_idx, side_idx) for cid in location.stacks[side_idx]}
     own_total = sum(powers.values())
@@ -1029,8 +1030,8 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
         actions: list[Action] = [EndTurnAction(player_id=current_player_id)]
         idx = state.current_player_idx
         for card_id in state.hands[idx]:
-            play_cost = _play_cost(state, idx, card_id)
-            if play_cost > state.mana_pool[idx]:
+            cost = _play_cost(state, idx, card_id)
+            if cost > state.mana_pool[idx]:
                 can_use_sacrifice = catalog.is_artifact(card_id) and bool(_affordable_sacrifice_banishes(state, idx, card_id))
                 if not can_use_sacrifice:
                     continue
@@ -1314,7 +1315,7 @@ def _location_scores(state: GameState) -> tuple[list[float], list[int]]:
     score = [0.0] * n
     total_power = [0] * n
     for location in state.locations:
-        powers = [_location_power_for_side(state, location, side) for side in range(n)]
+        powers = [location_power_for_side(state, location, side) for side in range(n)]
         for side, power in enumerate(powers):
             total_power[side] += power
         best = max(powers)
@@ -1586,12 +1587,3 @@ class _Runtime:
 
 
 RT = _Runtime()
-
-# --------------------------------------------------------------------------
-# Backwards-compatible aliases (services, adapters, and tools import these).
-# --------------------------------------------------------------------------
-
-_dynamic_card_power = dynamic_card_power
-_is_immortal = is_immortal
-_move_card = move_card
-_revive_from_underworld = revive_from_underworld

@@ -83,11 +83,6 @@ export function replayCardName(replay, cardId) {
     return card ? card.name : 'Unknown card';
 }
 
-export function seatOfCard(replay, cardId) {
-    const owner = replay.card_owner || {};
-    return Number.isInteger(owner[cardId]) ? owner[cardId] : 0;
-}
-
 // The full action log, without expanding every board along the way.
 export function fullLog(replay) {
     let log = [];
@@ -470,16 +465,6 @@ export async function exportReplay(replay) {
         } catch (error) { /* clipboard blocked; caller shows the text instead */ }
     }
     return 'unavailable';
-}
-
-export async function copyReplayCode(replay) {
-    const code = await encodeReplayCode(replay);
-    const payload = code || replayToText(replay);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(payload);
-        return code ? 'code' : 'json';
-    }
-    throw new ReplayError('The clipboard is not available here. Use Export instead.');
 }
 
 function makeFile(text, name) {

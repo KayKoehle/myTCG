@@ -1,6 +1,5 @@
 import ollama
 import csv
-from itertools import product
 import hashlib
 import base64
 import matplotlib.pyplot as plt
@@ -337,7 +336,7 @@ def generate_hero_name(names: set) -> tuple:
             messages=[
                 {
                     "role": "user",
-                    "content": f"Give ma an epic sounding fictional name for a hero. It is not necessarily human. Answer with only the name and nothing else.",
+                    "content": "Give ma an epic sounding fictional name for a hero. It is not necessarily human. Answer with only the name and nothing else.",
                 }
             ],
         )
@@ -627,7 +626,7 @@ def generate_cards(
 
 
 def plot_stats(cards, filename, save_dir="stats"):
-    if type(cards) == str:
+    if isinstance(cards, str):
         cards = read_csv(cards)
     plot_color_stats(cards, filename, save_dir)
     plot_mana_cost_distribution(cards, filename, save_dir)

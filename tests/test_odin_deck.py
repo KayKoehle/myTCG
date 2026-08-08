@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from engine_utils import by_name, put_in_play, put_on_deck_top, start_game
-from server.engine.actions import ChooseOptionAction, UseAbilityAction
+from server.engine.actions import ChooseOptionAction
 from server.engine.catalog import CARD_LIBRARY
 from server.engine.effects import revealed_deck_cards
 from server.engine.snapshot import build_state_snapshot
