@@ -4120,6 +4120,42 @@ details[open]>.cos-summary::before {
 }
 .p2p-status { margin-top: 10px; min-height: 1em; color: var(--muted); }
 
+/* The QR keeps its own white quiet zone whatever the app's theme is doing —
+   a QR tinted to match the UI is a QR that will not scan. */
+.p2p-qr {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 10px;
+}
+.p2p-qr svg {
+    width: min(220px, 62vw);
+    height: auto;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.p2p-scan {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    background: rgba(4, 12, 22, 0.94);
+}
+.p2p-scan-video {
+    width: min(340px, 84vw);
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #000;
+}
+.p2p-scan .btn { width: min(340px, 84vw); }
+
 /* Trade sheet: two offer columns and the card pickers. */
 .trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .trade-col-title { font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }

@@ -317,11 +317,16 @@ class LanService:
                 raise KeyError("Lobby not found")
             return lobby.summary()
 
-    def start_game(self, lobby_id: str) -> dict[str, Any]:
+    def start_game(self, lobby_id: str, seed: int | None = None) -> dict[str, Any]:
         """Register custom decks and mark the lobby started.
 
         Returns the match parameters guests need (match_id, seed, deck list).
         The caller (endpoints) creates the authoritative match on the host.
+
+        `seed` overrides the one picked when the lobby opened. Invite-code games
+        settle their seed by commit-reveal among the players (webapp/js/p2p.js),
+        and that cannot finish until everyone has joined — so the deal is fixed
+        here, at start, rather than when the lobby was created.
         """
         with self._lock:
             lobby = self._lobbies.get(lobby_id)
@@ -329,6 +334,8 @@ class LanService:
                 raise KeyError("Lobby not found")
             if len(lobby.seats) < MIN_PLAYERS:
                 raise ValueError(f"Need at least {MIN_PLAYERS} players")
+            if seed is not None:
+                lobby.seed = int(seed)
             if self._register_deck:
                 for deck_name, cards in lobby.custom_decks.items():
                     self._register_deck(deck_name, cards)
