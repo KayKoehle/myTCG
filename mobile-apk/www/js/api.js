@@ -10,6 +10,25 @@ export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;
 }
 
+// An invite-code guest reaches the host over a direct WebRTC DataChannel rather
+// than an address (js/p2p.js). Its "host base" is this sentinel, and calls go
+// through the registered transport instead of fetch — the payloads and the
+// host-side handling are identical either way, so everything downstream (lobby,
+// match, trading) is unchanged.
+export const P2P_HOST_BASE = 'p2p:';
+let p2pRequest = null;
+
+export function setP2pTransport(request) {
+    p2pRequest = request || null;
+}
+
+function p2pCall(path, body) {
+    if (!p2pRequest) {
+        return Promise.reject(new Error('The connection to the other player is closed.'));
+    }
+    return p2pRequest(path, body || {});
+}
+
 // Android only: the base URL of the in-process Python HTTP server this device
 // runs for LAN play (e.g. "http://127.0.0.1:8123"). Same-origin LAN calls
 // (discovery/lobby/trade, and the host's own game calls) are sent there since
@@ -63,6 +82,11 @@ export async function postJson(url, body) {
     // where the local bridge only knows this device's own matches. Checked
     // first so the bridge never intercepts a guest's host-bound game call.
     if (lanHostBase && HOST_ROUTED.some((p) => url === p)) {
+        if (lanHostBase === P2P_HOST_BASE) {
+            const data = await p2pCall(url, body);
+            if (data && data.ok === false) throw new Error(data.error || 'Request failed');
+            return data;
+        }
         const response = await fetch(lanHostBase + url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -103,6 +127,10 @@ export async function postJson(url, body) {
 // in-process server (lanSelfBase), and same-origin elsewhere. Kept separate from
 // postJson so these never get caught by the host-routing rewrite above.
 export async function lanPost(base, path, body) {
+    // Invite-code guests have no address for the host — the open DataChannel is
+    // the route. Callers here read `data.ok` themselves, so unlike postJson this
+    // passes a refusal straight through instead of throwing.
+    if (base === P2P_HOST_BASE) return p2pCall(path, body);
     const root = base ? String(base).replace(/\/$/, '') : (lanSelfBase || '');
     const url = root + path;
     const response = await fetch(url, {

@@ -4102,6 +4102,24 @@ details[open]>.cos-summary::before {
 .lan-seat-empty { background: rgba(16, 37, 59, 0.3); font-weight: 400; }
 .btn.small { padding: 6px 14px; font-size: 13px; width: auto; }
 
+/* Invite codes are a long base64 blob the player copies out or pastes in:
+   monospaced so a truncated paste is easy to spot, and wrapping rather than
+   scrolling sideways so the whole code is visible before it is copied. */
+.p2p-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 8px 10px;
+    resize: vertical;
+    /* A code is one unbroken base64 run with no spaces to wrap at, so say
+       explicitly that it may break mid-"word" — otherwise the box scrolls
+       sideways and a player copying by eye cannot see what they are copying. */
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.p2p-status { margin-top: 10px; min-height: 1em; color: var(--muted); }
+
 /* Trade sheet: two offer columns and the card pickers. */
 .trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .trade-col-title { font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }

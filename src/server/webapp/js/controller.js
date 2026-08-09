@@ -1,4 +1,5 @@
-import { postJson, setLanHostBase, acquireLanHostLock, releaseLanHostLock } from './api.js';
+import { P2P_HOST_BASE, postJson, setLanHostBase, setP2pTransport, acquireLanHostLock, releaseLanHostLock } from './api.js';
+import { closeActiveP2p } from './p2p.js';
 import { anecdoteText, cardArtTag, cardDisplayName, cardPngUrl, effectLabel, escapeHtml, findCardById, humanLegalActions, laneLabel, showToast, stackPower, typeLabel } from './helpers.js';
 import { hideCardRefPreview, setEffectText } from './cardrefs.js';
 import { eloDelta, placementsFromVp, sampleAiElo, streakMultiplier } from './elo.js';
@@ -2063,9 +2064,12 @@ export function createGameController(ui, cardStack) {
         // or an app restart (the host holds the authoritative match).
         if (!app.lanHostBase) {
             acquireLanHostLock();
-        } else {
+        } else if (app.lanHostBase !== P2P_HOST_BASE) {
             saveLanSession({ hostBase: app.lanHostBase, matchId, seed, playerId, decks });
         }
+        // An invite-code guest deliberately saves nothing: the route to the host
+        // is a live WebRTC channel, not an address, so a "rejoin" offer after a
+        // drop or a restart could never be honoured (js/p2p.js).
         try {
             await refresh();
         } catch (error) {
@@ -2316,20 +2320,24 @@ export function createGameController(ui, cardStack) {
         modal.setAttribute('aria-hidden', 'true');
     }
 
+    // Leave the match for the menu. Unlike endLanGame (which also runs when one
+    // match hands over to the next) this is the player walking away, so an
+    // invite-code connection is torn down here rather than in endLanGame.
+    function exitToMenu() {
+        endLanGame();
+        closeActiveP2p();
+        setP2pTransport(null);
+        if (onExitToMenu) onExitToMenu();
+    }
+
     function init(options = {}) {
         onExitToMenu = options.onExitToMenu || null;
         if (ui.btnHome) {
-            ui.btnHome.onclick = () => {
-                endLanGame();
-                if (onExitToMenu) onExitToMenu();
-            };
+            ui.btnHome.onclick = exitToMenu;
         }
         if (ui.btnReconnectLeave) {
             // Give up on a match we can't reconnect to and go home.
-            ui.btnReconnectLeave.onclick = () => {
-                endLanGame();
-                if (onExitToMenu) onExitToMenu();
-            };
+            ui.btnReconnectLeave.onclick = exitToMenu;
         }
         ui.btnHistory.onclick = () => {
             // The sandbox switch lives under the log, so refresh it every time

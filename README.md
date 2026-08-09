@@ -141,6 +141,65 @@ uv run pyinstaller --noconfirm --onefile --name MyTCG `
 
 -> `dist/MyTCG.exe`
 
+## Multiplayer
+
+Two ways to play a human, both under **Play with Friends** on the menu, and both
+peer-to-peer: one player's instance is the authority for the match, the others
+drive it through the ordinary `/api/state` and `/api/action` calls. There is no
+server of ours anywhere in either path.
+
+- **Same network (LAN).** Instances find each other by UDP broadcast, one hosts
+  a lobby, guests join it by address and play 2–5 players.
+  `services/lan.py` owns discovery, lobbies and card trading.
+- **Online (invite code).** For playing someone who is *not* on your Wi-Fi, 1v1.
+  WebRTC connects the two browsers directly, but it first needs the peers to
+  swap a connection description — normally a server's job. Here the players do
+  it themselves: the host generates an invite code, sends it over whatever chat
+  they already use, and pastes back the reply code that comes the other way.
+  `webapp/js/p2p.js` owns this.
+
+Once the WebRTC data channel is open it carries exactly the same JSON calls LAN
+play sends over HTTP, so the lobby, the match and trading are the shared code
+path — only the transport differs (`api.js`, `P2P_HOST_BASE`).
+
+**Provably fair shuffling.** A whole match is a pure function of one integer seed
+(`create_initial_state`), so whoever picks the seed picks the deal — in LAN play
+that is the host, who could re-roll until dealt a good opening hand. Invite-code
+games agree the seed by **commit-reveal** instead:
+
+1. The host picks a secret 32-byte nonce and puts only its SHA-256 in the invite.
+2. The guest picks its own nonce and sends it back in the reply code.
+3. The seed is `SHA-256(host nonce ‖ guest nonce)`.
+4. The host reveals its nonce over the channel; the guest checks it against the
+   commitment from step 1 and **refuses to play** if it does not match.
+
+The host is bound to its nonce before it ever sees the guest's, and the guest
+picks its own knowing only a hash, so neither side can steer the deal. The
+agreed seed rides into the guest's match (and its replay) so a deal from any
+other seed is detectable after the fact.
+
+**What this does not solve.** The host runs the engine, so its machine holds
+both hands — the per-viewer redaction in `snapshot.py` hides them in the UI, not
+from someone determined with devtools. Solving that peer-to-peer needs
+mental-poker cryptography, which the engine's one-shot deal is not built for.
+Play invite-code games with people you would play across a table.
+
+**Guests are not trusted with the whole API.** A guest may only call the routes
+a player actually needs (`P2P_GUEST_PATHS` in `menu.js`) — notably not
+`/api/lan/start`, and not the sandbox routes, which can edit a live match.
+
+**STUN.** Home routers hide both players behind NAT, so each peer needs to learn
+its own public address. That is what the STUN servers in `p2p.js` do: free,
+public, stateless, and never in the path of game traffic. Point at different
+ones — or use none at all, which limits play to a shared network — by setting
+`localStorage.mytcg_p2p_ice` to a JSON array of RTCIceServer entries. A small
+share of NAT pairings cannot be traversed with STUN alone and would need a TURN
+relay, which is a server; those connections simply fail to open.
+
+Invite-code games cannot reconnect: the route to the host is a live channel
+rather than an address, so a drop ends the match and the menu offers no rejoin
+(LAN guests still get one).
+
 ## AI opponents
 
 The mobile app and the server share the same AI code in the engine:

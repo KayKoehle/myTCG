@@ -1,4 +1,5 @@
-import { postJson, lanPost, isLocalBridge, setLanSelfBase } from './api.js';
+import { P2P_HOST_BASE, postJson, lanPost, isLocalBridge, setLanSelfBase, setP2pTransport } from './api.js';
+import { closeActiveP2p, createGuestSession, createHostSession, p2pSupported } from './p2p.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -108,6 +109,10 @@ export function createMenuController(ui, game, cardStack) {
     // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
     // my_pid, num_players, seats, started }.
     let lanLobby = null;
+    // Invite-code (online) play, while the codes are being exchanged:
+    // { mode: 'host' | 'guest', session, code, busy, status }. Cleared once the
+    // two are connected and the ordinary lobby takes over.
+    let p2pView = null;
 
     // The Replays library and player (js/replayview.js). Opening one is a
     // navigation like any other, so it goes through pushNav/handleNav.
@@ -681,6 +686,13 @@ export function createMenuController(ui, game, cardStack) {
     function closeLan({ keepDiscovery = false } = {}) {
         stopPeerPolling();
         stopLobbyPolling();
+        // Half-finished code swap: nobody is connected yet, so drop it rather
+        // than leaving a peer connection open behind a closed sheet. A live
+        // lobby (including the one beginLanMatch closes this sheet for) stays.
+        if (p2pView && !lanLobby) {
+            if (p2pView.session) p2pView.session.close();
+            p2pView = null;
+        }
         ui.lanModal.classList.remove('open');
         ui.lanModal.setAttribute('aria-hidden', 'true');
         if (!keepDiscovery && lanEnabled && !lanLobby) {
@@ -779,7 +791,12 @@ export function createMenuController(ui, game, cardStack) {
                         beginLanMatch({
                             hostBase: lanLobby.host_base,
                             matchId: data.lobby.match_id,
-                            seed: 0,
+                            // A LAN guest never learns the seed (the host owns
+                            // the deal). An invite-code guest agreed it by
+                            // commit-reveal, so it carries into the match — and
+                            // from there into the guest's own replay, where a
+                            // deal from any other seed would show up.
+                            seed: lanLobby.agreed_seed || 0,
                             playerId: lanLobby.my_pid,
                             decks: null,
                         });
@@ -808,6 +825,174 @@ export function createMenuController(ui, game, cardStack) {
         }
     }
 
+    // --- Invite-code (online) play -------------------------------------------
+    // Same lobby, same match, same trading as LAN — the only difference is that
+    // the two players reach each other over a direct WebRTC channel instead of
+    // a LAN address, so no server of ours sits in the middle (js/p2p.js).
+
+    // What a guest is allowed to ask its host to run. The guest is a stranger's
+    // browser, so it gets the calls a player legitimately needs and nothing
+    // else — notably not /api/lan/start (the host decides when to start) and
+    // not the sandbox routes, which can edit a live match at will.
+    const P2P_GUEST_PATHS = new Set([
+        '/api/state', '/api/action', '/api/ai-move', '/api/replay',
+        '/api/lan/join', '/api/lan/lobby',
+        '/api/lan/trade/propose', '/api/lan/trade/offer', '/api/lan/trade/confirm',
+        '/api/lan/trade/cancel', '/api/lan/trade/state',
+    ]);
+
+    // Host side: run one of the guest's calls against our own local server.
+    function p2pServe(path, body) {
+        if (!P2P_GUEST_PATHS.has(path)) {
+            return Promise.reject(new Error(`The host refused the call ${path}.`));
+        }
+        return lanPost('', path, body);
+    }
+
+    function p2pDeckOrWarn() {
+        const deck = lanDeckConfig();
+        if (deck.size !== DECK_SIZE) {
+            showToast(`"${deckDisplayName(deck.deckId)}" needs exactly ${DECK_SIZE} cards.`);
+            return null;
+        }
+        if (!p2pSupported()) {
+            showToast('This browser cannot make direct connections. Invite-code play needs '
+                + 'WebRTC over a secure origin (https, or localhost).');
+            return null;
+        }
+        return deck;
+    }
+
+    // Enter the lobby the two peers have just agreed on. From here the ordinary
+    // LAN lobby/match code takes over — it only ever sees a "host base".
+    function enterP2pLobby({ lobbyId, isHost, myPid, seats, seed }) {
+        lanLobby = {
+            lobby_id: lobbyId,
+            host_base: isHost ? '' : P2P_HOST_BASE,
+            is_host: isHost,
+            my_pid: myPid,
+            num_players: 2,
+            seats: seats || [],
+            started: false,
+            agreed_seed: seed,
+        };
+        p2pView = null;
+        stopPeerPolling();
+        startLobbyPolling();
+        renderLan();
+    }
+
+    async function startP2pHost() {
+        if (!p2pDeckOrWarn()) return;
+        p2pView = { mode: 'host', busy: true, status: 'Preparing your invite…' };
+        renderLan();
+        try {
+            const session = await createHostSession({ name: lanPlayerName() });
+            // `status` stays empty until there is something to report: the
+            // panel's own hint already says what to do with the code.
+            p2pView = { mode: 'host', session, code: session.inviteCode, busy: false, status: '' };
+        } catch (error) {
+            p2pView = null;
+            showToast(`Could not create an invite: ${error.message || error}`);
+        }
+        renderLan();
+    }
+
+    // Host: link up with the reply code, then open the lobby on the seed the
+    // commit-reveal settled on (rather than one we picked ourselves).
+    async function connectP2pHost(replyCode) {
+        const view = p2pView;
+        if (!view || !view.session) return;
+        const deck = p2pDeckOrWarn();
+        if (!deck) return;
+        view.busy = true;
+        view.status = 'Connecting to your friend…';
+        renderLan();
+        try {
+            const { seed, guestName } = await view.session.accept(replyCode);
+            const data = await lanPost('', '/api/lan/host', {
+                name: lanPlayerName(),
+                deck_name: deck.name,
+                deck_cards: deck.cards,
+                num_players: 2,
+                seed,
+            });
+            if (!data.ok) throw new Error(data.error || 'Could not open the lobby.');
+            // Only now start answering their calls: the lobby they are told to
+            // join has to exist before they can join it.
+            view.session.begin(data.lobby.lobby_id, p2pServe);
+            enterP2pLobby({
+                lobbyId: data.lobby.lobby_id, isHost: true, myPid: 1,
+                seats: data.lobby.seats, seed,
+            });
+            showToast(`Connected to ${guestName}.`);
+        } catch (error) {
+            if (p2pView === view) {
+                view.busy = false;
+                view.status = String(error.message || error);
+                renderLan();
+            }
+        }
+    }
+
+    // Guest: answer an invite, hand back a reply code, then wait for the host.
+    async function startP2pGuest(inviteCode) {
+        const deck = p2pDeckOrWarn();
+        if (!deck) return;
+        let session;
+        try {
+            session = await createGuestSession({ inviteCode, name: lanPlayerName() });
+        } catch (error) {
+            showToast(String(error.message || error));
+            return;
+        }
+        const view = { mode: 'guest', session, code: session.replyCode, busy: true, status: '' };
+        p2pView = view;
+        renderLan();
+        try {
+            const { lobbyId, seed, request } = await session.begin();
+            setP2pTransport(request);
+            const data = await lanPost(P2P_HOST_BASE, '/api/lan/join', {
+                lobby_id: lobbyId,
+                name: lanPlayerName(),
+                deck_name: deck.name,
+                deck_cards: deck.cards,
+            });
+            if (!data.ok) throw new Error(data.error || 'Join failed.');
+            enterP2pLobby({
+                lobbyId, isHost: false, myPid: data.player_id,
+                seats: (data.lobby && data.lobby.seats) || [], seed,
+            });
+        } catch (error) {
+            // A failed handshake includes the one refusal that matters: a host
+            // whose revealed nonce does not match the invite's commitment.
+            setP2pTransport(null);
+            closeActiveP2p();
+            if (p2pView === view) {
+                view.busy = false;
+                view.status = String(error.message || error);
+                renderLan();
+            }
+        }
+    }
+
+    function cancelP2p() {
+        if (p2pView && p2pView.session) p2pView.session.close();
+        else closeActiveP2p();
+        setP2pTransport(null);
+        p2pView = null;
+        renderLan();
+    }
+
+    async function copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast('Code copied.');
+        } catch (error) {
+            showToast('Could not copy automatically — select the code and copy it by hand.');
+        }
+    }
+
     function beginLanMatch({ hostBase, matchId, seed, playerId, decks }) {
         const lobby = lanLobby;
         closeLan({ keepDiscovery: true });
@@ -821,6 +1006,12 @@ export function createMenuController(ui, game, cardStack) {
     function renderLan() {
         if (!ui.lanBody) return;
         const name = lanPlayerName();
+        // Exchanging invite codes: the panel is a code to send and a box to
+        // paste the other side's answer into.
+        if (p2pView) {
+            renderP2pPanel();
+            return;
+        }
         // In a lobby: waiting room.
         if (lanLobby) {
             const seats = lanLobby.seats || [];
@@ -859,12 +1050,70 @@ export function createMenuController(ui, game, cardStack) {
             <p class="tiny" style="margin:0 0 8px;">Open a lobby and start once others join — 2 to 5 players.</p>
             <button class="btn" id="lanHostBtn" style="width:100%;">Host game</button>
             <div class="lan-section-title">Join a game ${lanEnabled ? '' : '(starting discovery…)'}</div>
-            <div class="lan-peers" id="lanPeers"></div>`;
+            <div class="lan-peers" id="lanPeers"></div>
+            <div class="lan-section-title">Play online with a friend</div>
+            <p class="tiny" style="margin:0 0 8px;">Anywhere, not just this Wi‑Fi. Swap a code over chat
+                and the game connects the two of you directly — 1v1, no server in between.</p>
+            <button class="btn ghost" id="p2pHostBtn" style="width:100%;">Create an invite code</button>
+            <label class="lan-label" for="p2pInviteInput">…or paste a friend's invite code</label>
+            <textarea id="p2pInviteInput" class="lan-input p2p-code" rows="3"
+                placeholder="MYTCG1Z.…"></textarea>
+            <button class="btn ghost" id="p2pJoinBtn" style="width:100%;margin-top:8px;">Answer this invite</button>`;
         const nameInput = document.getElementById('lanNameInput');
         // Persist on every keystroke so a later re-render never loses in-progress text.
         nameInput.addEventListener('input', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
         document.getElementById('lanHostBtn').addEventListener('click', hostLan);
+        document.getElementById('p2pHostBtn').addEventListener('click', startP2pHost);
+        document.getElementById('p2pJoinBtn').addEventListener('click', () => {
+            const code = document.getElementById('p2pInviteInput').value;
+            if (!code.trim()) { showToast('Paste the invite code your friend sent you.'); return; }
+            startP2pGuest(code);
+        });
         renderLanPeers();
+    }
+
+    // The code-swapping panel, for both sides: the code we produced (to send
+    // over chat), and — for the host — a box for the reply that comes back.
+    function renderP2pPanel() {
+        const view = p2pView;
+        const isHost = view.mode === 'host';
+        if (view.busy && !view.code) {
+            ui.lanBody.innerHTML = `
+                <div class="lan-section-title">Play online</div>
+                <p class="tiny">${escapeHtml(view.status || 'Working…')}</p>
+                <button class="btn ghost" id="p2pCancelBtn" style="width:100%;margin-top:12px;">Cancel</button>`;
+            document.getElementById('p2pCancelBtn').addEventListener('click', cancelP2p);
+            return;
+        }
+        const title = isHost ? 'Your invite code' : `Joining ${escapeHtml(view.session.hostName)}`;
+        const codeHint = isHost
+            ? 'Send this to your friend however you normally chat.'
+            : 'Send this reply back to the host — they paste it to finish connecting.';
+        const replyBox = isHost
+            ? `<label class="lan-label" for="p2pReplyInput">Their reply code</label>
+               <textarea id="p2pReplyInput" class="lan-input p2p-code" rows="3"
+                   placeholder="MYTCG1Z.…" ${view.busy ? 'disabled' : ''}></textarea>
+               <button class="btn" id="p2pConnectBtn" style="width:100%;margin-top:8px;"
+                   ${view.busy ? 'disabled' : ''}>Connect</button>`
+            : '<p class="tiny" style="margin-top:12px;">Waiting for the host to connect…</p>';
+        ui.lanBody.innerHTML = `
+            <div class="lan-section-title">${title}</div>
+            <p class="tiny" style="margin:0 0 8px;">${codeHint}</p>
+            <textarea id="p2pCodeOut" class="lan-input p2p-code" rows="4" readonly>${escapeHtml(view.code)}</textarea>
+            <button class="btn ghost" id="p2pCopyBtn" style="width:100%;margin-top:8px;">Copy code</button>
+            ${replyBox}
+            <p class="tiny p2p-status">${escapeHtml(view.status || '')}</p>
+            <button class="btn ghost" id="p2pCancelBtn" style="width:100%;margin-top:8px;">Cancel</button>`;
+        document.getElementById('p2pCopyBtn').addEventListener('click', () => copyToClipboard(view.code));
+        document.getElementById('p2pCancelBtn').addEventListener('click', cancelP2p);
+        const connectBtn = document.getElementById('p2pConnectBtn');
+        if (connectBtn) {
+            connectBtn.addEventListener('click', () => {
+                const code = document.getElementById('p2pReplyInput').value;
+                if (!code.trim()) { showToast('Paste the reply code your friend sent back.'); return; }
+                connectP2pHost(code);
+            });
+        }
     }
 
     function lanPeerRowsHtml() {
@@ -893,6 +1142,10 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     async function leaveLanLobby() {
+        // An invite-code lobby only exists as long as the direct connection
+        // does, so leaving it drops the connection too.
+        closeActiveP2p();
+        setP2pTransport(null);
         lanLobby = null;
         startPeerPolling();
         renderLan();
