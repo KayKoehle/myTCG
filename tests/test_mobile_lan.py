@@ -50,8 +50,12 @@ def test_lan_flow_through_bridge(mobile_api):
     })
     assert joined["ok"] and joined["player_id"] == 2
 
-    started = call(mobile_api, "/api/lan/start", {"lobby_id": lobby_id})
+    # The seed an invite-code game agreed by commit-reveal has to survive into
+    # the match the device deals, or the guests would be verifying a deal that
+    # was never used (webapp/js/p2p.js).
+    started = call(mobile_api, "/api/lan/start", {"lobby_id": lobby_id, "seed": 424242})
     assert started["ok"] and started["match_id"] == lobby_id
+    assert started["seed"] == 424242
 
     # The authoritative match exists locally, so a viewer gets a snapshot.
     state = call(mobile_api, "/api/state", {"match_id": lobby_id, "player_id": 1})

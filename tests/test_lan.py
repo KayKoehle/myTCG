@@ -46,6 +46,42 @@ def test_start_registers_custom_decks_and_returns_seat_decks():
     assert result["decks"][1] == "siege_of_troy"  # stock deck untouched
 
 
+def test_explicit_seed_survives_to_the_started_match():
+    """Invite-code play agrees the seed by commit-reveal on the client
+    (webapp/js/p2p.js) and hands it to the host here, so the whole point is that
+    the lobby deals with *that* seed rather than one of its own choosing."""
+    svc, _ = make_service()
+    lobby = svc.host_game(
+        host_name="Alice", deck_name="siege_of_troy", num_players=2, seed=1234567,
+    )
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    assert svc.start_game(lobby["lobby_id"])["seed"] == 1234567
+
+
+def test_start_seed_overrides_the_lobbys_own():
+    """The commit-reveal rounds cannot finish until every player has joined, so
+    an invite-code host opens the lobby with a placeholder and fixes the real
+    deal at start. Whatever the lobby was created with must lose."""
+    svc, _ = make_service()
+    lobby = svc.host_game(
+        host_name="Alice", deck_name="siege_of_troy", num_players=5, seed=11111,
+    )
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    svc.join_game(lobby["lobby_id"], name="Carol", deck_name="the_flood")
+    result = svc.start_game(lobby["lobby_id"], seed=987654)
+    assert result["seed"] == 987654
+    assert len(result["seats"]) == 3
+    # And the lobby keeps the agreed seed, so a later read agrees with the match.
+    assert svc._lobbies[lobby["lobby_id"]].seed == 987654
+
+
+def test_hosting_without_a_seed_still_gets_one():
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=2)
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    assert isinstance(svc.start_game(lobby["lobby_id"])["seed"], int)
+
+
 def test_start_requires_two_players():
     svc, _ = make_service()
     lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=2)

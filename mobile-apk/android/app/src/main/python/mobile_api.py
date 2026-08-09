@@ -373,7 +373,11 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
 
     if url == "/api/lan/start":
         try:
-            params = LAN.start_game(body["lobby_id"])
+            # `seed` is optional and only invite-code games send it: their deal
+            # is agreed by commit-reveal once every player is seated. Dropping
+            # it here would deal from the lobby's placeholder instead, and the
+            # guests' fairness check would be verifying a seed nobody used.
+            params = LAN.start_game(body["lobby_id"], seed=body.get("seed"))
         except (KeyError, ValueError) as exc:
             return _response_ok({"ok": False, "error": str(exc)})
         # Build the authoritative match locally so guests can immediately drive

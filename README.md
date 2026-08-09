@@ -34,7 +34,11 @@ src/
       training.py            Neural-network self-play training (PyTorch)
     model/policy_weights.json  Exported network (scripts/export_policy.py)
     services/, api/, main.py FastAPI server for the browser app
+    services/lan.py          LAN + invite-code lobbies, seats, card trading
     webapp/                  Browser UI (master copy)
+      js/p2p.js              Invite-code play: WebRTC, compact codes, fair seed
+      js/qr.js               QR encoder (no dependencies) for invite codes
+      js/mentalpoker.js      Encrypted shuffle: a deck nobody can read or stack
 mobile-apk/                  Android app (Capacitor + Chaquopy)
 scripts/sync_mobile.py       Copies engine/webapp/data into mobile-apk
 tests/                       Pytest suite (invariants + per-card tests)
@@ -140,6 +144,136 @@ uv run pyinstaller --noconfirm --onefile --name MyTCG `
 ```
 
 -> `dist/MyTCG.exe`
+
+## Multiplayer
+
+Two ways to play a human, both under **Play with Friends** on the menu, and both
+peer-to-peer: one player's instance is the authority for the match, the others
+drive it through the ordinary `/api/state` and `/api/action` calls. There is no
+server of ours anywhere in either path.
+
+- **Same network (LAN).** Instances find each other by UDP broadcast, one hosts
+  a lobby, guests join by address. `services/lan.py` owns discovery, lobbies
+  and card trading.
+- **Online (invite code).** For playing someone who is *not* on your Wi-Fi.
+  WebRTC connects the browsers directly, but it first needs the peers to swap a
+  connection description — normally a server's job. Here the players do it
+  themselves, by passing a code over whatever chat they already use or by
+  pointing one phone's camera at another's screen. `webapp/js/p2p.js` owns this.
+
+Both seat 2–5 players. An invite-code host runs one connection per guest, so a
+free-for-all is just more code swaps — "Invite another player" in the lobby.
+
+Once a channel is open it carries the same JSON calls LAN play sends over HTTP,
+so the lobby, the match and trading are all the shared code path — only the
+transport differs (`api.js`, `P2P_HOST_BASE`).
+
+### Invite codes
+
+A browser's own connection description runs to ~600 bytes, nearly all
+boilerplate. Only the ICE credentials, the DTLS fingerprint and the candidate
+addresses carry information, so those are packed into a binary record and the
+description is rebuilt from a template on arrival — safe, because the rebuilt
+text is only ever handed to the *remote* browser. That takes a code from ~720
+characters to about **170**.
+
+It cannot go much lower. The fingerprint alone is 32 bytes and shortening it
+breaks the DTLS handshake; with the ICE credentials and one address the floor is
+around 130 characters. **A code short enough to memorise is not possible without
+a lookup service**, which would mean a server. Instead every code is also
+rendered as a QR (`webapp/js/qr.js`, written out rather than pulled in — the
+webapp has no dependencies), and where the browser has `BarcodeDetector`
+(Chrome on Android, which is where phone-to-phone actually happens) a **Scan**
+button reads one straight off another screen.
+
+### Provably fair shuffling
+
+A match is a pure function of one integer seed (`create_initial_state`), so
+whoever picks the seed picks the deal. Invite-code games agree it by
+commit-reveal across every player:
+
+1. Every player commits to a secret nonce — the host in the invite, each guest
+   in their reply — publishing only its SHA-256.
+2. Once everyone is seated the host broadcasts the **complete** set of
+   commitments.
+3. Only then does anyone reveal. The seed is the hash of all nonces in seat
+   order.
+4. Every player checks every commitment against its reveal, and **refuses to
+   play** on a mismatch.
+
+Publishing all commitments before any reveal is what makes it sound for more
+than two players: no player — and no coalition of host plus confederate — can
+choose a nonce after seeing somebody else's. The agreed seed is applied at
+start, not when the lobby opened, since the rounds cannot finish until everyone
+has joined (hence the `seed` argument to `LanService.start_game`).
+
+### Hidden information: mental poker
+
+`webapp/js/mentalpoker.js` implements the shuffle that makes a deck unreadable
+even to the machine running the match. Unlike poker, every deck here belongs to
+one player and its *contents* are public — the secret is the **order**, and a
+real shuffle leaves that unknown to everyone, the owner included.
+
+The construction is the classic one (Shamir–Rivest–Adleman): work in the
+quadratic residues modulo a safe prime, where raising to a power commutes, so
+players' key layers can be peeled off in any order.
+
+1. **Shuffle round** — each player in turn encrypts every card under one key and
+   permutes. Afterwards the order is the composition of everyone's
+   permutations, so no single player knows it.
+2. **Re-keying round** — each player swaps their shuffle key for one key per
+   *position*, so cards can be opened individually.
+3. **Drawing** — to give position *k* to its owner, everyone else publishes just
+   their key for *k*. Nobody else learns a thing.
+4. **Public reveal** — the owner publishes too, and any player can *verify* the
+   claim by recomputing it. A player cannot lie about a card they hold.
+5. **Search effects** — `tutor_from_deck` necessarily shows a player their whole
+   deck, exactly as searching does on a table. That is fine provided the deck is
+   shuffled again afterwards, which the engine already does; re-running steps
+   1–2 restores the invariant.
+
+The group is the 1536-bit RFC 3526 prime. Size is a speed decision and a sharp
+one, because the deck must pass through every player twice: measured in-browser,
+setting up five players costs ~1.8s at 1024 bits, **~4.6s at 1536**, and ~10.3s
+at 2048, while a duel is ~0.4s at 1536. That is a comfortable margin for a
+secret an opponent would have to break *during the match* and which is worthless
+the moment it ends. Raising it to 2048 is a one-line change.
+
+**What is proved and what is not.** Reveals are verifiable, and a dishonest
+shuffler cannot *choose* which card lands where — the values it permutes are
+already encrypted under other players' keys. It could duplicate a position, and
+that is caught by `auditDeck` when every key is published at the end of the
+match, rather than prevented during it. Closing that gap needs a zero-knowledge
+shuffle proof.
+
+> **Status.** The protocol module is complete and tested — correct permutations
+> for 2–5 players, opponents learning nothing, forged reveals rejected,
+> duplication caught. It is **not yet wired into the engine**: `transitions.py`
+> still materialises the whole deal on the host, so today's invite-code games
+> get the verifiable *seed* but not the encrypted *deck*. Doing that means
+> teaching `GameState` to hold cards nobody has opened yet and moving from
+> host-authoritative to every-peer-validates — deep surgery on the engine's most
+> delicate code, and the next phase of this work.
+
+### Guests are not trusted with the whole API
+
+A guest may only call the routes a player actually needs
+(`P2P_GUEST_PATHS` in `menu.js`) — notably not `/api/lan/start`, and not the
+sandbox routes, which can edit a live match at will.
+
+### STUN
+
+Home routers hide players behind NAT, so each peer needs to learn its own public
+address. That is what the STUN servers in `p2p.js` do: free, public, stateless,
+and never in the path of game traffic. Point at different ones — or use none,
+which limits play to a shared network — by setting `localStorage.mytcg_p2p_ice`
+to a JSON array of RTCIceServer entries. A small share of NAT pairings cannot be
+traversed with STUN alone and would need a TURN relay, which is a server; those
+connections simply fail to open.
+
+Invite-code games cannot reconnect: the route to the host is a live channel
+rather than an address, so a drop ends the match and the menu offers no rejoin
+(LAN guests still get one).
 
 ## AI opponents
 

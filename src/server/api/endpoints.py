@@ -230,7 +230,9 @@ def register_ws_routes(app: FastAPI):
     @app.post("/api/lan/start")
     async def lan_start(request: dict):
         try:
-            params = lan_service.start_game(request["lobby_id"])
+            # `seed` is optional and only invite-code games send it: their deal
+            # is agreed by commit-reveal once every player is seated.
+            params = lan_service.start_game(request["lobby_id"], seed=request.get("seed"))
         except (KeyError, ValueError) as exc:
             return {"ok": False, "error": str(exc)}
         # Build the authoritative match on the host so guests can immediately
