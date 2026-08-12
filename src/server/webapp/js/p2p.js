@@ -595,7 +595,15 @@ export async function createHostHub({ name }) {
             ];
             hub.broadcast({ t: 'commits', entries });
             const replies = await Promise.all(guests.map(async (guest) => {
-                const message = await guest.wire.waitFor('nonce');
+                // Name whoever went missing: with four other seats in play, "the
+                // other player stopped responding" does not say who to chase.
+                let message;
+                try {
+                    message = await guest.wire.waitFor('nonce');
+                } catch (error) {
+                    throw new Error(`${guest.name} is no longer connected, so the shuffle could `
+                        + 'not be agreed. Leave the lobby and set the game up again.');
+                }
                 const revealed = fromHex(message.nonce);
                 if (toHex(await sha256(revealed)) !== toHex(guest.commit)) {
                     throw new Error(`Fairness check failed: ${guest.name} did not use the shuffle `

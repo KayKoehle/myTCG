@@ -791,7 +791,12 @@ export function createMenuController(ui, game, cardStack) {
                 if (data.ok && data.lobby) {
                     lanLobby.seats = data.lobby.seats;
                     lanLobby.started = data.lobby.started;
-                    renderLan();
+                    // Not while a code swap is on screen: inviting the third,
+                    // fourth and fifth player happens *from* the lobby, so this
+                    // tick would otherwise rebuild the panel — and wipe the box
+                    // — every 1.5s while the host pastes the reply code into it.
+                    // The panel re-renders itself when the swap ends.
+                    if (!p2pView) renderLan();
                     // A guest jumps into the match as soon as the host starts it.
                     if (data.lobby.started && !lanLobby.is_host) {
                         beginLanMatch({
@@ -1113,7 +1118,7 @@ export function createMenuController(ui, game, cardStack) {
             // swap; LAN guests just walk in, so the button is p2p-only.
             const inviteMore = lanLobby.is_host && p2pHub && seats.length < MAX_P2P_SEATS
                 ? `<button class="btn ghost" id="lanInviteMoreBtn" style="width:100%;margin-top:8px;">
-                        Invite another player</button>`
+                        Invite another player (${seats.length}/${MAX_P2P_SEATS} seated)</button>`
                 : '';
             ui.lanBody.innerHTML = `
                 <div class="lan-section-title">${lanLobby.is_host ? 'Your lobby' : 'Joined lobby'}
@@ -1145,7 +1150,8 @@ export function createMenuController(ui, game, cardStack) {
             <div class="lan-peers" id="lanPeers"></div>
             <div class="lan-section-title">Play online with a friend</div>
             <p class="tiny" style="margin:0 0 8px;">Anywhere, not just this Wi‑Fi. Swap a code over chat
-                and the game connects the two of you directly — 1v1, no server in between.</p>
+                and the game connects you directly — no server in between. One code swap per guest,
+                so a free-for-all seats up to ${MAX_P2P_SEATS} the same way a duel seats two.</p>
             <button class="btn ghost" id="p2pHostBtn" style="width:100%;">Create an invite code</button>
             <label class="lan-label" for="p2pInviteInput">…or enter a friend's invite code</label>
             <textarea id="p2pInviteInput" class="lan-input p2p-code" rows="3"
