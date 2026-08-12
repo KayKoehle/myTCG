@@ -301,6 +301,12 @@ class LanService:
             "name": name or f"Player {player_id}",
             "deck": resolved,
         }
+        if deck_cards:
+            # An edited deck exists nowhere but its owner's device, and the
+            # encrypted shuffle needs every player to be able to work out every
+            # seat's pile for themselves (engine/sealed.py). Contents were never
+            # the secret here — the order is — so the list rides along.
+            seat["deck_cards"] = list(deck_cards)
         lobby.seats.append(seat)
         return seat
 

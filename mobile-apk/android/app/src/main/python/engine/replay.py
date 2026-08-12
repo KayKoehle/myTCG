@@ -30,6 +30,7 @@ import json
 import time
 from typing import Any, Iterable
 
+from . import sealed
 from .actions import action_payload
 from .catalog import CARD_LIBRARY, DECK_LIBRARY
 from .state import GameState
@@ -90,8 +91,14 @@ def state_frame(state: GameState) -> dict[str, Any]:
         "hands": [list(hand) for hand in state.hands],
         # What each hand card would cost its owner at this instant (after
         # discounts). Purely a display value — and a version-sensitive one.
+        # A sealed card has no cost anybody here can work out: the recording
+        # keeps the handle, exactly as the match saw it, and the cost lands when
+        # the card is opened (engine/sealed.py).
         "hand_costs": [
-            [play_cost(state, i, card_id) for card_id in state.hands[i]]
+            [
+                None if sealed.is_sealed(card_id) else play_cost(state, i, card_id)
+                for card_id in state.hands[i]
+            ]
             for i in range(n)
         ],
         "decks": [list(deck) for deck in state.decks],

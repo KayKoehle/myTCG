@@ -6,7 +6,7 @@ from typing import Any
 
 import random
 
-from ..engine import sandbox
+from ..engine import sandbox, sealed
 from ..engine.actions import action_payload
 from ..engine.ai import choose_heuristic_action
 from ..engine.ladder import choose_ladder_action
@@ -15,7 +15,15 @@ from ..engine.openspiel_adapter import parse_action
 from ..engine.replay import ReplayRecorder
 from ..engine.snapshot import build_collection_snapshot, build_state_snapshot, observation_string
 from ..engine.state import GameState
-from ..engine.transitions import apply_action, create_initial_state, legal_actions, register_custom_deck, returns
+from ..engine.transitions import (
+    apply_action,
+    create_initial_state,
+    deal_piles,
+    legal_actions,
+    register_custom_deck,
+    reveal_sealed,
+    returns,
+)
 from ..engine.training import _load_torch, _obs_to_tensor, load_neural_policy
 
 # How many sandbox edits of one match stay undoable. GameState is immutable, so
@@ -24,10 +32,39 @@ MAX_SANDBOX_UNDO = 60
 
 
 @dataclass
+class SealedDeal:
+    """What the host is given about a deal it is not allowed to read.
+
+    The ciphertexts every player agreed on at the end of the shuffle, one list
+    per seat, plus the pile lists their positions index into. Holding both is
+    what lets the host *check* a reveal — recompute the claim from the values
+    the table committed to — without any of it telling it what the cards are.
+    """
+
+    ciphers: list[list[int]]
+    piles: list[tuple[str, ...]]
+
+    def cipher_for(self, seat_idx: int, position: int) -> int:
+        try:
+            return self.ciphers[seat_idx][position]
+        except IndexError:
+            raise ValueError(f"No card was sealed at seat {seat_idx} position {position}") from None
+
+    def card_at(self, seat_idx: int, index: int) -> str:
+        try:
+            return self.piles[seat_idx][index]
+        except IndexError:
+            raise ValueError(f"Seat {seat_idx} has no pile card {index}") from None
+
+
+@dataclass
 class Match:
     match_id: str
     state: GameState
     deck_names: list[str]
+    # Set when the match was dealt from an encrypted shuffle: the host holds
+    # handles rather than cards, and this is what it checks reveals against.
+    sealed_deal: SealedDeal | None = None
     # Sandbox mode: switched on from inside the match (see enable_sandbox). The
     # undo stack holds the states the sandbox edits replaced, newest last.
     sandbox: bool = False
@@ -82,6 +119,7 @@ class GameService:
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
         decks: list[str] | None = None,
+        sealed_ciphers: list[list[str]] | None = None,
     ) -> Match:
         # Player-edited decks arrive as explicit card lists; register them
         # under the (non-stock) name the client picked before dealing.
@@ -92,15 +130,76 @@ class GameService:
         deck_names = list(decks) if decks else [deck_a, deck_b]
         # Redealing a match id drops whatever a previous sandbox on it owned.
         sandbox.release_private_decks(match_id)
+        sealed_deal = self._sealed_deal(deck_names, sealed_ciphers)
         match = Match(
             match_id=match_id,
-            state=create_initial_state(seed=seed, decks=deck_names),
+            state=create_initial_state(
+                seed=seed, decks=deck_names, sealed_deal=sealed_deal is not None,
+            ),
             deck_names=deck_names,
+            sealed_deal=sealed_deal,
             replay=ReplayRecorder(match_id, deck_names),
         )
         match.record()
         self._matches[match_id] = match
         return match
+
+    @staticmethod
+    def _sealed_deal(
+        deck_names: list[str], sealed_ciphers: list[list[str]] | None,
+    ) -> SealedDeal | None:
+        """Take in the shuffle's output, refusing anything that does not fit.
+
+        The piles are recomputed here rather than taken from the caller: they
+        follow from the decklists, so accepting a list would let whoever sent it
+        decide what a revealed index means.
+        """
+        if not sealed_ciphers:
+            return None
+        piles = deal_piles(deck_names)
+        if len(sealed_ciphers) != len(piles):
+            raise ValueError("The shuffle produced a different number of decks than the match has seats")
+        for seat_idx, (ciphers, pile) in enumerate(zip(sealed_ciphers, piles)):
+            if len(ciphers) != len(pile):
+                raise ValueError(
+                    f"Seat {seat_idx + 1}'s shuffled deck has {len(ciphers)} cards, "
+                    f"but their decklist has {len(pile)}"
+                )
+        return SealedDeal(
+            ciphers=[[int(cipher) for cipher in seat] for seat in sealed_ciphers],
+            piles=list(piles),
+        )
+
+    def reveal_card(
+        self, match_id: str, handle: str, keys: list[Any], claimed_index: int,
+    ) -> str:
+        """Open one sealed card, if the published keys really do open it.
+
+        A player claiming a card is not taken at their word: the claim is
+        recomputed from the ciphertext the whole table committed to at the deal
+        and the keys published to open it (engine/sealed.py). Only then does the
+        card go into the state, in place of its handle.
+        """
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError("Match not found")
+        if match.sealed_deal is None:
+            raise ValueError("This match was not dealt from an encrypted shuffle")
+        if not sealed.is_sealed(handle):
+            raise ValueError(f"{handle} is not a sealed card")
+
+        seat_idx = sealed.sealed_seat(handle)
+        position = sealed.sealed_position(handle)
+        cipher = match.sealed_deal.cipher_for(seat_idx, position)
+        if not sealed.verify_reveal(cipher, keys, claimed_index):
+            # Either the card is not the one claimed, or a key is not the one
+            # used at the deal. From out here the two are the same thing, and
+            # both mean the reveal does not stand.
+            raise ValueError("That reveal does not match the deal the players committed to")
+
+        card_id = match.sealed_deal.card_at(seat_idx, int(claimed_index))
+        match.state = reveal_sealed(match.state, handle, card_id)
+        return card_id
 
     def get_or_create_match(
         self,

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from engine import sandbox
+from engine import sandbox, sealed
 from engine.actions import action_payload
 from engine.ai import choose_heuristic_action
 from engine.matchup_stats import MatchupStats
@@ -28,8 +28,10 @@ from engine.transitions import (
     apply_action,
     available_decks,
     create_initial_state,
+    deal_piles,
     legal_actions,
     register_custom_deck,
+    reveal_sealed,
     returns,
 )
 from lan_service import LanService
@@ -66,10 +68,56 @@ MAX_SANDBOX_UNDO = 60
 
 
 @dataclass
+class SealedDeal:
+    """The ciphertexts the players agreed on, and the pile lists their
+    positions index into (mirrors services/game_service.py)."""
+
+    ciphers: list[list[int]]
+    piles: list[tuple[str, ...]]
+
+    def cipher_for(self, seat_idx: int, position: int) -> int:
+        try:
+            return self.ciphers[seat_idx][position]
+        except IndexError:
+            raise ValueError(f"No card was sealed at seat {seat_idx} position {position}") from None
+
+    def card_at(self, seat_idx: int, index: int) -> str:
+        try:
+            return self.piles[seat_idx][index]
+        except IndexError:
+            raise ValueError(f"Seat {seat_idx} has no pile card {index}") from None
+
+
+def build_sealed_deal(
+    deck_names: list[str], sealed_ciphers: list[list[str]] | None,
+) -> SealedDeal | None:
+    """Piles are recomputed from the decklists, never taken from the caller:
+    accepting a list would let whoever sent it decide what an index means."""
+    if not sealed_ciphers:
+        return None
+    piles = deal_piles(deck_names)
+    if len(sealed_ciphers) != len(piles):
+        raise ValueError("The shuffle produced a different number of decks than the match has seats")
+    for seat_idx, (ciphers, pile) in enumerate(zip(sealed_ciphers, piles)):
+        if len(ciphers) != len(pile):
+            raise ValueError(
+                f"Seat {seat_idx + 1}'s shuffled deck has {len(ciphers)} cards, "
+                f"but their decklist has {len(pile)}"
+            )
+    return SealedDeal(
+        ciphers=[[int(cipher) for cipher in seat] for seat in sealed_ciphers],
+        piles=list(piles),
+    )
+
+
+@dataclass
 class Match:
     match_id: str
     state: GameState
     deck_names: list[str]
+    # Set when the match was dealt from an encrypted shuffle: the device holds
+    # handles rather than cards, and this is what it checks reveals against.
+    sealed_deal: SealedDeal | None = None
     # Sandbox mode: switched on from inside the match (see enable_sandbox). The
     # undo stack holds the states the sandbox edits replaced, newest last.
     sandbox: bool = False
@@ -123,6 +171,7 @@ class MobileGameService:
         deck_a_cards: list[str] | None = None,
         deck_b_cards: list[str] | None = None,
         decks: list[str] | None = None,
+        sealed_ciphers: list[list[str]] | None = None,
     ) -> Match:
         match = self._matches.get(match_id)
         if match is not None:
@@ -136,15 +185,39 @@ class MobileGameService:
         deck_names = list(decks) if decks else [deck_a, deck_b]
         # Redealing a match id drops whatever a previous sandbox on it owned.
         sandbox.release_private_decks(match_id)
+        sealed_deal = build_sealed_deal(deck_names, sealed_ciphers)
         created = Match(
             match_id=match_id,
-            state=create_initial_state(seed=seed, decks=deck_names),
+            state=create_initial_state(
+                seed=seed, decks=deck_names, sealed_deal=sealed_deal is not None,
+            ),
             deck_names=deck_names,
+            sealed_deal=sealed_deal,
             replay=ReplayRecorder(match_id, deck_names),
         )
         created.record()
         self._matches[match_id] = created
         return created
+
+    def reveal_card(
+        self, match_id: str, handle: str, keys: list[Any], claimed_index: int,
+    ) -> str:
+        """Open one sealed card, if the published keys really do open it
+        (mirrors services/game_service.py)."""
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError("Match not found")
+        if match.sealed_deal is None:
+            raise ValueError("This match was not dealt from an encrypted shuffle")
+        if not sealed.is_sealed(handle):
+            raise ValueError(f"{handle} is not a sealed card")
+        seat_idx = sealed.sealed_seat(handle)
+        cipher = match.sealed_deal.cipher_for(seat_idx, sealed.sealed_position(handle))
+        if not sealed.verify_reveal(cipher, keys, claimed_index):
+            raise ValueError("That reveal does not match the deal the players committed to")
+        card_id = match.sealed_deal.card_at(seat_idx, int(claimed_index))
+        match.state = reveal_sealed(match.state, handle, card_id)
+        return card_id
 
     def submit_action(
         self,
@@ -365,6 +438,33 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
             return _response_ok({"ok": False, "error": str(exc)})
         return _response_ok({"ok": True, **result})
 
+    if url == "/api/deck-piles":
+        for name, cards in (body.get("custom_decks") or {}).items():
+            register_custom_deck(name, cards)
+        try:
+            piles = deal_piles(body.get("decks") or [])
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        return _response_ok({"ok": True, "piles": [list(pile) for pile in piles]})
+
+    if url == "/api/reveal":
+        try:
+            card_id = SERVICE.reveal_card(
+                match_id=body["match_id"],
+                handle=body["card_id"],
+                keys=body.get("keys") or [],
+                claimed_index=body["index"],
+            )
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        return _response_ok({
+            "ok": True,
+            "card_id": card_id,
+            "snapshot": SERVICE.state_snapshot(
+                match_id=body["match_id"], viewer_player_id=body["player_id"],
+            ),
+        })
+
     if url == "/api/lan/leave":
         try:
             result = LAN.leave_game(
@@ -391,9 +491,14 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
             return _response_ok({"ok": False, "error": str(exc)})
         # Build the authoritative match locally so guests can immediately drive
         # it through /api/state and /api/action on this instance.
-        SERVICE.get_or_create_match(
-            match_id=params["match_id"], seed=params["seed"], decks=params["decks"],
-        )
+        try:
+            SERVICE.get_or_create_match(
+                match_id=params["match_id"], seed=params["seed"], decks=params["decks"],
+                # Present when the players ran the encrypted shuffle first.
+                sealed_ciphers=body.get("sealed_ciphers"),
+            )
+        except ValueError as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
         return _response_ok({"ok": True, **params})
 
     if url == "/api/lan/trade/propose":

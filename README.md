@@ -40,6 +40,7 @@ src/
       js/p2p.js              Invite-code play: WebRTC, compact codes, fair seed
       js/qr.js               QR encoder (no dependencies) for invite codes
       js/mentalpoker.js      Encrypted shuffle: a deck nobody can read or stack
+      js/shuffle.js          Running that shuffle across a whole table
 mobile-apk/                  Android app (Capacitor + Chaquopy)
 scripts/sync_mobile.py       Copies engine/webapp/data into mobile-apk
 tests/                       Pytest suite (invariants + per-card tests)
@@ -260,15 +261,41 @@ half of the protocol (the browser proves, the host verifies), pinned to the JS
 by vectors that JS generates: `scripts/gen_mentalpoker_vectors.mjs` →
 `tests/data/mentalpoker_vectors.json` → `tests/test_sealed.py`.
 
-> **Status: foundations in, not yet dealing.** Done: the protocol module, the
-> Python verifier, sealed handles through deal/mulligan/draw/snapshot, and
-> `transitions.reveal_sealed` as the seam a reveal comes in through. Today's
-> invite-code games still deal in the clear (`create_initial_state(sealed_deal=False)`)
-> and get the verifiable *seed* but not the encrypted *deck* — nothing about
-> them has changed yet. What remains: running the shuffle across the players at
-> match start; reveal-on-play, so a card becomes an action by being opened;
-> clients opening their own draws locally; deck searches, which must reveal a
-> pile publicly and then re-shuffle it; and the end-of-match audit.
+**Running it across a table.** `webapp/js/shuffle.js` is the coordinator: every
+deck passes every player twice — a shuffle lap and a re-key lap — after which
+each player holds one key per position of every deck and nobody holds an order.
+All the decks travel together, so it costs two laps and a publication (`2n`
+messages) whatever the table is holding, rather than a lap per deck. It never
+touches WebRTC or the DOM, so a whole table runs headless in
+`scripts/run_shuffle.mjs`, which is what `tests/test_shuffle_protocol.py`
+audits — in Python, through the same verifier the host checks live reveals with.
+
+Cost, measured: a duel over 15-card piles takes well under a second; five
+players cost ~10s of protocol work altogether. The work is spread across five
+devices but the laps are serial — each one visits everybody in turn — so that
+is wall-clock, not CPU time saved by having more players. It is a progress bar
+at the start of a five-player game, and the reason the decks travel together.
+
+**What a player's own instance works out for itself.** `/api/deck-piles` returns
+`transitions.deal_piles(...)` — each seat's decklist minus the cards that start
+set aside, in decklist order — which is the list a revealed index names a card
+from. Every player asks their *own* instance, so the meaning of "position 14
+opened to index 9" never comes from the host's good word. Edited decks ride
+along in the lobby's seats for the same reason.
+
+> **Status: the deal is sealed; play is not yet.** Done: the protocol module,
+> the table coordinator, the Python verifier, sealed handles through
+> deal/mulligan/draw/snapshot/replay, a host that deals from real ciphertexts
+> (`/api/lan/start` with `sealed_ciphers`) and opens a card only against keys
+> that verify (`/api/reveal`). End to end today: two clients shuffle, the host
+> deals a match in which *even its own hand* is handles, and a false claim about
+> a card is refused.
+>
+> Invite-code play still uses the open deal, because a sealed match is not yet
+> playable: what remains is reveal-on-play (a card becomes a legal action by
+> being opened), clients opening their own draws and drawing them in the UI,
+> deck searches — which must open a pile publicly and then re-shuffle it — and
+> the end-of-match audit.
 
 ### Guests are not trusted with the whole API
 

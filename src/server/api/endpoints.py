@@ -9,7 +9,7 @@ from starlette.responses import RedirectResponse
 from pydantic import ValidationError
 
 from ..engine import sandbox
-from ..engine.transitions import available_decks, register_custom_deck
+from ..engine.transitions import available_decks, deal_piles, register_custom_deck
 from ..services import GameService
 from ..services.lan import LanService
 from .schemas import (
@@ -120,6 +120,41 @@ def register_ws_routes(app: FastAPI):
         )
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
+
+    @app.post("/api/deck-piles")
+    async def deck_piles(request: dict):
+        """The cards each seat shuffles, in the order a sealed position indexes.
+
+        Every player asks their *own* instance for this before the encrypted
+        shuffle starts, so the meaning of "position 14 opened to index 9" comes
+        out of card data they each already have rather than out of the host's
+        good word (engine/sealed.py).
+        """
+        decks = request.get("decks") or []
+        for name, cards in (request.get("custom_decks") or {}).items():
+            register_custom_deck(name, cards)
+        try:
+            piles = deal_piles(decks)
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "piles": [list(pile) for pile in piles]}
+
+    @app.post("/api/reveal")
+    async def reveal(request: dict):
+        """Open one sealed card, against the keys published to open it."""
+        try:
+            card_id = game_service.reveal_card(
+                match_id=request["match_id"],
+                handle=request["card_id"],
+                keys=request.get("keys") or [],
+                claimed_index=request["index"],
+            )
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        snapshot = game_service.state_snapshot(
+            match_id=request["match_id"], viewer_player_id=request["player_id"],
+        )
+        return {"ok": True, "card_id": card_id, "snapshot": snapshot}
 
     @app.post("/api/matchup-stats", response_model=MatchupStatsResponse)
     async def matchup_stats(request: dict | None = None):
@@ -250,11 +285,17 @@ def register_ws_routes(app: FastAPI):
             return {"ok": False, "error": str(exc)}
         # Build the authoritative match on the host so guests can immediately
         # drive it through /api/state and /api/action.
-        game_service.create_match(
-            match_id=params["match_id"],
-            seed=params["seed"],
-            decks=params["decks"],
-        )
+        try:
+            game_service.create_match(
+                match_id=params["match_id"],
+                seed=params["seed"],
+                decks=params["decks"],
+                # Present when the players ran the encrypted shuffle first: the
+                # host then deals handles it cannot read (engine/sealed.py).
+                sealed_ciphers=request.get("sealed_ciphers"),
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         return {"ok": True, **params}
 
     @app.post("/api/lan/trade/propose")

@@ -116,6 +116,22 @@ def _mirror_safe_decks(deck_names: list[str]) -> list[tuple[str, list[str]]]:
     return resolved
 
 
+def deal_piles(deck_names: "Iterable[str]") -> tuple[tuple[str, ...], ...]:
+    """What each seat shuffles: its decklist minus the cards that start set
+    aside, in decklist order.
+
+    This is the list a sealed pile's positions index into, so a reveal of
+    "position 14 is index 9" means `deal_piles(...)[seat][9]`. Every player
+    works it out for every seat on their own machine, from card data they all
+    ship, which is why nobody has to be trusted for it (engine/sealed.py).
+    """
+    _load_data_if_needed()
+    return tuple(
+        tuple(cid for cid in deck_ids if not effects.behavior_of(cid).set_aside_at_start)
+        for _, deck_ids in _mirror_safe_decks(list(deck_names))
+    )
+
+
 def _opening_mulligan_options(hand: tuple[str, ...]) -> list[str]:
     return ["KEEP", *list(hand)]
 
@@ -199,7 +215,8 @@ def create_initial_state(
             # Sealed piles are already shuffled — that happened inside the
             # protocol, in ciphertext, before any of this. All that is left
             # here is how many cards there are, which the decklist says out
-            # loud anyway.
+            # loud anyway. `pile` is exactly `deal_piles(...)[seat_idx]`, the
+            # list every player's reveals index into.
             pile = list(sealed.sealed_pile(seat_idx, len(pile)))
         else:
             rng.shuffle(pile)
