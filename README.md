@@ -27,6 +27,7 @@ src/
                              flood, troy, odin, osiris) registering each card's behavior
       transitions.py         Rules runtime: turns, costs, triggers, victory
       snapshot.py            Player-visible JSON snapshots (server + mobile)
+      sealed.py              Sealed cards: handles the host moves but cannot read
       sandbox.py             Sandbox mode: scenario edits on a live match
       replay.py              Match recording: version-proof replay files
       ai.py                  Search AI: greedy one-ply + positional evaluation
@@ -246,14 +247,28 @@ that is caught by `auditDeck` when every key is published at the end of the
 match, rather than prevented during it. Closing that gap needs a zero-knowledge
 shuffle proof.
 
-> **Status.** The protocol module is complete and tested — correct permutations
-> for 2–5 players, opponents learning nothing, forged reveals rejected,
-> duplication caught. It is **not yet wired into the engine**: `transitions.py`
-> still materialises the whole deal on the host, so today's invite-code games
-> get the verifiable *seed* but not the encrypted *deck*. Doing that means
-> teaching `GameState` to hold cards nobody has opened yet and moving from
-> host-authoritative to every-peer-validates — deep surgery on the engine's most
-> delicate code, and the next phase of this work.
+**Sealed cards.** The engine side of this is `engine/sealed.py`: a *sealed* card
+is a handle to a position in a pile the host cannot read — `#1-14` is seat 1's
+ciphertext position 14 — which it can still draw, discard, mulligan and shuffle,
+because moving a handle needs no idea what is under it. Handles are public on
+purpose: the order was decided inside the protocol, so permuting them leaks
+nothing. `catalog.card()` raises `SealedCardError` for a handle rather than
+returning a blank card, so a rule that reaches for an identity the host is not
+allowed to have stops where a reveal can be asked for instead of quietly
+deciding your hidden card is not a Human. `sealed.py` also holds the *checking*
+half of the protocol (the browser proves, the host verifies), pinned to the JS
+by vectors that JS generates: `scripts/gen_mentalpoker_vectors.mjs` →
+`tests/data/mentalpoker_vectors.json` → `tests/test_sealed.py`.
+
+> **Status: foundations in, not yet dealing.** Done: the protocol module, the
+> Python verifier, sealed handles through deal/mulligan/draw/snapshot, and
+> `transitions.reveal_sealed` as the seam a reveal comes in through. Today's
+> invite-code games still deal in the clear (`create_initial_state(sealed_deal=False)`)
+> and get the verifiable *seed* but not the encrypted *deck* — nothing about
+> them has changed yet. What remains: running the shuffle across the players at
+> match start; reveal-on-play, so a card becomes an action by being opened;
+> clients opening their own draws locally; deck searches, which must reveal a
+> pile publicly and then re-shuffle it; and the end-of-match audit.
 
 ### Guests are not trusted with the whole API
 

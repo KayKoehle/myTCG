@@ -12,7 +12,7 @@ import random
 from dataclasses import replace
 from typing import Iterable
 
-from . import catalog, effects, primitives as prim
+from . import catalog, effects, primitives as prim, sealed
 from .actions import (
     Action,
     ChooseOptionAction,
@@ -167,9 +167,17 @@ def create_initial_state(
     deck_a: str = DEFAULT_DECK_A,
     deck_b: str = DEFAULT_DECK_B,
     decks: "Iterable[str] | None" = None,
+    sealed_deal: bool = False,
 ) -> GameState:
     """Deal a new match. `decks` (one deck name per seat) overrides
-    deck_a/deck_b and determines the player count together with `player_ids`."""
+    deck_a/deck_b and determines the player count together with `player_ids`.
+
+    `sealed_deal` deals piles of sealed handles instead of cards: the order was
+    settled by the players' encrypted shuffle before this was called, and the
+    host holds positions it cannot read (engine/sealed.py). Everything else
+    about the deal — who starts, the extra opening card — is unchanged, and
+    still follows from the seed the players agreed on.
+    """
     _load_data_if_needed()
     rng = random.Random(seed)
     requested_decks = list(decks) if decks is not None else [deck_a, deck_b]
@@ -184,10 +192,17 @@ def create_initial_state(
     deck_piles: list[tuple[str, ...]] = []
     hands: list[tuple[str, ...]] = []
     set_asides: list[tuple[str, ...]] = []
-    for deck_name, deck_ids in resolved:
+    for seat_idx, (deck_name, deck_ids) in enumerate(resolved):
         set_asides.append(tuple(cid for cid in deck_ids if effects.behavior_of(cid).set_aside_at_start))
         pile = [cid for cid in deck_ids if not effects.behavior_of(cid).set_aside_at_start]
-        rng.shuffle(pile)
+        if sealed_deal:
+            # Sealed piles are already shuffled — that happened inside the
+            # protocol, in ciphertext, before any of this. All that is left
+            # here is how many cards there are, which the decklist says out
+            # loud anyway.
+            pile = list(sealed.sealed_pile(seat_idx, len(pile)))
+        else:
+            rng.shuffle(pile)
         hands.append(tuple(pile[:4]))
         deck_piles.append(tuple(pile[4:]))
         deck_names.append(deck_name)
@@ -244,6 +259,45 @@ def create_initial_state(
         ),
         locations=_build_locations(n),
         action_history=tuple(),
+    )
+
+
+def reveal_sealed(state: GameState, handle: str, card_id: str) -> GameState:
+    """Put a card the table has opened in place of its sealed handle.
+
+    The seam the reveal protocol comes in through: the caller has already
+    checked the published keys against the ciphertext committed to at the deal
+    (`sealed.verify_reveal`) — this only carries the answer into the state.
+
+    A handle is unique to one position, so it lives in exactly one zone at a
+    time; substituting everywhere is how the card follows whatever zone it had
+    reached by the time it was opened.
+    """
+    if not sealed.is_sealed(handle):
+        raise ValueError(f"{handle!r} is not a sealed card")
+
+    def swap(cards: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(card_id if cid == handle else cid for cid in cards)
+
+    def swap_all(per_seat: tuple[tuple[str, ...], ...]) -> tuple[tuple[str, ...], ...]:
+        return tuple(swap(cards) for cards in per_seat)
+
+    locations = tuple(
+        replace(location, stacks=swap_all(location.stacks)) for location in state.locations
+    )
+    pending = state.pending_choice
+    if pending is not None and handle in pending.options:
+        pending = replace(pending, options=swap(pending.options))
+    return replace(
+        state,
+        decks=swap_all(state.decks),
+        hands=swap_all(state.hands),
+        mulligan_selected=swap_all(state.mulligan_selected),
+        underworlds=swap_all(state.underworlds),
+        set_aside=swap_all(state.set_aside),
+        facedown_cards=swap(state.facedown_cards),
+        locations=locations,
+        pending_choice=pending,
     )
 
 
@@ -1030,6 +1084,11 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
         actions: list[Action] = [EndTurnAction(player_id=current_player_id)]
         idx = state.current_player_idx
         for card_id in state.hands[idx]:
+            # A sealed card is not playable *as such*: only its owner knows what
+            # it costs or where it may go, so it becomes an action once they
+            # have revealed it (engine/sealed.py).
+            if sealed.is_sealed(card_id):
+                continue
             cost = _play_cost(state, idx, card_id)
             if cost > state.mana_pool[idx]:
                 can_use_sacrifice = catalog.is_artifact(card_id) and bool(_affordable_sacrifice_banishes(state, idx, card_id))

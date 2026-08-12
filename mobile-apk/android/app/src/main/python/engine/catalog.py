@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from . import sealed
 from .data_loader import load_card_library, load_decks, load_finished_decks, repo_root_from_engine_file
 from .state import CardDefinition
 
@@ -43,6 +44,12 @@ def load_data_if_needed() -> None:
 
 def card(card_id: str) -> CardDefinition:
     load_data_if_needed()
+    if sealed.is_sealed(card_id):
+        # A sealed card has no printing the host is allowed to read. Refusing
+        # here is the point: every rule that would have quietly treated a
+        # hidden card as a zero-cost nothing stops instead, where a reveal can
+        # be asked for (engine/sealed.py).
+        raise sealed.SealedCardError(card_id)
     return CARD_LIBRARY[card_id]
 
 
@@ -96,6 +103,11 @@ def named_any(*names: str) -> Predicate:
 
 
 def card_owner_idx(state: "GameState", card_id: str) -> int:
+    # A sealed card's owner is the one thing about it that stays public: it
+    # says which pile the handle came from, not what is in it, and ownership
+    # only decides where a card goes home to.
+    if sealed.is_sealed(card_id):
+        return sealed.sealed_seat(card_id)
     for idx, deck_name in enumerate(state.deck_names):
         if card_id in DECK_LIBRARY.get(deck_name, tuple()):
             return idx

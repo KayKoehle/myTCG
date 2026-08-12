@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import effects, primitives as prim
+from . import effects, primitives as prim, sealed
 from .actions import action_payload
 from .catalog import CARD_LIBRARY, DECK_LIBRARY, card_owner_idx
 from .data_loader import FINISHED_DECK_FILES
@@ -101,7 +101,30 @@ def hand_is_revealed(state: GameState, hand_owner_idx: int) -> bool:
     return False
 
 
+def _sealed_hand_card(card_id: str) -> dict[str, Any]:
+    """All the host can say about a sealed card: that there is one.
+
+    Its owner's client opens the handle with the keys it holds and draws the
+    real card in its place, so the player sees their hand while the machine
+    dealing the match does not (engine/sealed.py).
+    """
+    return {
+        "id": card_id,
+        "sealed": True,
+        "name": "",
+        "effect": "",
+        "anecdote": "",
+        "cost": None,
+        "base_cost": None,
+        "power": None,
+        "type": "",
+        "subtype": "",
+    }
+
+
 def _hand_card(card_id: str, dynamic_cost: int | None = None) -> dict[str, Any]:
+    if sealed.is_sealed(card_id):
+        return _sealed_hand_card(card_id)
     card = CARD_LIBRARY[card_id]
     return {
         "id": card_id,
@@ -116,12 +139,25 @@ def _hand_card(card_id: str, dynamic_cost: int | None = None) -> dict[str, Any]:
     }
 
 
+def _view_hand_card(state: GameState, owner_idx: int, card_id: str) -> dict[str, Any]:
+    """A hand card, priced for the seat holding it.
+
+    Sealed cards skip the pricing: what a card costs comes off its printing,
+    which is the very thing the host does not hold.
+    """
+    if sealed.is_sealed(card_id):
+        return _sealed_hand_card(card_id)
+    return _hand_card(card_id, play_cost(state, owner_idx, card_id))
+
+
 def hand_synergies(state: GameState, viewer_idx: int) -> dict[str, list[str]]:
     """For each hand card whose "if" clause is fulfilled right now, the card
     ids (board or own underworld) that fulfil it. Purely informational — the
     webapp highlights both sides of the synergy."""
     result: dict[str, list[str]] = {}
     for card_id in state.hands[viewer_idx]:
+        if sealed.is_sealed(card_id):
+            continue  # no printing to read a synergy off
         hook = effects.behavior_of(card_id).synergy_partners
         if hook is None:
             continue
@@ -319,18 +355,18 @@ def build_state_snapshot(
         # every seat; the owner's entries say whether they can play them.
         "revealed_decks": per_player(_revealed_deck_cards),
         "available_checkpoints": available_checkpoints or [],
-        "hand": [_hand_card(c, play_cost(state, viewer_idx, c)) for c in state.hands[viewer_idx]],
+        "hand": [_view_hand_card(state, viewer_idx, c) for c in state.hands[viewer_idx]],
         "hand_synergies": hand_synergies(state, viewer_idx),
         "hand_sizes": per_player(lambda i: len(state.hands[i])),
         "hands_revealed": per_player(lambda i: hand_revealed[i]),
         "revealed_hands": {
-            pid[i]: [_hand_card(c, play_cost(state, i, c)) for c in state.hands[i]]
+            pid[i]: [_view_hand_card(state, i, c) for c in state.hands[i]]
             for i in range(n)
             if hand_revealed[i] and i != viewer_idx
         },
         "opponent_hand_size": len(state.hands[opp_idx]),
         "opponent_hand_revealed": opponent_hand_revealed,
-        "opponent_hand": [_hand_card(c, play_cost(state, opp_idx, c)) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,
+        "opponent_hand": [_view_hand_card(state, opp_idx, c) for c in state.hands[opp_idx]] if opponent_hand_revealed else None,
         "known_cards": {
             card_id: _card_details(card_id)
             for card_id in known_card_ids
