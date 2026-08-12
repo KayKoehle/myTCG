@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 from pydantic import ValidationError
 
-from ..engine import sandbox
+from ..engine import sandbox, sealed
 from ..engine.transitions import available_decks, deal_piles, register_custom_deck
 from ..services import GameService
 from ..services.lan import LanService
@@ -102,24 +102,42 @@ def register_ws_routes(app: FastAPI):
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return StateResponse(snapshot=snapshot)
 
-    @app.post("/api/action", response_model=ActionResponse)
-    async def apply_action_http(request: ActionRequest):
-        game_service.submit_action(
-            match_id=request.match_id,
-            player_id=request.player_id,
-            action_kind=request.action_kind,
-            card_id=request.card_id,
-            location_id=request.location_id,
-            option_id=request.option_id,
-            seed=request.seed,
-            deck_a=request.deck_a,
-            deck_b=request.deck_b,
-            deck_a_cards=request.deck_a_cards,
-            deck_b_cards=request.deck_b_cards,
-            decks=request.decks,
-        )
+    def _submit_action(request: ActionRequest) -> ActionResponse:
+        """One action, answered with the new state or with what blocks it.
+
+        A sealed match cannot resolve a rule that needs a hidden card, so the
+        engine stops instead of guessing (engine/sealed.py). That is not an
+        error: the answer is the handle to open, and once the table has
+        published its keys for that position the *same* action is sent again.
+        Nothing has been applied in between, so retrying is safe — and the
+        client never has to know which cards read hidden information.
+        """
+        try:
+            game_service.submit_action(
+                match_id=request.match_id,
+                player_id=request.player_id,
+                action_kind=request.action_kind,
+                card_id=request.card_id,
+                location_id=request.location_id,
+                option_id=request.option_id,
+                seed=request.seed,
+                deck_a=request.deck_a,
+                deck_b=request.deck_b,
+                deck_a_cards=request.deck_a_cards,
+                deck_b_cards=request.deck_b_cards,
+                decks=request.decks,
+            )
+        except sealed.SealedCardError as exc:
+            return ActionResponse(ok=False, needs_reveal=sealed.reveal_request(exc.card_id))
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
+
+    @app.post("/api/action", response_model=ActionResponse)
+    async def apply_action_http(request: ActionRequest):
+        # Deliberately still a 200: the webapp treats any non-2xx as fatal, and
+        # a card that has to be opened first is a step in the protocol, not a
+        # failed request.
+        return _submit_action(request)
 
     @app.post("/api/deck-piles")
     async def deck_piles(request: dict):
@@ -155,6 +173,23 @@ def register_ws_routes(app: FastAPI):
             match_id=request["match_id"], viewer_player_id=request["player_id"],
         )
         return {"ok": True, "card_id": card_id, "snapshot": snapshot}
+
+    @app.post("/api/sealed/audit")
+    async def sealed_audit(request: dict):
+        """Re-open every position of the deal, now that the match is over.
+
+        `keys_by_seat[seat][position]` is every player's key for that position —
+        the same wire shape /api/reveal takes, one list per card. A seat that
+        comes back false is a shuffler caught duplicating a position, which no
+        check during play could have caught (engine/sealed.py).
+        """
+        try:
+            return game_service.audit_sealed_deal(
+                match_id=request["match_id"],
+                keys_by_seat=request.get("keys_by_seat") or [],
+            )
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": exc.args[0] if exc.args else str(exc)}
 
     @app.post("/api/matchup-stats", response_model=MatchupStatsResponse)
     async def matchup_stats(request: dict | None = None):
@@ -401,26 +436,11 @@ def register_ws_routes(app: FastAPI):
                     continue
 
                 try:
-                    game_service.submit_action(
-                        match_id=request.match_id,
-                        player_id=request.player_id,
-                        action_kind=request.action_kind,
-                        card_id=request.card_id,
-                        location_id=request.location_id,
-                        option_id=request.option_id,
-                        seed=request.seed,
-                        deck_a=request.deck_a,
-                        deck_b=request.deck_b,
-                    )
-                    snapshot = game_service.state_snapshot(
-                        match_id=request.match_id,
-                        viewer_player_id=request.player_id,
-                    )
+                    response = _submit_action(request)
                 except Exception as exc:  # noqa: BLE001
                     await _send_error(websocket, str(exc))
                     continue
 
-                response = ActionResponse(snapshot=snapshot)
                 await manager.send_personal_message(response.model_dump_json(), websocket)
 
         except WebSocketDisconnect:

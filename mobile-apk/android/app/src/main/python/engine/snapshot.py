@@ -358,6 +358,15 @@ def build_state_snapshot(
         "hand": [_view_hand_card(state, viewer_idx, c) for c in state.hands[viewer_idx]],
         "hand_synergies": hand_synergies(state, viewer_idx),
         "hand_sizes": per_player(lambda i: len(state.hands[i])),
+        # Every seat's sealed hand positions, in hand order. Public on purpose:
+        # a handle carries no identity (engine/sealed.py), and it is what lets a
+        # peer check a request for keys before answering it — someone asking to
+        # open a position that is in nobody's hand is reading the future, and
+        # everybody can see that. An unsealed match yields empty lists, so this
+        # can never turn into a view of a real hand.
+        "hand_handles": per_player(
+            lambda i: [cid for cid in state.hands[i] if sealed.is_sealed(cid)]
+        ),
         "hands_revealed": per_player(lambda i: hand_revealed[i]),
         "revealed_hands": {
             pid[i]: [_view_hand_card(state, i, c) for c in state.hands[i]]

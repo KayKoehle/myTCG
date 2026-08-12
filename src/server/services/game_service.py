@@ -201,6 +201,31 @@ class GameService:
         match.state = reveal_sealed(match.state, handle, card_id)
         return card_id
 
+    def audit_sealed_deal(
+        self, match_id: str, keys_by_seat: list[list[list[Any]]],
+    ) -> dict[str, Any]:
+        """Check a finished match's deal against every key the table published.
+
+        The one thing the protocol cannot prevent, only catch: a shuffler that
+        duplicated a position deals a card twice, and no reveal during the match
+        looks wrong. Once the match is over every key can be published, and a
+        pile that does not open to each of its cards exactly once says so
+        (`sealed.audit_pile`). Per seat, because a caught seat is the accusation.
+        """
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError("Match not found")
+        if match.sealed_deal is None:
+            raise ValueError("This match was not dealt from an encrypted shuffle")
+        if len(keys_by_seat) != len(match.sealed_deal.ciphers):
+            raise ValueError("The audit needs one set of keys per seat")
+
+        results: list[dict[str, Any]] = []
+        for seat_idx, ciphers in enumerate(match.sealed_deal.ciphers):
+            ok, reason = sealed.audit_pile(ciphers, keys_by_seat[seat_idx], len(ciphers))
+            results.append({"seat": seat_idx, "ok": ok, "reason": reason})
+        return {"ok": all(result["ok"] for result in results), "results": results}
+
     def get_or_create_match(
         self,
         match_id: str,
@@ -239,6 +264,14 @@ class GameService:
         deck_b_cards: list[str] | None = None,
         decks: list[str] | None = None,
     ) -> GameState:
+        """Apply one action, or refuse it by raising.
+
+        In a sealed match a rule that reaches for a hidden card raises
+        `sealed.SealedCardError` out of the engine, and the caller answers with
+        `sealed.reveal_request(...)` instead of a snapshot. Nothing is applied
+        when that happens: the engine is pure, so the new state is only bound —
+        and only recorded — once `apply_action` has returned it.
+        """
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
             deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,

@@ -283,19 +283,33 @@ from. Every player asks their *own* instance, so the meaning of "position 14
 opened to index 9" never comes from the host's good word. Edited decks ride
 along in the lobby's seats for the same reason.
 
-> **Status: the deal is sealed; play is not yet.** Done: the protocol module,
-> the table coordinator, the Python verifier, sealed handles through
-> deal/mulligan/draw/snapshot/replay, a host that deals from real ciphertexts
-> (`/api/lan/start` with `sealed_ciphers`) and opens a card only against keys
-> that verify (`/api/reveal`). End to end today: two clients shuffle, the host
-> deals a match in which *even its own hand* is handles, and a false claim about
-> a card is refused.
+**Reveal on demand.** A rule that needs a hidden card cannot be run, and the
+host does not try: `/api/action` answers `{"ok": false, "needs_reveal": {"card_id":
+"#0-7", "seat": 0, "position": 7}}` — HTTP 200, nothing applied, the match
+exactly as it was — and the client sends the *same* action again once the table
+has opened that position. One shape covers every rule that reads hidden
+information: a deck search raises once per card it scans, and neither the client
+nor the server needs a list of which cards those are. A snapshot carries
+`hand_handles` (each seat's sealed hand positions, in hand order) so a peer can
+refuse a request for keys to a position that is in nobody's hand — someone
+asking for that is reading the future, not their own draw.
+
+**The audit.** `/api/sealed/audit` takes every player's key for every position
+of every seat once the match is over and re-opens the whole deal
+(`sealed.audit_pile`), answering per seat. This is what catches the shuffler
+that duplicated a position: during play both copies reveal honestly, to the same
+card, and only the finished pile shows it.
+
+> **Status: the host plays a sealed match; the client half is what remains.**
+> Done: the protocol module, the table coordinator, the Python verifier, sealed
+> handles through deal/mulligan/draw/snapshot/replay, a host that deals from real
+> ciphertexts (`/api/lan/start` with `sealed_ciphers`), opens a card only against
+> keys that verify (`/api/reveal`), refuses an action that needs a card it cannot
+> read instead of guessing, and audits the finished deal.
 >
-> Invite-code play still uses the open deal, because a sealed match is not yet
-> playable: what remains is reveal-on-play (a card becomes a legal action by
-> being opened), clients opening their own draws and drawing them in the UI,
-> deck searches — which must open a pile publicly and then re-shuffle it — and
-> the end-of-match audit.
+> Invite-code play switches to the sealed deal once the clients drive it: opening
+> their own draws and showing them, collecting the other players' keys for a
+> `needs_reveal` and retrying, and re-shuffling a deck that a search opened.
 
 ### Guests are not trusted with the whole API
 

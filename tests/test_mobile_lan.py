@@ -180,3 +180,84 @@ def test_replay_route_reports_an_unknown_match(mobile_api):
     answer = call(mobile_api, "/api/replay", {"match_id": "never-played-here"})
     assert answer["ok"] is False
     assert "never-played-here" in answer["error"]
+
+
+# --- Sealed matches through the bridge ---------------------------------------
+# The device is a host like any other: it deals ciphertexts it cannot read, is
+# asked to open positions, refuses actions that need a card it has not been
+# given, and audits the deal at the end. The dispatch for all of that is
+# hand-written here, so it is the half most likely to drift from the server.
+
+RUN = json.loads((Path(__file__).parent / "data" / "shuffle_run.json").read_text())
+SEALED_DECKS = ["fixture_pile_a", "fixture_pile_b"]
+
+
+def sealed_match(mobile_api, match_id: str) -> tuple[str, str, str]:
+    """A match dealt from the fixture's piles, seat 1 about to search its deck.
+
+    Mirrors tests/test_sealed_service.py: Trapper looks for Enkidu on enter, the
+    deck holds one sealed card, and fixture position 3 opens to Enkidu.
+    """
+    from dataclasses import replace
+
+    cards = list(mobile_api.deal_piles(["epic_of_gilgamesh"])[0])[:RUN["pile_size"]]
+    for name in SEALED_DECKS:
+        mobile_api.register_custom_deck(name, cards)
+    mobile_api.SERVICE.get_or_create_match(
+        match_id=match_id, decks=SEALED_DECKS,
+        sealed_ciphers=[RUN["piles"][0]["ciphers"], RUN["piles"][1]["ciphers"]],
+    )
+    match = mobile_api.SERVICE._matches[match_id]
+    pile = mobile_api.deal_piles([SEALED_DECKS[0]])[0]
+    trapper, enkidu, handle = pile[3], pile[5], mobile_api.sealed.seal(0, 3)
+    match.state = replace(
+        match.state,
+        phase="MAIN", pending_choice=None, current_player_idx=0,
+        mana_pool=(5, 5), player_turn_counts=(3, 3),
+        hands=((trapper,), match.state.hands[1]),
+        decks=((handle,), match.state.decks[1]),
+    )
+    return trapper, handle, enkidu
+
+
+def test_a_sealed_action_is_refused_until_the_bridge_is_given_the_card(mobile_api):
+    trapper, handle, enkidu = sealed_match(mobile_api, "sealed-bridge")
+    action = {
+        "match_id": "sealed-bridge", "player_id": 1, "action_kind": "play_card",
+        "card_id": trapper, "location_id": 0,
+    }
+
+    refusal = call(mobile_api, "/api/action", action)
+    assert refusal["ok"] is False
+    assert refusal["needs_reveal"] == {"card_id": handle, "seat": 0, "position": 3}
+    assert "snapshot" not in refusal
+
+    pile = RUN["piles"][0]
+    keys = pile["keys_by_position"][3]
+    index = mobile_api.sealed.open_index(int(pile["ciphers"][3]), keys, RUN["pile_size"])
+    opened = call(mobile_api, "/api/reveal", {
+        "match_id": "sealed-bridge", "player_id": 1,
+        "card_id": handle, "keys": keys, "index": index,
+    })
+    assert opened["ok"] and opened["card_id"] == enkidu
+
+    applied = call(mobile_api, "/api/action", action)
+    assert "snapshot" in applied
+    handles = applied["snapshot"]["hand_handles"]
+    assert handles["1"] == [], "the seat's one card was opened, so it has no handles left"
+    assert all(h.startswith("#1-") for h in handles["2"]), "the other seat is still sealed"
+
+
+def test_the_bridge_audits_a_finished_deal(mobile_api):
+    sealed_match(mobile_api, "audit-bridge")
+    keys_by_seat = [RUN["piles"][seat]["keys_by_position"] for seat in range(2)]
+    assert call(mobile_api, "/api/sealed/audit", {
+        "match_id": "audit-bridge", "keys_by_seat": keys_by_seat,
+    }) == {"ok": True, "results": [
+        {"seat": 0, "ok": True, "reason": ""}, {"seat": 1, "ok": True, "reason": ""},
+    ]}
+
+    refused = call(mobile_api, "/api/sealed/audit", {
+        "match_id": "audit-bridge", "keys_by_seat": keys_by_seat[:1],
+    })
+    assert refused["ok"] is False and "per seat" in refused["error"]

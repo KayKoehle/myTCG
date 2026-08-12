@@ -219,6 +219,29 @@ class MobileGameService:
         match.state = reveal_sealed(match.state, handle, card_id)
         return card_id
 
+    def audit_sealed_deal(
+        self, match_id: str, keys_by_seat: list[list[list[Any]]],
+    ) -> dict[str, Any]:
+        """Check a finished match's deal against every published key (mirrors
+        services/game_service.py).
+
+        A shuffler that duplicated a position cannot be caught during play — no
+        reveal looks wrong — only afterwards, when every key is out and a pile
+        fails to open to each of its cards exactly once.
+        """
+        match = self._matches.get(match_id)
+        if match is None:
+            raise KeyError("Match not found")
+        if match.sealed_deal is None:
+            raise ValueError("This match was not dealt from an encrypted shuffle")
+        if len(keys_by_seat) != len(match.sealed_deal.ciphers):
+            raise ValueError("The audit needs one set of keys per seat")
+        results: list[dict[str, Any]] = []
+        for seat_idx, ciphers in enumerate(match.sealed_deal.ciphers):
+            ok, reason = sealed.audit_pile(ciphers, keys_by_seat[seat_idx], len(ciphers))
+            results.append({"seat": seat_idx, "ok": ok, "reason": reason})
+        return {"ok": all(result["ok"] for result in results), "results": results}
+
     def submit_action(
         self,
         match_id: str,
@@ -234,6 +257,13 @@ class MobileGameService:
         deck_b_cards: list[str] | None = None,
         decks: list[str] | None = None,
     ) -> GameState:
+        """Apply one action, or refuse it by raising (mirrors GameService).
+
+        A rule reaching for a sealed card raises `sealed.SealedCardError`, and
+        the dispatch answers with the handle to open instead of a snapshot.
+        Nothing is applied on that path: the engine is pure, so the new state is
+        only bound — and only recorded — once `apply_action` has returned it.
+        """
         match = self.get_or_create_match(
             match_id=match_id, seed=seed, deck_a=deck_a, deck_b=deck_b,
             deck_a_cards=deck_a_cards, deck_b_cards=deck_b_cards, decks=decks,
@@ -393,11 +423,12 @@ def _response_error(message: str) -> str:
 
 
 def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
-    """Dispatch the LAN endpoints. Returns None if `url` isn't a LAN path.
+    """Dispatch the peer-facing endpoints. Returns None if `url` isn't one.
 
     Response shapes mirror `src/server/api/endpoints.py` so the same webapp JS
     drives host and guest identically whether it is talking to a FastAPI server
-    or to this bridge.
+    or to this bridge. Not only `/api/lan/*`: the sealed-deal routes belong to
+    the same host-and-guests conversation, so they are answered here too.
     """
     if url == "/api/lan/enable":
         LAN.start(self_name=body.get("name", "Player"), http_port=body.get("port", 8123))
@@ -464,6 +495,15 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
                 match_id=body["match_id"], viewer_player_id=body["player_id"],
             ),
         })
+
+    if url == "/api/sealed/audit":
+        try:
+            return _response_ok(SERVICE.audit_sealed_deal(
+                match_id=body["match_id"],
+                keys_by_seat=body.get("keys_by_seat") or [],
+            ))
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": exc.args[0] if exc.args else str(exc)})
 
     if url == "/api/lan/leave":
         try:
@@ -586,10 +626,12 @@ def _dispatch(url: str, body_json: str) -> str:
     try:
         body = json.loads(body_json) if body_json else {}
 
-        if url.startswith("/api/lan/"):
-            lan_response = _handle_lan(url, body)
-            if lan_response is not None:
-                return lan_response
+        # Asked for every path, not just /api/lan/*: the sealed-deal routes
+        # (/api/deck-piles, /api/reveal, /api/sealed/audit) are answered there
+        # too, and gating on the prefix left them unreachable on-device.
+        lan_response = _handle_lan(url, body)
+        if lan_response is not None:
+            return lan_response
 
         sandbox_response = _handle_sandbox(url, body)
         if sandbox_response is not None:
@@ -614,20 +656,28 @@ def _dispatch(url: str, body_json: str) -> str:
 
         if url == "/api/action":
             player_id = int(body["player_id"])
-            SERVICE.submit_action(
-                match_id=match_id,
-                player_id=player_id,
-                action_kind=str(body["action_kind"]),
-                card_id=body.get("card_id"),
-                location_id=body.get("location_id"),
-                option_id=body.get("option_id"),
-                seed=seed,
-                deck_a=deck_a,
-                deck_b=deck_b,
-                deck_a_cards=deck_a_cards,
-                deck_b_cards=deck_b_cards,
-                decks=decks,
-            )
+            try:
+                SERVICE.submit_action(
+                    match_id=match_id,
+                    player_id=player_id,
+                    action_kind=str(body["action_kind"]),
+                    card_id=body.get("card_id"),
+                    location_id=body.get("location_id"),
+                    option_id=body.get("option_id"),
+                    seed=seed,
+                    deck_a=deck_a,
+                    deck_b=deck_b,
+                    deck_a_cards=deck_a_cards,
+                    deck_b_cards=deck_b_cards,
+                    decks=decks,
+                )
+            except sealed.SealedCardError as exc:
+                # A sealed match stopping on hidden information, not a failure:
+                # the table opens this position and the same action is sent
+                # again, with nothing applied in between (engine/sealed.py).
+                return _response_ok({
+                    "ok": False, "needs_reveal": sealed.reveal_request(exc.card_id),
+                })
             snapshot = SERVICE.state_snapshot(match_id=match_id, viewer_player_id=player_id)
             return _response_ok({"snapshot": snapshot})
 

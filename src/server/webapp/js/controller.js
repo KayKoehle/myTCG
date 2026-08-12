@@ -29,7 +29,40 @@ export function createGameController(ui, cardStack) {
     const cfg = () => buildConfig(ui, app);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+    // In a sealed match the host cannot read our hand and says so — every hand
+    // entry arrives as a bare handle with `sealed: true` (engine/sealed.py).
+    // We can read it: the other players published their keys for the positions
+    // we drew, so our own instance knows what those handles are. This is the
+    // lookup that puts the card back into the picture, set by the invite-code
+    // wiring when a match is dealt from an encrypted shuffle.
+    let sealedCardLookup = null;
+
+    /**
+     * Fill in the cards only we can open, so a hand nobody else can read still
+     * draws like a hand. Untouched in an ordinary match, where nothing is
+     * sealed and the lookup is never set.
+     */
+    function withOpenedCards(snapshot) {
+        if (!sealedCardLookup || !snapshot || !Array.isArray(snapshot.hand)) return snapshot;
+        if (!snapshot.hand.some((entry) => entry && entry.sealed)) return snapshot;
+        return {
+            ...snapshot,
+            hand: snapshot.hand.map((entry) => {
+                if (!entry || !entry.sealed) return entry;
+                const opened = sealedCardLookup(entry.id);
+                // Still waiting on somebody's key: leave it face down rather
+                // than guessing at a card.
+                if (!opened) return entry;
+                // The cost shown is the printed one. What a card costs after
+                // discounts is the host's arithmetic, and the host has nothing
+                // to do it on until the card is revealed by being played.
+                return { ...entry, ...opened, sealed: false, opened: true };
+            }),
+        };
+    }
+
     function rerender(snapshot) {
+        snapshot = withOpenedCards(snapshot);
         // Snapshot the board's current card positions *before* renderSnapshot
         // rebuilds the DOM, so history-driven effects (defeat, banish, discard,
         // bury, move) can still animate at the spot a card just vacated.
@@ -2491,6 +2524,9 @@ export function createGameController(ui, cardStack) {
         // The menu offers a "Reconnect" entry when an unclean exit left a live
         // guest session behind; it rejoins by feeding this back to startLanGame.
         loadLanSession,
+        // Invite-code play hands over a reader for the cards only we can open
+        // once a match is dealt from an encrypted shuffle (js/sealedplay.js).
+        setSealedCardLookup(lookup) { sealedCardLookup = lookup; },
         // For the in-game trade UI: who we are and which match we're in.
         lanContext: () => ({
             hostBase: app.lanHostBase,

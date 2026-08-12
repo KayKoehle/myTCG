@@ -96,6 +96,17 @@ def sealed_pile(seat_idx: int, size: int) -> tuple[str, ...]:
     return tuple(seal(seat_idx, position) for position in range(size))
 
 
+def reveal_request(card_id: str) -> dict[str, Any]:
+    """What the table has to open before a rule that reached this card can run.
+
+    One shape for every stop — a tutor, a random discard, a look at the top of a
+    deck — so a client answers them all the same way (publish the keys for this
+    position, then retry) without having to know which cards read what.
+    """
+    seat, position = _parse(card_id)
+    return {"card_id": card_id, "seat": seat, "position": position}
+
+
 # --------------------------------------------------------------------------
 # Verification — the checking half of webapp/js/mentalpoker.js
 # --------------------------------------------------------------------------
