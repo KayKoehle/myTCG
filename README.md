@@ -41,6 +41,7 @@ src/
       js/qr.js               QR encoder (no dependencies) for invite codes
       js/mentalpoker.js      Encrypted shuffle: a deck nobody can read or stack
       js/shuffle.js          Running that shuffle across a whole table
+      js/sealedplay.js       A player's side of a match nobody's machine can read
 mobile-apk/                  Android app (Capacitor + Chaquopy)
 scripts/sync_mobile.py       Copies engine/webapp/data into mobile-apk
 tests/                       Pytest suite (invariants + per-card tests)
@@ -300,16 +301,36 @@ of every seat once the match is over and re-opens the whole deal
 that duplicated a position: during play both copies reveal honestly, to the same
 card, and only the finished pile shows it.
 
-> **Status: the host plays a sealed match; the client half is what remains.**
-> Done: the protocol module, the table coordinator, the Python verifier, sealed
-> handles through deal/mulligan/draw/snapshot/replay, a host that deals from real
-> ciphertexts (`/api/lan/start` with `sealed_ciphers`), opens a card only against
-> keys that verify (`/api/reveal`), refuses an action that needs a card it cannot
-> read instead of guessing, and audits the finished deal.
+**The player's side.** `webapp/js/sealedplay.js` is what a client does for the
+length of a sealed match: open our own draws (everyone else publishes one key,
+we peel ours off last), publish keys for other people's draws, reveal a card
+publicly by adding our own key, drive the `needs_reveal` loop, and join the
+audit at the end. Its one job that is not bookkeeping is `refusalFor` — saying
+*no*. Answering every key request would hand a curious opponent the top of every
+deck, which is a better attack than reading a hand, so a key goes out only for a
+handle the latest snapshot shows in the **requester's** hand. Guests have no
+route to each other, so the host relays (`p2p.js`), stamping `from` with the
+channel a message arrived on: a relayed message must not be able to answer in
+another seat's name.
+
+> **Status: it works, and one class of card stops it being switched on.**
+> Done end to end, and checked headlessly by `scripts/run_sealed_play.mjs` (a
+> whole table over an in-memory transport): the table shuffles, every player
+> opens their own opening hand and nobody else's, the host finishes the deal
+> knowing nothing, an action that needs a hidden card loops through reveals until
+> the rule has what it asked for, every reveal is proved against the ciphertext
+> committed to at the deal, a request for a position still in a deck is refused
+> even to its owner, and every pile audits clean.
 >
-> Invite-code play switches to the sealed deal once the clients drive it: opening
-> their own draws and showing them, collecting the other players' keys for a
-> `needs_reveal` and retrying, and re-shuffling a deck that a search opened.
+> **Not switched on.** A deck search (`tutor_from_deck`) asks to read cards that
+> are still in a deck, and every finished deck has one or two — so a sealed match
+> would deadlock the first time somebody plays a Trapper, with the other clients
+> refusing exactly as they should. Fixing it is not a matter of relaxing the
+> rule: a peer would have to know that a reveal is *rule-mandated* rather than a
+> player fishing, and it cannot re-derive that without the hidden state itself.
+> Until that is answered — along with re-sealing a deck a search has opened, by
+> re-running the shuffle on what is left of it — invite-code play keeps dealing
+> in the clear.
 
 ### Guests are not trusted with the whole API
 

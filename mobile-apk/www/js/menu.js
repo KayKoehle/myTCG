@@ -117,6 +117,10 @@ export function createMenuController(ui, game, cardStack) {
     // The host's hub, holding one connection per guest. Outlives p2pView, which
     // comes and goes as each extra player is invited.
     let p2pHub = null;
+    // A guest's live connection to the host. The API calls go through
+    // setP2pTransport, but sealed play needs the session itself: keys travel as
+    // control messages, not as calls (js/sealedplay.js).
+    let p2pGuestSession = null;
     // Invite-code games seat the same 2-5 players LAN games do.
     const MAX_P2P_SEATS = 5;
 
@@ -876,6 +880,11 @@ export function createMenuController(ui, game, cardStack) {
     // routes, which can edit a live match at will.
     const P2P_GUEST_PATHS = new Set([
         '/api/state', '/api/action', '/api/ai-move', '/api/replay',
+        // A sealed match is dealt from ciphertexts the host holds, so opening a
+        // card and auditing the piles at the end are calls only it can answer.
+        // Neither takes the host's word for anything: both are checked against
+        // the deal every player committed to (engine/sealed.py).
+        '/api/reveal', '/api/sealed/audit',
         '/api/lan/join', '/api/lan/lobby',
         '/api/lan/trade/propose', '/api/lan/trade/offer', '/api/lan/trade/confirm',
         '/api/lan/trade/cancel', '/api/lan/trade/state',
@@ -949,6 +958,25 @@ export function createMenuController(ui, game, cardStack) {
             showToast(`Could not remove that player: ${error.message || error}`);
         }
         if (!p2pView) renderLan();
+    }
+
+    /**
+     * The seat-addressed link a sealed match runs over (js/sealedplay.js): the
+     * encrypted shuffle and every published key need to reach every player, and
+     * only the host can arrange that, since guests have no route to each other.
+     * Null when this is not an invite-code game — LAN play reaches its peers by
+     * address and has no such link to build.
+     *
+     * Nothing calls this yet: invite-code games still deal in the clear
+     * (startLanAsHost), and switching them over is the UI half of the work.
+     */
+    function p2pSealedLink() {
+        const peer = p2pHub || p2pGuestSession;
+        if (!peer) return null;
+        return {
+            send: (toSeat, message) => peer.sendSealed(toSeat, message),
+            listen: (handler) => peer.onSealed(handler),
+        };
     }
 
     function setP2pStatus(text) {
@@ -1070,6 +1098,7 @@ export function createMenuController(ui, game, cardStack) {
                 deck_cards: deck.cards,
             });
             if (!data.ok) throw new Error(data.error || 'Join failed.');
+            p2pGuestSession = session;
             lanLobby = {
                 lobby_id: lobbyId, host_base: P2P_HOST_BASE, is_host: false,
                 my_pid: data.player_id, seat_uid: data.seat_uid,
@@ -1098,6 +1127,7 @@ export function createMenuController(ui, game, cardStack) {
             closeActiveP2p();
             setP2pTransport(null);
             p2pHub = null;
+            p2pGuestSession = null;
         }
         renderLan();
     }
@@ -1377,6 +1407,7 @@ export function createMenuController(ui, game, cardStack) {
         closeActiveP2p();
         setP2pTransport(null);
         p2pHub = null;
+        p2pGuestSession = null;
         lanLobby = null;
         startPeerPolling();
         renderLan();
@@ -2386,5 +2417,5 @@ export function createMenuController(ui, game, cardStack) {
         ensureCollection().then(() => renderMenu());
     }
 
-    return { init, openMenu, showScreen, navBack };
+    return { init, openMenu, showScreen, navBack, p2pSealedLink };
 }

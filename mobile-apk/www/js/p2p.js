@@ -401,7 +401,8 @@ function waitForOpen(channel, timeoutMs) {
 function createWire(channel) {
     const pending = new Map(); // rpc id -> { resolve, reject, timer }
     const waiters = new Map(); // control type -> { resolve, reject, timer }
-    const inbox = new Map(); // control type -> payload that arrived before its waiter
+    const listeners = new Map(); // control type -> handler for every message of that type
+    const inbox = new Map(); // control type -> messages that arrived before their reader
     let handler = null;
     let nextId = 1;
     let failure = null;
@@ -453,13 +454,23 @@ function createWire(channel) {
             else entry.reject(new Error(message.error || 'The other player rejected that call.'));
             return;
         }
+        const listener = listeners.get(message.t);
+        if (listener) {
+            listener(message);
+            return;
+        }
         const waiter = waiters.get(message.t);
         if (waiter) {
             waiters.delete(message.t);
             clearTimeout(waiter.timer);
             waiter.resolve(message);
         } else {
-            inbox.set(message.t, message);
+            // Kept in arrival order rather than overwritten: sealed play sends
+            // many messages of one type, and dropping all but the last would
+            // silently lose a published key.
+            const queue = inbox.get(message.t) || [];
+            queue.push(message);
+            inbox.set(message.t, queue);
         }
     });
 
@@ -486,10 +497,23 @@ function createWire(channel) {
                 }
             });
         },
+        /**
+         * A standing handler for one control type, for traffic that keeps
+         * coming rather than arriving once (sealed play publishes keys all
+         * match long). Whatever arrived before it was set is delivered first,
+         * in order, so registering late loses nothing.
+         */
+        on(type, fn) {
+            listeners.set(type, fn);
+            const queue = inbox.get(type) || [];
+            inbox.delete(type);
+            for (const message of queue) fn(message);
+        },
         waitFor(type, timeoutMs = CONTROL_TIMEOUT_MS) {
-            if (inbox.has(type)) {
-                const message = inbox.get(type);
-                inbox.delete(type);
+            const queued = inbox.get(type);
+            if (queued && queued.length) {
+                const message = queued.shift();
+                if (!queued.length) inbox.delete(type);
                 return Promise.resolve(message);
             }
             if (failure) return Promise.reject(failure);
@@ -501,6 +525,60 @@ function createWire(channel) {
                 waiters.set(type, { resolve, reject, timer });
             });
         },
+    };
+}
+
+// --- Sealed play --------------------------------------------------------------
+// The encrypted shuffle and everything built on it (js/sealedplay.js) needs
+// every player to reach every other one, which this topology does not give
+// them: guests have a channel to the host and to nobody else. So sealed
+// messages carry the seat they are for and the host forwards the ones that are
+// not for it. One control type covers the lot — the players' own protocol is
+// inside `body`, and none of it means anything to the transport.
+//
+//   { t: 'sealed', from: <seat>, to: <seat> | null, body: {...} }
+//
+// `to: null` is "every other player", which for a guest still means one message
+// to the host and a fan-out on the other side.
+
+const SEALED_TYPE = 'sealed';
+// The host plays from seat 1, so a sealed message addressed there is for us.
+const HOST_SEAT = 1;
+
+// The seat a connection speaks for at the table. The lobby seat is stamped onto
+// the connection when its guest joins (menu.js); until then the hub's own
+// numbering is the only one there is.
+function tableSeat(guest) {
+    return Number(guest.playerId || guest.seat);
+}
+
+// Sealed traffic can arrive before this side is ready to hear it — a guest may
+// be mid-shuffle while the host is still setting the match up — so whatever
+// lands first waits rather than being dropped.
+function createSealedInbox() {
+    const waiting = [];
+    let handler = null;
+    return {
+        deliver(from, body) {
+            if (handler) handler(from, body);
+            else waiting.push([from, body]);
+        },
+        listen(fn) {
+            handler = fn;
+            while (waiting.length) {
+                const [from, body] = waiting.shift();
+                fn(from, body);
+            }
+        },
+    };
+}
+
+function sealedMessage(from, toSeat, body) {
+    return {
+        t: SEALED_TYPE,
+        from,
+        to: toSeat === null || toSeat === undefined ? null : Number(toSeat),
+        body,
     };
 }
 
@@ -517,6 +595,7 @@ export async function createHostHub({ name }) {
     const nonce = randomBytes(32);
     const commit = await sha256(nonce);
     const guests = []; // { seat, pc, channel, wire, name, commit }
+    const sealedInbox = createSealedInbox();
     let pendingInvite = null;
     // Hub seats are handed out once and never reused, so a name that dropped
     // out cannot be confused with the player who takes their place. (The
@@ -537,6 +616,24 @@ export async function createHostHub({ name }) {
             guests.splice(at, 1);
             if (lostHandler) lostHandler(guest);
         });
+    }
+
+    // Pass a guest's sealed message on to whoever it is for, and take the ones
+    // meant for us. `from` is stamped from the channel it arrived on instead of
+    // being copied out of the message: a published key is only worth anything
+    // if the seat that published it is the seat that holds it, and relaying is
+    // otherwise a standing offer to answer in another player's name.
+    function relaySealed(message, fromGuest) {
+        const from = tableSeat(fromGuest);
+        const to = message.to === null || message.to === undefined ? null : Number(message.to);
+        if (to === null || to === HOST_SEAT) sealedInbox.deliver(from, message.body);
+        if (to === HOST_SEAT) return;
+        const forwarded = sealedMessage(from, to, message.body);
+        for (const guest of guests) {
+            if (guest === fromGuest) continue;
+            if (to !== null && tableSeat(guest) !== to) continue;
+            try { guest.wire.send(forwarded); } catch (error) { /* dropped peer */ }
+        }
     }
 
     const hub = {
@@ -583,6 +680,9 @@ export async function createHostHub({ name }) {
             nextSeat += 1;
             guests.push(seated);
             if (rpcHandler) seated.wire.onRpc((path, body) => rpcHandler(path, body, seated));
+            // Wired up whether or not this game ever deals sealed: a relay that
+            // is installed late is a relay that has already lost messages.
+            seated.wire.on(SEALED_TYPE, (message) => relaySealed(message, seated));
             watchForDrop(seated);
             return { guestName: seated.name, seat: seated.seat };
         },
@@ -622,6 +722,22 @@ export async function createHostHub({ name }) {
             const guest = guests.find((g) => g.seat === seat);
             if (guest) guest.wire.send(message);
         },
+
+        /**
+         * Sealed play: send to one seat at the table, or to every other seat
+         * when `toSeat` is null. Seats here are the *lobby's* — the ones the
+         * shuffle and the sealed handles are numbered by — not the hub's.
+         */
+        sendSealed(toSeat, body) {
+            const message = sealedMessage(HOST_SEAT, toSeat, body);
+            for (const guest of guests) {
+                if (message.to !== null && tableSeat(guest) !== message.to) continue;
+                try { guest.wire.send(message); } catch (error) { /* dropped peer */ }
+            }
+        },
+
+        /** Called with (fromSeat, body) for every sealed message meant for us. */
+        onSealed(handler) { sealedInbox.listen(handler); },
 
         /**
          * Settle the match seed with every player.
@@ -709,6 +825,7 @@ export async function createGuestSession({ inviteCode, name }) {
     await waitForIceGathering(pc);
 
     let onSeed = null;
+    const sealedInbox = createSealedInbox();
 
     const session = {
         role: 'guest',
@@ -726,6 +843,7 @@ export async function createGuestSession({ inviteCode, name }) {
             session.channel = channel;
             const wire = createWire(channel);
             session.wire = wire;
+            wire.on(SEALED_TYPE, (message) => sealedInbox.deliver(Number(message.from), message.body));
             await waitForOpen(channel, CONNECT_TIMEOUT_MS);
             const message = await wire.waitFor('lobby');
             // The seed rounds run whenever the host starts; they are driven from
@@ -738,6 +856,20 @@ export async function createGuestSession({ inviteCode, name }) {
 
         /** Called with the agreed seed once the host starts the match. */
         onAgreedSeed(callback) { onSeed = callback; },
+
+        /**
+         * Sealed play: send to one seat at the table, or to every other seat
+         * when `toSeat` is null. Either way it goes to the host first — a guest
+         * has no route to another guest — which is why the seat is in the
+         * message rather than implied by the channel.
+         */
+        sendSealed(toSeat, body) {
+            if (!session.wire) throw new Error('The connection to the host is not open yet.');
+            session.wire.send(sealedMessage(null, toSeat, body));
+        },
+
+        /** Called with (fromSeat, body) for every sealed message meant for us. */
+        onSealed(handler) { sealedInbox.listen(handler); },
 
         close() {
             try { if (session.channel) session.channel.close(); } catch (error) { /* gone */ }
