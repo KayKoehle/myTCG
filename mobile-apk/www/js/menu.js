@@ -772,7 +772,8 @@ export function createMenuController(ui, game, cardStack) {
             if (!data.ok) { showToast(data.error || 'Join failed'); return; }
             lanLobby = {
                 lobby_id: lobby.lobby_id, host_base: peer.address, is_host: false,
-                my_pid: data.player_id, num_players: lobby.num_players,
+                my_pid: data.player_id, seat_uid: data.seat_uid,
+                num_players: lobby.num_players,
                 seats: (data.lobby && data.lobby.seats) || [], started: false,
             };
             stopPeerPolling();
@@ -791,6 +792,21 @@ export function createMenuController(ui, game, cardStack) {
                 if (data.ok && data.lobby) {
                     lanLobby.seats = data.lobby.seats;
                     lanLobby.started = data.lobby.started;
+                    // Somebody ahead of us leaving renumbers the seats behind
+                    // them, so a guest re-reads its own id from the lobby (by
+                    // the seat_uid it was given at join) rather than trusting
+                    // the number it joined on. No seat of ours left means we
+                    // are the one who was removed.
+                    if (!lanLobby.is_host && !lanLobby.started && lanLobby.seat_uid) {
+                        const mine = (data.lobby.seats || [])
+                            .find((s) => s.seat_uid === lanLobby.seat_uid);
+                        if (!mine) {
+                            showToast('The host removed you from the lobby.');
+                            leaveLanLobby();
+                            return;
+                        }
+                        lanLobby.my_pid = Number(mine.player_id);
+                    }
                     // Not while a code swap is on screen: inviting the third,
                     // fourth and fifth player happens *from* the lobby, so this
                     // tick would otherwise rebuild the panel — and wipe the box
@@ -866,11 +882,73 @@ export function createMenuController(ui, game, cardStack) {
     ]);
 
     // Host side: run one of a guest's calls against our own local server.
-    function p2pServe(path, body) {
+    // `guest` is the connection the call arrived on, which is how a lobby seat
+    // gets tied to a channel: when that channel drops we know which seat to
+    // free. (/api/lan/leave is deliberately not in the allowlist above — the
+    // host frees seats, so no guest can unseat another player through us.)
+    async function p2pServe(path, body, guest) {
         if (!P2P_GUEST_PATHS.has(path)) {
-            return Promise.reject(new Error(`The host refused the call ${path}.`));
+            throw new Error(`The host refused the call ${path}.`);
         }
-        return lanPost('', path, body);
+        const data = await lanPost('', path, body);
+        if (path === '/api/lan/join' && guest && data && data.ok) {
+            guest.playerId = Number(data.player_id);
+            guest.seatUid = data.seat_uid;
+        }
+        return data;
+    }
+
+    // Seat ids shift when somebody ahead of them leaves, so after any removal
+    // re-read each connection's seat from the lobby by its stable seat_uid.
+    function remapP2pGuestSeats(lobby) {
+        const seats = (lobby && lobby.seats) || [];
+        for (const guest of p2pHub ? p2pHub.guests : []) {
+            const seat = seats.find((s) => s.seat_uid === guest.seatUid);
+            if (seat) guest.playerId = Number(seat.player_id);
+        }
+    }
+
+    /**
+     * A guest's connection went away. Free their lobby seat so the others can
+     * play on: with four other people seated, one dropout should not cost
+     * everybody the lobby.
+     */
+    async function onP2pGuestLost(guest) {
+        showToast(`${guest.name} disconnected.`);
+        // Once the match is dealt the seats belong to the engine, not the
+        // lobby: there is nothing to renumber and the player is simply gone.
+        if (lanLobby && lanLobby.is_host && !lanLobby.started && guest.playerId) {
+            try {
+                const data = await lanPost('', '/api/lan/leave', {
+                    lobby_id: lanLobby.lobby_id, player_id: guest.playerId,
+                });
+                if (data.ok && data.lobby) {
+                    lanLobby.seats = data.lobby.seats;
+                    remapP2pGuestSeats(data.lobby);
+                }
+            } catch (error) { /* the next lobby poll shows whatever really happened */ }
+        }
+        if (!p2pView) renderLan();
+    }
+
+    /** Host: take a seat out of the lobby, dropping its connection with it. */
+    async function dropLobbySeat(playerId) {
+        if (!lanLobby || !lanLobby.is_host) return;
+        const guest = (p2pHub ? p2pHub.guests : []).find((g) => g.playerId === Number(playerId));
+        try {
+            const data = await lanPost('', '/api/lan/leave', {
+                lobby_id: lanLobby.lobby_id, player_id: Number(playerId),
+            });
+            if (!data.ok) { showToast(data.error || 'Could not remove that player.'); return; }
+            // Drop the channel first: closing it after the remap would fire the
+            // disconnect handler and try to free the seat a second time.
+            if (guest && p2pHub) p2pHub.drop(guest.seat);
+            lanLobby.seats = data.lobby.seats;
+            remapP2pGuestSeats(data.lobby);
+        } catch (error) {
+            showToast(`Could not remove that player: ${error.message || error}`);
+        }
+        if (!p2pView) renderLan();
     }
 
     function setP2pStatus(text) {
@@ -917,7 +995,10 @@ export function createMenuController(ui, game, cardStack) {
         p2pView = { mode: 'host', busy: true, status: 'Preparing your invite…' };
         renderLan();
         try {
-            if (!p2pHub) p2pHub = await createHostHub({ name: lanPlayerName() });
+            if (!p2pHub) {
+                p2pHub = await createHostHub({ name: lanPlayerName() });
+                p2pHub.onGuestLost(onP2pGuestLost);
+            }
             const code = await p2pHub.createInvite();
             p2pView = { mode: 'host', code, busy: false, status: '' };
         } catch (error) {
@@ -991,7 +1072,8 @@ export function createMenuController(ui, game, cardStack) {
             if (!data.ok) throw new Error(data.error || 'Join failed.');
             lanLobby = {
                 lobby_id: lobbyId, host_base: P2P_HOST_BASE, is_host: false,
-                my_pid: data.player_id, num_players: MAX_P2P_SEATS,
+                my_pid: data.player_id, seat_uid: data.seat_uid,
+                num_players: MAX_P2P_SEATS,
                 seats: (data.lobby && data.lobby.seats) || [], started: false, p2p: true,
             };
             p2pView = null;
@@ -1103,9 +1185,16 @@ export function createMenuController(ui, game, cardStack) {
         // In a lobby: waiting room.
         if (lanLobby) {
             const seats = lanLobby.seats || [];
+            // The host can free a seat by hand: an invite-code guest that drops
+            // is noticed automatically (the channel closes), but a LAN guest
+            // that walks away leaves nothing to notice.
             const rows = seats.map((s) => `
                 <div class="lan-seat"><span>${escapeHtml(s.name)}</span>
-                    <span class="tiny">seat ${s.player_id}</span></div>`).join('');
+                    <span class="lan-seat-side"><span class="tiny">seat ${s.player_id}</span>
+                    ${lanLobby.is_host && Number(s.player_id) !== 1
+                        ? `<button class="lan-seat-drop" data-drop-pid="${s.player_id}"
+                                aria-label="Remove ${escapeHtml(s.name)}">&times;</button>`
+                        : ''}</span></div>`).join('');
             // The lobby has no fixed size: show a single "waiting" hint while
             // there's still room, rather than padding to a chosen headcount.
             const hasRoom = seats.length < (lanLobby.num_players || 5);
@@ -1135,6 +1224,9 @@ export function createMenuController(ui, game, cardStack) {
             if (startBtn) startBtn.addEventListener('click', startLanAsHost);
             const inviteMoreBtn = document.getElementById('lanInviteMoreBtn');
             if (inviteMoreBtn) inviteMoreBtn.addEventListener('click', startP2pHost);
+            ui.lanBody.querySelectorAll('[data-drop-pid]').forEach((button) => {
+                button.addEventListener('click', () => dropLobbySeat(button.dataset.dropPid));
+            });
             document.getElementById('lanLeaveBtn').addEventListener('click', leaveLanLobby);
             return;
         }
@@ -1270,6 +1362,16 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     async function leaveLanLobby() {
+        stopLobbyPolling();
+        // Free the seat on the way out so the others are not left waiting on a
+        // chair nobody is sitting in. Invite-code guests need no call: the host
+        // sees the channel close. Best-effort either way — leaving must not
+        // hang on an unreachable host.
+        if (lanLobby && !lanLobby.is_host && !lanLobby.started && !lanLobby.p2p) {
+            lanPost(lanLobby.host_base, '/api/lan/leave', {
+                lobby_id: lanLobby.lobby_id, player_id: lanLobby.my_pid,
+            }).catch(() => {});
+        }
         // An invite-code lobby only exists as long as the direct connection
         // does, so leaving it drops the connection too.
         closeActiveP2p();

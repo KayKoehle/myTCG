@@ -64,6 +64,32 @@ def test_lan_flow_through_bridge(mobile_api):
     mobile_api.LAN.stop()
 
 
+def test_leaving_a_lobby_through_the_bridge_frees_the_seat(mobile_api):
+    """The dispatch table in mobile_api.py is hand-maintained, so a route the
+    webapp relies on can exist on the server and be missing on the device."""
+    host = call(mobile_api, "/api/lan/host", {
+        "name": "Alice", "deck_name": "siege_of_troy", "num_players": 3,
+    })
+    lobby_id = host["lobby"]["lobby_id"]
+    call(mobile_api, "/api/lan/join", {
+        "lobby_id": lobby_id, "name": "Bob", "deck_name": "epic_of_gilgamesh",
+    })
+    carol = call(mobile_api, "/api/lan/join", {
+        "lobby_id": lobby_id, "name": "Carol", "deck_name": "the_flood",
+    })
+
+    left = call(mobile_api, "/api/lan/leave", {"lobby_id": lobby_id, "player_id": 2})
+    assert left["ok"]
+    seats = left["lobby"]["seats"]
+    assert [s["name"] for s in seats] == ["Alice", "Carol"]
+    assert seats[1]["player_id"] == 2 and seats[1]["seat_uid"] == carol["seat_uid"]
+
+    refused = call(mobile_api, "/api/lan/leave", {"lobby_id": lobby_id, "player_id": 1})
+    assert refused["ok"] is False
+
+    mobile_api.LAN.stop()
+
+
 def test_host_missing_deck_returns_structured_error(mobile_api):
     result = call(mobile_api, "/api/lan/host", {"name": "Alice", "num_players": 2})
     assert result["ok"] is False and "deck" in result["error"].lower()

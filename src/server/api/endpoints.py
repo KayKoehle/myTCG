@@ -220,6 +220,19 @@ def register_ws_routes(app: FastAPI):
             return {"ok": False, "error": str(exc)}
         return {"ok": True, **result}
 
+    @app.post("/api/lan/leave")
+    async def lan_leave(request: dict):
+        # Host-only in invite-code play: it is deliberately not in the webapp's
+        # P2P_GUEST_PATHS allowlist, so a guest cannot renumber the lobby or
+        # unseat anybody else through the relay.
+        try:
+            result = lan_service.leave_game(
+                lobby_id=request["lobby_id"], player_id=request["player_id"],
+            )
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, **result}
+
     @app.post("/api/lan/lobby")
     async def lan_lobby(request: dict):
         try:

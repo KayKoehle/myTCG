@@ -4100,6 +4100,21 @@ details[open]>.cos-summary::before {
     font-weight: 700;
 }
 .lan-seat-empty { background: rgba(16, 37, 59, 0.3); font-weight: 400; }
+.lan-seat-side { display: flex; align-items: center; gap: 10px; }
+/* Host-only: free a seat someone has left. Quiet by default — removing a
+   player is not the button anyone should hit by reflex. */
+.lan-seat-drop {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted, #9fb3c8);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+.lan-seat-drop:hover { color: #ff8080; border-color: #ff8080; }
 .btn.small { padding: 6px 14px; font-size: 13px; width: auto; }
 
 /* Invite codes are a long base64 blob the player copies out or pastes in:

@@ -365,6 +365,15 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
             return _response_ok({"ok": False, "error": str(exc)})
         return _response_ok({"ok": True, **result})
 
+    if url == "/api/lan/leave":
+        try:
+            result = LAN.leave_game(
+                lobby_id=body["lobby_id"], player_id=body["player_id"],
+            )
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+        return _response_ok({"ok": True, **result})
+
     if url == "/api/lan/lobby":
         try:
             return _response_ok({"ok": True, "lobby": LAN.lobby(body["lobby_id"])})

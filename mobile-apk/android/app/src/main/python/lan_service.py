@@ -282,13 +282,25 @@ class LanService:
         self, lobby: Lobby, name: str, deck_name: str, deck_cards: list[str] | None
     ) -> dict[str, Any]:
         player_id = len(lobby.seats) + 1
+        # A seat id is positional and moves when somebody ahead of it leaves
+        # (:meth:`leave_game`), so it cannot double as an identity. ``seat_uid``
+        # is minted once here and never changes: it is how a client recognises
+        # its own seat in a renumbered lobby.
+        seat_uid = uuid.uuid4().hex[:8]
         # Custom decks arrive with an explicit card list; register it under a
-        # match-unique name so seats never collide on the shared catalog.
+        # match-unique name so seats never collide on the shared catalog. Keyed
+        # by seat_uid rather than seat id, or a seat that took a leaver's number
+        # would inherit the registration made for the player who left.
         resolved = deck_name
         if deck_cards:
-            resolved = f"{deck_name}__lan{lobby.lobby_id}_{player_id}"
+            resolved = f"{deck_name}__lan{lobby.lobby_id}_{seat_uid}"
             lobby.custom_decks[resolved] = list(deck_cards)
-        seat = {"player_id": player_id, "name": name or f"Player {player_id}", "deck": resolved}
+        seat = {
+            "player_id": player_id,
+            "seat_uid": seat_uid,
+            "name": name or f"Player {player_id}",
+            "deck": resolved,
+        }
         lobby.seats.append(seat)
         return seat
 
@@ -308,7 +320,45 @@ class LanService:
             if len(lobby.seats) >= lobby.num_players:
                 raise ValueError("Lobby is full")
             seat = self._add_seat(lobby, name, deck_name, deck_cards)
-            return {"lobby_id": lobby_id, "player_id": seat["player_id"], "lobby": lobby.summary()}
+            return {
+                "lobby_id": lobby_id,
+                "player_id": seat["player_id"],
+                "seat_uid": seat["seat_uid"],
+                "lobby": lobby.summary(),
+            }
+
+    def leave_game(self, lobby_id: str, player_id: int) -> dict[str, Any]:
+        """Free a seat in a lobby that has not started yet.
+
+        Called when a player leaves, and when the host notices one is gone: an
+        invite-code game has one direct connection per guest, so a dropped
+        channel is a dropped player and the rest of the table should not have to
+        rebuild the lobby around the empty chair.
+
+        Seats are positional — the engine deals to 1..n in order — so removing
+        one renumbers everybody behind it. Clients follow themselves across that
+        by ``seat_uid``, which never changes.
+        """
+        with self._lock:
+            lobby = self._lobbies.get(lobby_id)
+            if lobby is None:
+                raise KeyError("Lobby not found")
+            if lobby.started:
+                raise ValueError("Game already started")
+            player_id = int(player_id)
+            if player_id == 1:
+                # The lobby *is* the host's; closing it is `host_game` again or
+                # nothing. Renumbering seat 1 away would also hand the deal to
+                # somebody who never agreed to run it.
+                raise ValueError("The host cannot leave their own lobby")
+            seat = next((s for s in lobby.seats if s["player_id"] == player_id), None)
+            if seat is None:
+                raise KeyError("Seat not found")
+            lobby.seats.remove(seat)
+            lobby.custom_decks.pop(seat["deck"], None)
+            for index, remaining in enumerate(lobby.seats):
+                remaining["player_id"] = index + 1
+            return {"lobby_id": lobby_id, "left": seat["seat_uid"], "lobby": lobby.summary()}
 
     def lobby(self, lobby_id: str) -> dict[str, Any]:
         with self._lock:

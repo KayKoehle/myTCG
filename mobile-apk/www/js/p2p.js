@@ -518,6 +518,26 @@ export async function createHostHub({ name }) {
     const commit = await sha256(nonce);
     const guests = []; // { seat, pc, channel, wire, name, commit }
     let pendingInvite = null;
+    // Hub seats are handed out once and never reused, so a name that dropped
+    // out cannot be confused with the player who takes their place. (The
+    // *lobby*'s seat ids are positional and do get renumbered — that is what
+    // the seat_uid in the lobby summary is for.)
+    let nextSeat = 2; // seat 1 is the host
+    let rpcHandler = null;
+    let lostHandler = null;
+    let closing = false;
+
+    // A dropped channel is a dropped player: there is no reconnect in
+    // invite-code play, so stop counting them and tell the host, which frees
+    // their lobby seat rather than leaving the table stuck around an empty one.
+    function watchForDrop(guest) {
+        guest.channel.addEventListener('close', () => {
+            const at = guests.indexOf(guest);
+            if (closing || at < 0) return;
+            guests.splice(at, 1);
+            if (lostHandler) lostHandler(guest);
+        });
+    }
 
     const hub = {
         role: 'host',
@@ -556,17 +576,40 @@ export async function createHostHub({ name }) {
             await waitForOpen(peer.channel, CONNECT_TIMEOUT_MS);
             const seated = {
                 ...peer,
-                seat: guests.length + 2, // seat 1 is the host
-                name: payload.name || `Player ${guests.length + 2}`,
+                seat: nextSeat,
+                name: payload.name || `Player ${nextSeat}`,
                 commit: payload.commit,
             };
+            nextSeat += 1;
             guests.push(seated);
+            if (rpcHandler) seated.wire.onRpc((path, body) => rpcHandler(path, body, seated));
+            watchForDrop(seated);
             return { guestName: seated.name, seat: seated.seat };
         },
 
-        /** Answer every guest's API calls with `handler`. */
+        /**
+         * Answer every guest's API calls with `handler`, now and for guests
+         * seated later. It is called with the guest that asked, so the host can
+         * remember which lobby seat belongs to which connection.
+         */
         serve(handler) {
-            for (const guest of guests) guest.wire.onRpc(handler);
+            rpcHandler = handler;
+            for (const guest of guests) guest.wire.onRpc((path, body) => handler(path, body, guest));
+        },
+
+        /** Called with a guest whose connection has gone away. */
+        onGuestLost(callback) { lostHandler = callback; },
+
+        /**
+         * Hang up on one guest — the host removing a player from the lobby.
+         * Taking them out of the list first keeps the close from coming back
+         * round as a dropout the host would have to handle again.
+         */
+        drop(seat) {
+            const at = guests.findIndex((g) => g.seat === seat);
+            if (at < 0) return;
+            const [guest] = guests.splice(at, 1);
+            closePeer(guest);
         },
 
         broadcast(message) {
@@ -621,6 +664,9 @@ export async function createHostHub({ name }) {
         },
 
         close() {
+            // Tearing the hub down closes every channel; that is not the same
+            // thing as players walking out, so the drop handler stays quiet.
+            closing = true;
             if (pendingInvite) closePeer(pendingInvite);
             pendingInvite = null;
             for (const guest of guests) closePeer(guest);

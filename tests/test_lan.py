@@ -89,6 +89,71 @@ def test_start_requires_two_players():
         svc.start_game(lobby["lobby_id"])
 
 
+def test_leaving_renumbers_the_seats_behind_the_empty_one():
+    """Seat ids are positional — the engine deals to 1..n in order — so a
+    player leaving has to close the gap, and everyone behind them moves up."""
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=5)
+    bob = svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    carol = svc.join_game(lobby["lobby_id"], name="Carol", deck_name="the_flood")
+    assert carol["player_id"] == 3
+
+    result = svc.leave_game(lobby["lobby_id"], bob["player_id"])
+    seats = result["lobby"]["seats"]
+    assert [s["name"] for s in seats] == ["Alice", "Carol"]
+    assert [s["player_id"] for s in seats] == [1, 2]
+    # Carol's seat moved, but the id she recognises herself by did not.
+    assert seats[1]["seat_uid"] == carol["seat_uid"]
+    # The match that follows is a duel between the two who stayed.
+    assert len(svc.start_game(lobby["lobby_id"])["decks"]) == 2
+
+
+def test_leaving_frees_the_seat_for_someone_else():
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=2)
+    bob = svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    with pytest.raises(ValueError):
+        svc.join_game(lobby["lobby_id"], name="Carol", deck_name="the_flood")
+    svc.leave_game(lobby["lobby_id"], bob["player_id"])
+    assert svc.join_game(lobby["lobby_id"], name="Carol", deck_name="the_flood")["player_id"] == 2
+
+
+def test_leaving_drops_only_the_leavers_custom_deck():
+    """A seat's custom deck is registered under a name of its own, so the
+    player who inherits its number must not inherit its cards."""
+    svc, registered = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=5)
+    bob = svc.join_game(
+        lobby["lobby_id"], name="Bob", deck_name="custom", deck_cards=["Gilgamesh"] * 15,
+    )
+    carol = svc.join_game(
+        lobby["lobby_id"], name="Carol", deck_name="custom", deck_cards=["Achilles"] * 15,
+    )
+    svc.leave_game(lobby["lobby_id"], bob["player_id"])
+    # Carol is seat 2 now, where Bob's deck used to be registered.
+    seats = svc.lobby(lobby["lobby_id"])["seats"]
+    assert seats[1]["seat_uid"] == carol["seat_uid"]
+    svc.join_game(lobby["lobby_id"], name="Dave", deck_name="the_flood")
+    decks = svc.start_game(lobby["lobby_id"])["decks"]
+    assert registered[decks[1]] == ["Achilles"] * 15
+    assert len(svc._lobbies[lobby["lobby_id"]].custom_decks) == 1
+
+
+def test_leave_rejects_the_host_a_started_game_and_unknown_seats():
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=5)
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    with pytest.raises(ValueError):
+        svc.leave_game(lobby["lobby_id"], 1)  # the lobby is the host's
+    with pytest.raises(KeyError):
+        svc.leave_game(lobby["lobby_id"], 7)
+    with pytest.raises(KeyError):
+        svc.leave_game("no-such-lobby", 2)
+    svc.start_game(lobby["lobby_id"])
+    with pytest.raises(ValueError):
+        svc.leave_game(lobby["lobby_id"], 2)  # seats belong to the match now
+
+
 def test_open_lobby_is_advertised_in_beacon_until_full():
     svc, _ = make_service()
     svc.self_name = "Alice"
