@@ -21,7 +21,12 @@ class ActionRequest(BaseModel):
 
 class ActionResponse(BaseModel):
     ok: bool = True
-    snapshot: dict[str, Any]
+    # Missing only when the action was not applied: a sealed match answers a
+    # rule that reached for a hidden card with `needs_reveal` instead, naming the
+    # handle to open (engine/sealed.py) before the very same action is retried.
+    # Still a 200 — the client has to read the body to know what happened.
+    snapshot: Optional[dict[str, Any]] = None
+    needs_reveal: Optional[dict[str, Any]] = None
 
 
 class ErrorResponse(BaseModel):

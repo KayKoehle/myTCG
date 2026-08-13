@@ -3,8 +3,21 @@
 // base URL (e.g. "http://192.168.1.5:8123") while a guest is in a LAN match;
 // null means same-origin (the host itself, and every non-LAN game).
 let lanHostBase = null;
-// A LAN guest's match — and therefore its recording — lives on the host.
-const HOST_ROUTED = ['/api/state', '/api/action', '/api/ai-move', '/api/replay'];
+// A LAN guest's match — and therefore its recording — lives on the host. So
+// does the sealed deal it was dealt from: opening a card and auditing the piles
+// are checks the machine holding the ciphertexts has to run (js/sealedplay.js).
+const HOST_ROUTED = [
+    '/api/state', '/api/action', '/api/ai-move', '/api/replay',
+    '/api/reveal', '/api/sealed/audit',
+];
+
+// `{ok: false}` is not always a failure. A sealed match answers an action that
+// needs a hidden card opened with `needs_reveal` and no error at all, and an
+// audit that finds a tampered pile reports it in `results`. Both are answers
+// the caller has to act on, so they must not come back as exceptions.
+function isSealedAnswer(data) {
+    return Boolean(data && (data.needs_reveal || data.results));
+}
 
 export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;
@@ -84,7 +97,9 @@ export async function postJson(url, body) {
     if (lanHostBase && HOST_ROUTED.some((p) => url === p)) {
         if (lanHostBase === P2P_HOST_BASE) {
             const data = await p2pCall(url, body);
-            if (data && data.ok === false) throw new Error(data.error || 'Request failed');
+            if (data && data.ok === false && !isSealedAnswer(data)) {
+                throw new Error(data.error || 'Request failed');
+            }
             return data;
         }
         const response = await fetch(lanHostBase + url, {
@@ -93,7 +108,7 @@ export async function postJson(url, body) {
             body: JSON.stringify(body),
         });
         const data = await readJsonResponse(response);
-        if (!response.ok || data.ok === false) {
+        if (!response.ok || (data.ok === false && !isSealedAnswer(data))) {
             throw new Error(data.error || `Request failed ${response.status}`);
         }
         return data;
@@ -104,7 +119,7 @@ export async function postJson(url, body) {
     if (window.MyTCGLocalApi && typeof window.MyTCGLocalApi.postJson === 'function') {
         const raw = window.MyTCGLocalApi.postJson(url, JSON.stringify(body));
         const data = JSON.parse(raw);
-        if (data.ok === false) {
+        if (data.ok === false && !isSealedAnswer(data)) {
             throw new Error(data.error || 'Local API request failed');
         }
         return data;
@@ -116,7 +131,7 @@ export async function postJson(url, body) {
         body: JSON.stringify(body),
     });
     const data = await readJsonResponse(response);
-    if (!response.ok || data.ok === false) {
+    if (!response.ok || (data.ok === false && !isSealedAnswer(data))) {
         throw new Error(data.error || `Request failed ${response.status}`);
     }
     return data;

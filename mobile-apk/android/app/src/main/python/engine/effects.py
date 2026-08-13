@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Union
 
-from . import catalog, primitives as prim
+from . import catalog, primitives as prim, sealed
 from .catalog import Predicate, card
 from .state import GameState, LocationState, PendingChoice
 
@@ -245,8 +245,14 @@ def reveal_depth(state: GameState, player_idx: int) -> int:
 
 
 def revealed_deck_cards(state: GameState, player_idx: int) -> tuple[str, ...]:
-    """The revealed prefix of `player_idx`'s deck (empty when nothing reveals)."""
-    return tuple(state.decks[player_idx][: reveal_depth(state, player_idx)])
+    """The revealed prefix of `player_idx`'s deck (empty when nothing reveals).
+
+    A sealed handle is not revealed by a card saying so: turning it face up
+    means the table opening that position for real, and until that happens
+    there is nothing here to read (engine/sealed.py).
+    """
+    prefix = state.decks[player_idx][: reveal_depth(state, player_idx)]
+    return tuple(cid for cid in prefix if not sealed.is_sealed(cid))
 
 
 # --------------------------------------------------------------------------
