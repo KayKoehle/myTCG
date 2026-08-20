@@ -23,7 +23,7 @@ export function setLanHostBase(base) {
     lanHostBase = base ? String(base).replace(/\/$/, '') : null;
 }
 
-// An invite-code guest reaches the host over a direct WebRTC DataChannel rather
+// An online guest reaches the host over a direct WebRTC DataChannel rather
 // than an address (js/p2p.js). Its "host base" is this sentinel, and calls go
 // through the registered transport instead of fetch — the payloads and the
 // host-side handling are identical either way, so everything downstream (lobby,
@@ -142,7 +142,7 @@ export async function postJson(url, body) {
 // in-process server (lanSelfBase), and same-origin elsewhere. Kept separate from
 // postJson so these never get caught by the host-routing rewrite above.
 export async function lanPost(base, path, body) {
-    // Invite-code guests have no address for the host — the open DataChannel is
+    // Online guests have no address for the host — the open DataChannel is
     // the route. Callers here read `data.ok` themselves, so unlike postJson this
     // passes a refusal straight through instead of throwing.
     if (base === P2P_HOST_BASE) return p2pCall(path, body);

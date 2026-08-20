@@ -11,7 +11,7 @@
 // Both rounds carry *all* the decks together rather than one deck at a time.
 // The cost of the protocol is modular exponentiation, which is the same either
 // way, but the number of round trips is not: one pass per round instead of one
-// pass per deck per round, which over a five-player invite-code game is the
+// pass per deck per round, which over a five-player online game is the
 // difference between two hops and ten.
 //
 // **Order matters, and it is the seat order.** Every player must apply their

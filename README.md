@@ -35,10 +35,13 @@ src/
       training.py            Neural-network self-play training (PyTorch)
     model/policy_weights.json  Exported network (scripts/export_policy.py)
     services/, api/, main.py FastAPI server for the browser app
-    services/lan.py          LAN + invite-code lobbies, seats, card trading
+    services/lan.py          LAN + online lobbies, seats, card trading
+    services/rendezvous.py   Signaling rooms for game codes (never sees a game)
     webapp/                  Browser UI (master copy)
-      js/p2p.js              Invite-code play: WebRTC, compact codes, fair seed
-      js/qr.js               QR encoder (no dependencies) for invite codes
+      js/p2p.js              Online play: WebRTC, compact codes, fair seed
+      js/rendezvous.js       One short game code: encrypted signaling drop box
+      js/qr.js               QR encoder (no dependencies) for codes and links
+      js/qrdecode.js         QR decoder, so scanning works without BarcodeDetector
       js/mentalpoker.js      Encrypted shuffle: a deck nobody can read or stack
       js/shuffle.js          Running that shuffle across a whole table
       js/sealedplay.js       A player's side of a match nobody's machine can read
@@ -150,28 +153,61 @@ uv run pyinstaller --noconfirm --onefile --name MyTCG `
 
 ## Multiplayer
 
-Two ways to play a human, both under **Play with Friends** on the menu, and both
+Three ways to play a human, all under **Play with Friends** on the menu, and all
 peer-to-peer: one player's instance is the authority for the match, the others
-drive it through the ordinary `/api/state` and `/api/action` calls. There is no
-server of ours anywhere in either path.
+drive it through the ordinary `/api/state` and `/api/action` calls. No server of
+ours is ever in the path of a game.
 
-- **Same network (LAN).** Instances find each other by UDP broadcast, one hosts
-  a lobby, guests join by address. `services/lan.py` owns discovery, lobbies
-  and card trading.
-- **Online (invite code).** For playing someone who is *not* on your Wi-Fi.
-  WebRTC connects the browsers directly, but it first needs the peers to swap a
-  connection description — normally a server's job. Here the players do it
-  themselves, by passing a code over whatever chat they already use or by
-  pointing one phone's camera at another's screen. `webapp/js/p2p.js` owns this.
+- **Online (game code).** What the menu leads with. The host publishes one short
+  code — `7QK4F-2M9XB` — and everybody joins with it, however many of them there
+  are. `webapp/js/rendezvous.js` and `services/rendezvous.py` own it.
+- **Same network (LAN).** No code at all: instances find each other by UDP
+  broadcast, one hosts a lobby, guests join by address. `services/lan.py` owns
+  discovery, lobbies and card trading.
+- **Online (codes by hand).** The fallback, folded away in the panel, for when
+  no rendezvous is reachable — or when the players would rather nothing of ours
+  saw even the introduction. `webapp/js/p2p.js` owns this.
 
-Both seat 2–5 players. An invite-code host runs one connection per guest, so a
-free-for-all is just more code swaps — "Invite another player" in the lobby.
+All seat 2–5 players. The host runs one connection per guest either way, so a
+free-for-all works like a duel — but only the game code makes the fifth player
+as little work as the second.
 
 Once a channel is open it carries the same JSON calls LAN play sends over HTTP,
 so the lobby, the match and trading are all the shared code path — only the
 transport differs (`api.js`, `P2P_HOST_BASE`).
 
-### Invite codes
+### Game codes
+
+WebRTC has to swap a connection description before it can link two browsers up,
+and that is the only part that ever needed a middleman. Doing it by hand is four
+messages for a duel and ten for a five-player table, which is the part nobody
+enjoys. The rendezvous is a drop box that does the swapping instead: the host
+opens a **room**, guests post their offers into it, the host answers each one,
+and everybody hangs up. Guests offer and the host answers — an invite has to be
+minted for a particular guest, but an answer can be written to whoever turns up,
+which is what lets one code seat a table.
+
+**The rendezvous cannot read any of it.** The code never reaches the server. It
+goes through PBKDF2 and only the first half of the output — the room id — is
+sent; the second half stays in the browser as an AES-GCM key. So the server
+routes envelopes to the right mailbox and cannot open one. That is not a nicety:
+signaling is where a man in the middle would stand, and a relay that could
+rewrite a connection description would be inside every match on it.
+
+The relay is the origin the app was loaded from, which is the same one for two
+people who opened the same link. A packaged build has no origin to fall back on
+and needs one configured (`localStorage.mytcg_rendezvous`, which the panel
+writes); set it to the empty string to opt out, and hand-swapped codes still
+work. A room is in memory, expires 15 minutes after it stops being used, and is
+closed the moment the host starts the match — a stranger holding the code cannot
+walk into a game already under way.
+
+Ten characters of Crockford base32 (no I, L, O or U, so nothing can be misread
+or accidentally spell anything) is 50 bits: short enough to read out over the
+phone, and not worth guessing one HTTP request at a time against a room that
+lives a quarter of an hour.
+
+### Invite codes: the fallback
 
 A browser's own connection description runs to ~600 bytes, nearly all
 boilerplate. Only the ICE credentials, the DTLS fingerprint and the candidate
@@ -183,20 +219,51 @@ characters to about **170**.
 It cannot go much lower. The fingerprint alone is 32 bytes and shortening it
 breaks the DTLS handshake; with the ICE credentials and one address the floor is
 around 130 characters. **A code short enough to memorise is not possible without
-a lookup service**, which would mean a server. Instead every code is also
-rendered as a QR (`webapp/js/qr.js`, written out rather than pulled in — the
-webapp has no dependencies), and where the browser has `BarcodeDetector`
-(Chrome on Android, which is where phone-to-phone actually happens) a **Scan**
-button reads one straight off another screen.
+a lookup service** — which is exactly what the rendezvous above is, and why the
+short code needs one.
+
+### QR codes, and scanning them
+
+The host's code is also a QR, and the QR carries a *link* rather than the bare
+code: a phone's own camera app opens a link, which lands the guest on the game
+with the code already filled in (`#join=` in `webapp/js/menu.js`). The commonest
+way anyone will ever scan it therefore needs nothing installed and no button
+pressed.
+
+Reading one *inside* the app used to be offered only where `BarcodeDetector`
+exists — Chrome on Android and almost nowhere else — so on an iPhone the Scan
+button was simply absent, which from the outside is indistinguishable from a
+scanner that does nothing and never asks for the camera. Nothing was asking for
+it. Now the button is always there: `BarcodeDetector` is used where it genuinely
+works (it can exist and still not do QR, so the format list is checked before it
+is trusted), and everywhere else the frame goes to `webapp/js/qrdecode.js` — a
+QR decoder written out in full, like the encoder beside it, because the webapp
+has no dependencies and the Android build bundles the directory verbatim.
+
+Where the camera cannot be opened at all — an insecure origin, a permission
+already denied, no camera, another app holding it — the reason is said out loud,
+because "needs https" and "you said no once" are different problems with
+different fixes.
+
+The decoder is the standard pipeline: local-threshold binarization, finder
+patterns by their 1:1:3:1:1 signature scanned both ways and confirmed on the
+diagonal, the alignment pattern near the fourth corner so perspective can be
+undone rather than assumed, a projective sample of the module grid, then format
+bits, unmasking, de-interleaving and Reed-Solomon. It reads level M, versions 1
+to 20 — what `qr.js` writes. `scripts/run_qr_scan.mjs` puts synthesised camera
+frames through it (tilted, rotated, blurred, unevenly lit, noisy) and
+`tests/test_qr.py` holds the numbers: a few milliseconds a frame, every single
+condition read, and most frames read even with all of them at once.
 
 ### Provably fair shuffling
 
 A match is a pure function of one integer seed (`create_initial_state`), so
-whoever picks the seed picks the deal. Invite-code games agree it by
-commit-reveal across every player:
+whoever picks the seed picks the deal. Online games agree it by commit-reveal
+across every player:
 
-1. Every player commits to a secret nonce — the host in the invite, each guest
-   in their reply — publishing only its SHA-256.
+1. Every player commits to a secret nonce — carried in the connection
+   descriptions the players swap, whichever way they swap them — publishing only
+   its SHA-256.
 2. Once everyone is seated the host broadcasts the **complete** set of
    commitments.
 3. Only then does anyone reveal. The seed is the hash of all nonces in seat
@@ -329,8 +396,8 @@ another seat's name.
 > rule: a peer would have to know that a reveal is *rule-mandated* rather than a
 > player fishing, and it cannot re-derive that without the hidden state itself.
 > Until that is answered — along with re-sealing a deck a search has opened, by
-> re-running the shuffle on what is left of it — invite-code play keeps dealing
-> in the clear.
+> re-running the shuffle on what is left of it — online play keeps dealing in
+> the clear.
 
 ### Guests are not trusted with the whole API
 
@@ -348,9 +415,11 @@ to a JSON array of RTCIceServer entries. A small share of NAT pairings cannot be
 traversed with STUN alone and would need a TURN relay, which is a server; those
 connections simply fail to open.
 
-Invite-code games cannot reconnect: the route to the host is a live channel
-rather than an address, so a drop ends the match and the menu offers no rejoin
-(LAN guests still get one).
+Online games cannot reconnect: the route to the host is a live channel rather
+than an address, so a drop ends the match and the menu offers no rejoin (LAN
+guests still get one). The game code does not help here — it is closed the
+moment the match starts, and a rejoining player would need the match, not the
+lobby.
 
 ## AI opponents
 

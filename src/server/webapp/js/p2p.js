@@ -1,17 +1,33 @@
-// Invite-code play: direct WebRTC connections between players, with no server
-// of ours anywhere in the loop.
+// Online play: direct WebRTC connections between players. Whatever route the
+// introduction takes, the match itself runs between the two browsers.
 //
 // WebRTC needs the peers to exchange a connection description ("signaling")
-// before it can link them up. Normally a server relays that; here the *players*
-// do, by passing a code over whatever chat they already use — or, face to face,
-// by pointing one phone's camera at another's screen (js/qr.js).
+// before it can link them up, and this module owns both ways of doing that.
+//
+// **By room code** (js/rendezvous.js, and what the menu leads with). The host
+// publishes a short code; each guest makes an offer and the host answers it,
+// both passing through an encrypted drop box that cannot read either one.
+//
+//   host  -> "Host an online game" -> 7QK4F-2M9XB, said aloud or scanned
+//   guest -> types the code        -> offer -> answer -> channel open
+//   ...and every further player uses the same code.
+//
+// The *guest* offers here and the host answers, which is what lets one code
+// seat a table: an invite has to be minted for a particular guest and carried
+// to them, but an answer is written in reply to whoever turns up. See
+// `answerGuestOffer` and `createGuestOffer`.
+//
+// **By hand** (`createInvite` / `createGuestSession`), for when no rendezvous
+// is reachable, or when the players would rather nothing of ours saw even the
+// introduction:
 //
 //   host  -> "Create invite"  -> invite code -> chat/QR -> guest
 //   guest -> pastes or scans  -> reply code  -> chat/QR -> host
 //   host  -> pastes the reply -> data channel opens, direct peer to peer
 //
-// Repeat for each extra player: the host runs one connection per guest, so
-// free-for-all games work the same way as duels, up to the engine's five seats.
+// Either way the host runs one connection per guest, so free-for-all games work
+// the same as duels, up to the engine's five seats — but only the room code
+// makes the fifth player as little work as the second.
 //
 // Once a channel is open it carries the same JSON API calls LAN play sends over
 // HTTP (see `P2P_HOST_BASE` in api.js), so the lobby, the match and trading are
@@ -24,8 +40,9 @@
 // because the rebuilt text is only ever fed to the *remote* browser's
 // setRemoteDescription — our own local description is untouched. That takes a
 // code from ~720 characters to ~170. It cannot go much below that: the DTLS
-// fingerprint alone is 32 bytes and shortening it would break the handshake, so
-// a code short enough to memorise is not possible without a lookup service.
+// fingerprint alone is 32 bytes and shortening it would break the handshake —
+// which is exactly why the short room code is a *lookup* rather than a smaller
+// description, and why it needs a rendezvous to look it up in.
 //
 // **Fair shuffling.** A match is a pure function of one integer seed
 // (`engine/transitions.create_initial_state`), so whoever picks the seed picks
@@ -76,7 +93,7 @@ export function p2pSupported() {
 function assertSupported() {
     if (!p2pSupported()) {
         throw new Error('This browser cannot make direct connections. '
-            + 'Invite-code play needs WebRTC over a secure origin (https, or localhost).');
+            + 'Online play needs WebRTC over a secure origin (https, or localhost).');
     }
 }
 
@@ -381,12 +398,25 @@ function waitForIceGathering(pc) {
     });
 }
 
+// A wait that gives up. `channelPromise` resolves when the other side opens the
+// data channel, which is not something we can otherwise put a bound on.
+function withTimeout(promise, timeoutMs, message) {
+    let timer = null;
+    return Promise.race([
+        promise.then((value) => { clearTimeout(timer); return value; }),
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+    ]);
+}
+
 function waitForOpen(channel, timeoutMs) {
     if (channel.readyState === 'open') return Promise.resolve(channel);
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-            reject(new Error('Could not reach the other player. Check that both of you used the '
-                + 'full code, then try again with a fresh invite.'));
+            reject(new Error('Could not reach the other player. Some networks — office Wi-Fi and '
+                + 'a few mobile carriers — block direct connections; try again, or try a '
+                + 'different network.'));
         }, timeoutMs);
         channel.addEventListener('open', () => { clearTimeout(timer); resolve(channel); }, { once: true });
         channel.addEventListener('close', () => {
@@ -424,7 +454,7 @@ function createWire(channel) {
 
     channel.addEventListener('close', () => {
         failAll(new Error('The connection to the other player was lost. '
-            + 'Invite-code games cannot reconnect — start a new one.'));
+            + 'Online games cannot reconnect — start a new one.'));
     });
 
     channel.addEventListener('message', async (event) => {
@@ -607,7 +637,7 @@ export async function createHostHub({ name }) {
     let closing = false;
 
     // A dropped channel is a dropped player: there is no reconnect in
-    // invite-code play, so stop counting them and tell the host, which frees
+    // online play, so stop counting them and tell the host, which frees
     // their lobby seat rather than leaving the table stuck around an empty one.
     function watchForDrop(guest) {
         guest.channel.addEventListener('close', () => {
@@ -634,6 +664,27 @@ export async function createHostHub({ name }) {
             if (to !== null && tableSeat(guest) !== to) continue;
             try { guest.wire.send(forwarded); } catch (error) { /* dropped peer */ }
         }
+    }
+
+    // Seat a connected peer: give it a hub seat, remember the commitment it
+    // published, and wire it into the RPC and sealed paths. Both handshakes end
+    // here, so a guest that arrived by room code is a player in exactly the way
+    // one that arrived by invite code is.
+    function admit(peer, payload) {
+        const seated = {
+            ...peer,
+            seat: nextSeat,
+            name: payload.name || `Player ${nextSeat}`,
+            commit: payload.commit,
+        };
+        nextSeat += 1;
+        guests.push(seated);
+        if (rpcHandler) seated.wire.onRpc((path, body) => rpcHandler(path, body, seated));
+        // Wired up whether or not this game ever deals sealed: a relay that
+        // is installed late is a relay that has already lost messages.
+        seated.wire.on(SEALED_TYPE, (message) => relaySealed(message, seated));
+        watchForDrop(seated);
+        return { guestName: seated.name, seat: seated.seat };
     }
 
     const hub = {
@@ -671,20 +722,60 @@ export async function createHostHub({ name }) {
             pendingInvite = null;
             await peer.pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp });
             await waitForOpen(peer.channel, CONNECT_TIMEOUT_MS);
-            const seated = {
-                ...peer,
-                seat: nextSeat,
-                name: payload.name || `Player ${nextSeat}`,
-                commit: payload.commit,
+            return admit(peer, payload);
+        },
+
+        /**
+         * The room-code path (js/rendezvous.js): the *guest* offers and the
+         * host answers, which is the whole reason one code can seat a table.
+         * A host-minted invite has to be created for a particular guest and
+         * carried to them; an answer is written in response to whoever turned
+         * up, so the host can mint nothing at all and simply reply to each
+         * arrival. Several can be in flight at once — each holds its own
+         * connection rather than the hub's single `pendingInvite`.
+         *
+         * Returns the answer to send back plus `seat()`, which resolves once
+         * the channel is actually open. The two are separate because the
+         * answer has to be handed over *before* the guest can connect, and
+         * awaiting the connection first would deadlock the pair.
+         */
+        async answerGuestOffer(offerCode) {
+            const payload = decodeCode(offerCode);
+            if (payload.role !== ROLE_OFFER) {
+                throw new Error('That is a reply code, not a request to join.');
+            }
+            if (hub.seatsUsed >= MAX_SEATS) {
+                throw new Error(`A game seats at most ${MAX_SEATS} players.`);
+            }
+            const pc = new RTCPeerConnection({ iceServers: iceServers() });
+            const channelPromise = new Promise((resolve) => {
+                pc.addEventListener('datachannel', (event) => resolve(event.channel), { once: true });
+            });
+            await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
+            await pc.setLocalDescription(await pc.createAnswer());
+            await waitForIceGathering(pc);
+            const answerCode = encodeCode({
+                role: ROLE_ANSWER, name: hub.name, commit, sdp: pc.localDescription.sdp,
+            });
+            let done = false;
+            return {
+                answerCode,
+                guestName: payload.name || 'Player',
+                async seat() {
+                    const channel = await withTimeout(
+                        channelPromise, CONNECT_TIMEOUT_MS,
+                        'That player never finished connecting.',
+                    );
+                    await waitForOpen(channel, CONNECT_TIMEOUT_MS);
+                    done = true;
+                    return admit({ pc, channel, wire: createWire(channel) }, payload);
+                },
+                /** Give up on a guest that stopped halfway. */
+                abandon() {
+                    if (done) return;
+                    try { pc.close(); } catch (error) { /* already gone */ }
+                },
             };
-            nextSeat += 1;
-            guests.push(seated);
-            if (rpcHandler) seated.wire.onRpc((path, body) => rpcHandler(path, body, seated));
-            // Wired up whether or not this game ever deals sealed: a relay that
-            // is installed late is a relay that has already lost messages.
-            seated.wire.on(SEALED_TYPE, (message) => relaySealed(message, seated));
-            watchForDrop(seated);
-            return { guestName: seated.name, seat: seated.seat };
         },
 
         /**
@@ -802,28 +893,12 @@ function closePeer(peer) {
 // --- Guest --------------------------------------------------------------------
 
 /**
- * Answer an invite: produces the reply code to send back, then waits for the
- * host to link up and name the lobby to join.
+ * Everything a guest is once the descriptions have been swapped, however they
+ * were swapped. Both handshakes end here: only who offered and who answered
+ * differs, and the channel, the lobby join and the commit-reveal are identical
+ * either way.
  */
-export async function createGuestSession({ inviteCode, name }) {
-    assertSupported();
-    const payload = decodeCode(inviteCode);
-    if (payload.role !== ROLE_OFFER) {
-        throw new Error('That is a reply code, not an invite. Ask your friend for their invite code.');
-    }
-    closeActiveP2p();
-
-    const nonce = randomBytes(32);
-    const commit = await sha256(nonce);
-    const pc = new RTCPeerConnection({ iceServers: iceServers() });
-    const channelPromise = new Promise((resolve) => {
-        pc.addEventListener('datachannel', (event) => resolve(event.channel), { once: true });
-    });
-
-    await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
-    await pc.setLocalDescription(await pc.createAnswer());
-    await waitForIceGathering(pc);
-
+function buildGuestSession({ pc, channelPromise, hostName, hostCommit, nonce, commit, replyCode }) {
     let onSeed = null;
     const sealedInbox = createSealedInbox();
 
@@ -832,14 +907,15 @@ export async function createGuestSession({ inviteCode, name }) {
         pc,
         channel: null,
         wire: null,
-        hostName: payload.name || 'Host',
-        replyCode: encodeCode({
-            role: ROLE_ANSWER, name: name || 'Player', commit, sdp: pc.localDescription.sdp,
-        }),
+        hostName,
+        replyCode: replyCode || null,
 
         /** Wait for the host to connect, then join the lobby it names. */
         async begin() {
-            const channel = await channelPromise;
+            const channel = await withTimeout(
+                channelPromise, CONNECT_TIMEOUT_MS,
+                'The host never opened the connection. Ask them to check they are still in the lobby.',
+            );
             session.channel = channel;
             const wire = createWire(channel);
             session.wire = wire;
@@ -848,7 +924,7 @@ export async function createGuestSession({ inviteCode, name }) {
             const message = await wire.waitFor('lobby');
             // The seed rounds run whenever the host starts; they are driven from
             // here so the guest verifies every commitment itself.
-            runSeedAgreement(wire, payload.commit, nonce, commit)
+            runSeedAgreement(wire, hostCommit, nonce, commit)
                 .then((seed) => { if (onSeed) onSeed(seed); })
                 .catch((error) => { if (onSeed) onSeed(null, error); });
             return { lobbyId: message.lobby_id, request: wire.request };
@@ -877,6 +953,104 @@ export async function createGuestSession({ inviteCode, name }) {
             if (activeSession === session) activeSession = null;
         },
     };
+    return session;
+}
+
+/**
+ * The room-code path: make an offer for whoever is hosting the room to answer.
+ *
+ * The guest offers here, rather than answering a host's invite, because that is
+ * what lets one code seat a whole table — see `answerGuestOffer`. Nothing is
+ * connected yet when this returns: `accept` finishes the job once the host's
+ * answer comes back through the rendezvous.
+ */
+export async function createGuestOffer({ name }) {
+    assertSupported();
+    closeActiveP2p();
+
+    const nonce = randomBytes(32);
+    const commit = await sha256(nonce);
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    const channel = pc.createDataChannel('mytcg', { ordered: true });
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitForIceGathering(pc);
+    let accepted = false;
+
+    const pending = {
+        role: 'guest-offer',
+        offerCode: encodeCode({
+            role: ROLE_OFFER, name: name || 'Player', commit, sdp: pc.localDescription.sdp,
+        }),
+
+        /** Take the host's answer and become a real session. */
+        async accept(answerCode) {
+            const payload = decodeCode(answerCode);
+            if (payload.role !== ROLE_ANSWER) {
+                throw new Error('The host answered with something we cannot use. '
+                    + 'They may be running a different version of the game.');
+            }
+            await pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp });
+            accepted = true;
+            const session = buildGuestSession({
+                pc,
+                channelPromise: Promise.resolve(channel),
+                hostName: payload.name || 'Host',
+                hostCommit: payload.commit,
+                nonce,
+                commit,
+            });
+            activeSession = session;
+            return session;
+        },
+
+        close() {
+            // Once accepted the session owns the connection; closing here as
+            // well would hang up on a game that is already under way.
+            if (accepted) return;
+            try { channel.close(); } catch (error) { /* gone */ }
+            try { pc.close(); } catch (error) { /* gone */ }
+            if (activeSession === pending) activeSession = null;
+        },
+    };
+    activeSession = pending;
+    return pending;
+}
+
+/**
+ * The manual path, for when no rendezvous is reachable: answer an invite the
+ * host minted, produce the reply code to send back, then wait for the host to
+ * link up and name the lobby to join.
+ */
+export async function createGuestSession({ inviteCode, name }) {
+    assertSupported();
+    const payload = decodeCode(inviteCode);
+    if (payload.role !== ROLE_OFFER) {
+        throw new Error('That is a reply code, not an invite. Ask your friend for their invite code.');
+    }
+    closeActiveP2p();
+
+    const nonce = randomBytes(32);
+    const commit = await sha256(nonce);
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    const channelPromise = new Promise((resolve) => {
+        pc.addEventListener('datachannel', (event) => resolve(event.channel), { once: true });
+    });
+
+    await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
+    await pc.setLocalDescription(await pc.createAnswer());
+    await waitForIceGathering(pc);
+
+    const session = buildGuestSession({
+        pc,
+        channelPromise,
+        hostName: payload.name || 'Host',
+        hostCommit: payload.commit,
+        nonce,
+        commit,
+        replyCode: encodeCode({
+            role: ROLE_ANSWER, name: name || 'Player', commit, sdp: pc.localDescription.sdp,
+        }),
+    });
     activeSession = session;
     return session;
 }

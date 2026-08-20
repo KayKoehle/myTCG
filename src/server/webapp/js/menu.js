@@ -1,6 +1,26 @@
 import { P2P_HOST_BASE, postJson, lanPost, isLocalBridge, setLanSelfBase, setP2pTransport } from './api.js';
-import { closeActiveP2p, createGuestSession, createHostHub, p2pSupported } from './p2p.js';
+import {
+    closeActiveP2p, createGuestOffer, createGuestSession, createHostHub, p2pSupported,
+} from './p2p.js';
 import { qrSvg } from './qr.js';
+import { decodeQr } from './qrdecode.js';
+import {
+    answerJoiner,
+    closeRoom,
+    codeFromScan,
+    collectAnswer,
+    formatCode,
+    joinLink,
+    newGuestId,
+    newRoomCode,
+    normalizeCode,
+    openRoom,
+    pollJoiners,
+    postOffer,
+    rendezvousAvailable,
+    rendezvousBase,
+    setRendezvousBase,
+} from './rendezvous.js';
 import { cardArtTag, cardPngUrl, escapeHtml, showToast } from './helpers.js';
 import { createCardRecommender, createCardSearch } from './embedding.js';
 import { getQuestBoard, weekendBannerLabel } from './quests.js';
@@ -110,7 +130,8 @@ export function createMenuController(ui, game, cardStack) {
     // The lobby we're hosting or have joined: { lobby_id, host_base, is_host,
     // my_pid, num_players, seats, started }.
     let lanLobby = null;
-    // Invite-code (online) play, while codes are being exchanged:
+    // Online play, while a connection is being made: for the room-code path
+    // { mode: 'joining', code, busy, status }, and for the hand-swapped one
     // { mode: 'host' | 'guest', session, code, busy, status }. Cleared once the
     // players are connected and the ordinary lobby takes over.
     let p2pView = null;
@@ -121,8 +142,22 @@ export function createMenuController(ui, game, cardStack) {
     // setP2pTransport, but sealed play needs the session itself: keys travel as
     // control messages, not as calls (js/sealedplay.js).
     let p2pGuestSession = null;
-    // Invite-code games seat the same 2-5 players LAN games do.
+    // Online games seat the same 2-5 players LAN games do.
     const MAX_P2P_SEATS = 5;
+    // Online play by room code (js/rendezvous.js). The host holds one open room
+    // for as long as its lobby is open, so every guest joins with the same
+    // code and nobody has to send anything back.
+    let roomCode = null;
+    let roomTimer = null;
+    // Guests already being let in, so a poll that sees the same one twice does
+    // not answer it twice.
+    const roomHandled = new Set();
+    // How long a guest waits for the host to answer before giving up. The host
+    // may be mid-hand when somebody asks to join.
+    const JOIN_TIMEOUT_MS = 75000;
+    // The refusal marker on an answer blob: the rendezvous has no channel for
+    // "no", so a host that cannot seat somebody says so in the answer itself.
+    const REFUSED = '!';
 
     // The Replays library and player (js/replayview.js). Opening one is a
     // navigation like any other, so it goes through pushNav/handleNav.
@@ -823,7 +858,7 @@ export function createMenuController(ui, game, cardStack) {
                             hostBase: lanLobby.host_base,
                             matchId: data.lobby.match_id,
                             // A LAN guest never learns the seed (the host owns
-                            // the deal). An invite-code guest agreed it by
+                            // the deal). An online guest agreed it by
                             // commit-reveal, so it carries into the match — and
                             // from there into the guest's own replay, where a
                             // deal from any other seed would show up.
@@ -845,7 +880,11 @@ export function createMenuController(ui, game, cardStack) {
 
     async function startLanAsHost() {
         try {
-            // An invite-code game settles its deal here, with every player
+            // Doors shut. The room is only for getting people in, and one left
+            // open would let a stranger with the code walk into a live game —
+            // or, worse, arrive halfway through the shuffle agreement below.
+            releaseRoom();
+            // An online game settles its deal here, with every player
             // seated: each has already committed to a nonce, so nobody — host
             // included — can pick a shuffle that suits them (js/p2p.js).
             let seed;
@@ -867,7 +906,7 @@ export function createMenuController(ui, game, cardStack) {
         }
     }
 
-    // --- Invite-code (online) play -------------------------------------------
+    // --- Online play: connections, seats and the host's service ---------------
     // Same lobby, same match, same trading as LAN — the two differ only in how
     // the players reach each other: a direct WebRTC channel rather than a LAN
     // address, so no server of ours sits in the middle (js/p2p.js). The host
@@ -964,10 +1003,10 @@ export function createMenuController(ui, game, cardStack) {
      * The seat-addressed link a sealed match runs over (js/sealedplay.js): the
      * encrypted shuffle and every published key need to reach every player, and
      * only the host can arrange that, since guests have no route to each other.
-     * Null when this is not an invite-code game — LAN play reaches its peers by
+     * Null when this is not an online game — LAN play reaches its peers by
      * address and has no such link to build.
      *
-     * Nothing calls this yet: invite-code games still deal in the clear
+     * Nothing calls this yet: online games still deal in the clear
      * (startLanAsHost), and switching them over is the UI half of the work.
      */
     function p2pSealedLink() {
@@ -991,7 +1030,7 @@ export function createMenuController(ui, game, cardStack) {
             return null;
         }
         if (!p2pSupported()) {
-            showToast('This browser cannot make direct connections. Invite-code play needs '
+            showToast('This browser cannot make direct connections. Online play needs '
                 + 'WebRTC over a secure origin (https, or localhost).');
             return null;
         }
@@ -1014,6 +1053,177 @@ export function createMenuController(ui, game, cardStack) {
             num_players: MAX_P2P_SEATS, seats: data.lobby.seats, started: false, p2p: true,
         };
         return lanLobby.lobby_id;
+    }
+
+    // --- Online play by room code --------------------------------------------
+    // The flow the menu leads with: the host opens one room, and every guest
+    // joins it with the same short code. Nobody sends a code back — the guest
+    // makes the WebRTC offer and the host's answer goes through the rendezvous
+    // (js/rendezvous.js), which is what collapses a chain of messages per
+    // player into one code for the table.
+
+    /** Host: open a room and drop straight into the lobby, waiting for players. */
+    async function hostOnlineGame() {
+        const deck = p2pDeckOrWarn();
+        if (!deck) return;
+        if (!rendezvousAvailable()) {
+            showToast('This build has no online matchmaking set up. '
+                + 'Swap codes by hand, or set a server below.');
+            return;
+        }
+        p2pView = { mode: 'host', busy: true, status: 'Opening your game…' };
+        renderLan();
+        try {
+            if (!p2pHub) {
+                p2pHub = await createHostHub({ name: lanPlayerName() });
+                p2pHub.onGuestLost(onP2pGuestLost);
+            }
+            const code = newRoomCode();
+            await openRoom(code);
+            roomCode = code;
+            roomHandled.clear();
+            // The lobby exists from the start: the host sits in the waiting
+            // room with the code on screen, and guests appear as they arrive,
+            // rather than the host staring at a code-swapping panel.
+            await ensureP2pLobby(deck);
+            p2pHub.serve(p2pServe);
+            p2pView = null;
+            stopPeerPolling();
+            startLobbyPolling();
+            startRoomPolling();
+        } catch (error) {
+            p2pView = null;
+            showToast(`Could not open the game: ${error.message || error}`);
+        }
+        renderLan();
+    }
+
+    function startRoomPolling() {
+        stopRoomPolling();
+        const tick = async () => {
+            if (!roomCode || !p2pHub) return;
+            try {
+                for (const joiner of await pollJoiners(roomCode)) {
+                    if (roomHandled.has(joiner.guestId)) continue;
+                    roomHandled.add(joiner.guestId);
+                    admitRoomJoiner(joiner);
+                }
+            } catch (error) { /* transient, or the room expired; keep trying */ }
+            roomTimer = setTimeout(tick, 1500);
+        };
+        tick();
+    }
+
+    function stopRoomPolling() {
+        if (roomTimer) { clearTimeout(roomTimer); roomTimer = null; }
+    }
+
+    /** Stop taking joiners and give the room back. Idempotent. */
+    function releaseRoom() {
+        stopRoomPolling();
+        if (roomCode) closeRoom(roomCode);
+        roomCode = null;
+        roomHandled.clear();
+    }
+
+    /** Host: let one waiting player in. Runs alongside the poll, not inside it. */
+    async function admitRoomJoiner(joiner) {
+        const deck = lanDeckConfig();
+        const refuse = (why) => answerJoiner(roomCode, joiner.guestId, REFUSED + why).catch(() => {});
+        let pending;
+        try {
+            pending = await p2pHub.answerGuestOffer(joiner.offer);
+        } catch (error) {
+            // Out of seats, or a code from another version: say so rather than
+            // leaving them watching a spinner until it times out.
+            refuse(String(error.message || error));
+            return;
+        }
+        try {
+            await answerJoiner(roomCode, joiner.guestId, pending.answerCode);
+            const { guestName, seat } = await pending.seat();
+            const lobbyId = await ensureP2pLobby(deck);
+            // Answer their calls before telling them where to join.
+            p2pHub.serve(p2pServe);
+            p2pHub.tell(seat, { t: 'lobby', lobby_id: lobbyId });
+            showToast(`${guestName} joined.`);
+        } catch (error) {
+            pending.abandon();
+            // They may simply have given up and closed the app; the seat is
+            // freed either way and the code still works for the next player.
+        }
+        if (!p2pView) renderLan();
+    }
+
+    /** Guest: join with a code, and be in the lobby when it comes back. */
+    async function joinOnlineGame(text) {
+        const code = normalizeCode(text);
+        if (!code) {
+            showToast('That code does not look right — 10 letters and numbers, '
+                + 'like 7QK4F-2M9XB.');
+            return;
+        }
+        const deck = p2pDeckOrWarn();
+        if (!deck) return;
+        if (!rendezvousAvailable()) {
+            showToast('This build has no online matchmaking set up. '
+                + 'Swap codes by hand, or set a server below.');
+            return;
+        }
+        const view = { mode: 'joining', code, busy: true, status: 'Looking for the game…' };
+        p2pView = view;
+        renderLan();
+        let pending = null;
+        try {
+            pending = await createGuestOffer({ name: lanPlayerName() });
+            const guestId = newGuestId();
+            await postOffer(code, guestId, pending.offerCode);
+            setP2pViewStatus(view, 'Waiting for the host to let you in…');
+            const answer = await awaitHostAnswer(code, guestId, view);
+            setP2pViewStatus(view, 'Connecting…');
+            const session = await pending.accept(answer);
+            pending = null;
+            attachGuestSeed(session);
+            await enterGuestLobby(session, deck);
+            p2pView = null;
+            stopPeerPolling();
+            startLobbyPolling();
+        } catch (error) {
+            if (pending) pending.close();
+            closeActiveP2p();
+            setP2pTransport(null);
+            if (p2pView === view) {
+                view.busy = false;
+                view.status = String(error.message || error);
+            }
+        }
+        renderLan();
+    }
+
+    /**
+     * Poll the rendezvous for the host's reply. Gives up rather than hanging:
+     * the host may have closed the lobby, or never have existed at that code.
+     */
+    async function awaitHostAnswer(code, guestId, view) {
+        const deadline = Date.now() + JOIN_TIMEOUT_MS;
+        for (;;) {
+            if (p2pView !== view) throw new Error('Cancelled.');
+            const answer = await collectAnswer(code, guestId);
+            if (answer && answer.startsWith(REFUSED)) {
+                throw new Error(answer.slice(REFUSED.length) || 'The host turned you away.');
+            }
+            if (answer) return answer;
+            if (Date.now() > deadline) {
+                throw new Error('The host did not answer. Check the code, or ask them '
+                    + 'to open the game again.');
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+    }
+
+    function setP2pViewStatus(view, status) {
+        view.status = status;
+        if (p2pView === view) setP2pStatus(status);
     }
 
     /** Host: mint the next invite code (the first one also creates the hub). */
@@ -1064,6 +1274,45 @@ export function createMenuController(ui, game, cardStack) {
         renderLan();
     }
 
+    /**
+     * The seed lands when the host starts; keep it for the guest's own replay,
+     * where a deal from any other seed would show up.
+     */
+    function attachGuestSeed(session) {
+        session.onAgreedSeed((seed, error) => {
+            if (error) {
+                showToast(String(error.message || error));
+                leaveLanLobby();
+                return;
+            }
+            if (lanLobby) lanLobby.agreed_seed = seed;
+        });
+    }
+
+    /**
+     * Wait for the host's channel, take the seat it offers, and hold the lobby
+     * from there. Shared by both ways in — the room code and the hand-swapped
+     * invite differ only in how the descriptions were exchanged.
+     */
+    async function enterGuestLobby(session, deck) {
+        const { lobbyId, request } = await session.begin();
+        setP2pTransport(request);
+        const data = await lanPost(P2P_HOST_BASE, '/api/lan/join', {
+            lobby_id: lobbyId,
+            name: lanPlayerName(),
+            deck_name: deck.name,
+            deck_cards: deck.cards,
+        });
+        if (!data.ok) throw new Error(data.error || 'Join failed.');
+        p2pGuestSession = session;
+        lanLobby = {
+            lobby_id: lobbyId, host_base: P2P_HOST_BASE, is_host: false,
+            my_pid: data.player_id, seat_uid: data.seat_uid,
+            num_players: MAX_P2P_SEATS,
+            seats: (data.lobby && data.lobby.seats) || [], started: false, p2p: true,
+        };
+    }
+
     /** Guest: answer an invite, hand back a reply code, then wait for the host. */
     async function startP2pGuest(inviteCode) {
         const deck = p2pDeckOrWarn();
@@ -1078,33 +1327,9 @@ export function createMenuController(ui, game, cardStack) {
         const view = { mode: 'guest', session, code: session.replyCode, busy: true, status: '' };
         p2pView = view;
         renderLan();
-        // The seed lands when the host starts; keep it for the guest's own
-        // replay, where a deal from any other seed would show up.
-        session.onAgreedSeed((seed, error) => {
-            if (error) {
-                showToast(String(error.message || error));
-                leaveLanLobby();
-                return;
-            }
-            if (lanLobby) lanLobby.agreed_seed = seed;
-        });
+        attachGuestSeed(session);
         try {
-            const { lobbyId, request } = await session.begin();
-            setP2pTransport(request);
-            const data = await lanPost(P2P_HOST_BASE, '/api/lan/join', {
-                lobby_id: lobbyId,
-                name: lanPlayerName(),
-                deck_name: deck.name,
-                deck_cards: deck.cards,
-            });
-            if (!data.ok) throw new Error(data.error || 'Join failed.');
-            p2pGuestSession = session;
-            lanLobby = {
-                lobby_id: lobbyId, host_base: P2P_HOST_BASE, is_host: false,
-                my_pid: data.player_id, seat_uid: data.seat_uid,
-                num_players: MAX_P2P_SEATS,
-                seats: (data.lobby && data.lobby.seats) || [], started: false, p2p: true,
-            };
+            await enterGuestLobby(session, deck);
             p2pView = null;
             stopPeerPolling();
             startLobbyPolling();
@@ -1121,6 +1346,8 @@ export function createMenuController(ui, game, cardStack) {
 
     function cancelP2p() {
         if (p2pView && p2pView.mode === 'guest' && p2pView.session) p2pView.session.close();
+        // A guest that is mid-join has no session yet; clearing the view is
+        // what awaitHostAnswer is watching for, and it closes its own half.
         p2pView = null;
         // A host cancelling a *second* invite keeps the game it already has.
         if (!lanLobby) {
@@ -1142,55 +1369,161 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     // --- QR scanning ---------------------------------------------------------
-    // Reading a code back is the half that needs a camera. BarcodeDetector is
-    // built into Chrome on Android (where phone-to-phone actually happens) but
-    // missing on most desktops, so the button only appears where it works —
-    // pasting is always available.
+    // The camera half. This used to be offered only where `BarcodeDetector`
+    // exists — Chrome on Android and almost nowhere else — so on an iPhone the
+    // Scan button was simply absent, which from the outside looks exactly like
+    // a scanner that does nothing and never asks for the camera. Nothing was
+    // asking for it.
+    //
+    // Now the button is always there. `BarcodeDetector` is still used where it
+    // works, because it is the fastest path; everywhere else the frame goes to
+    // our own decoder (js/qrdecode.js). And when the camera genuinely cannot be
+    // opened, the reason is said out loud rather than hidden by a missing
+    // button — "needs https" and "you said no once" are different problems with
+    // different fixes.
 
-    function scanSupported() {
-        return typeof BarcodeDetector !== 'undefined'
-            && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    /**
+     * Whether `getUserMedia` exists at all. It does not on an insecure origin,
+     * which is how a LAN-served page is usually reached, so this is a real and
+     * common no — but the answer belongs in a message, not in a hidden button.
+     */
+    function cameraAvailable() {
+        return Boolean(navigator.mediaDevices
+            && typeof navigator.mediaDevices.getUserMedia === 'function');
     }
 
-    async function scanQrCode(onCode) {
-        if (!scanSupported()) { showToast('This device cannot scan codes — paste it instead.'); return; }
+    function cameraUnavailableReason() {
+        if (window.isSecureContext === false) {
+            return 'Scanning needs a secure connection (https, or localhost). '
+                + 'Type the code instead — it is short.';
+        }
+        return 'This device has no camera the browser can use. Type the code instead.';
+    }
+
+    /**
+     * The platform decoder, when it really works. `BarcodeDetector` can exist
+     * and still not do QR — on some builds the format list is empty — and
+     * constructing it for a format it does not have throws, so both are checked
+     * before it is trusted with anything.
+     */
+    async function platformDetector() {
+        if (typeof BarcodeDetector === 'undefined') return null;
+        try {
+            const formats = await BarcodeDetector.getSupportedFormats();
+            if (!formats.includes('qr_code')) return null;
+            return new BarcodeDetector({ formats: ['qr_code'] });
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Open the camera and call `onCode` with the first MyTCG code seen.
+     *
+     * `onCancel` is for the caller that wants to know the player backed out —
+     * the join panel puts them back on the keyboard rather than leaving them
+     * looking at nothing.
+     */
+    async function scanQrCode(onCode, onCancel) {
+        if (!cameraAvailable()) { showToast(cameraUnavailableReason()); if (onCancel) onCancel(); return; }
         const overlay = document.createElement('div');
         overlay.className = 'p2p-scan';
         overlay.innerHTML = `
-            <video class="p2p-scan-video" playsinline muted></video>
-            <p class="tiny">Point the camera at the other player's code.</p>
-            <button class="btn ghost" type="button">Cancel</button>`;
+            <video class="p2p-scan-video" playsinline muted autoplay></video>
+            <p class="tiny p2p-scan-hint">Point the camera at the other player\'s code.</p>
+            <button class="btn ghost" type="button" id="p2pScanCancel">Type the code instead</button>`;
         document.body.appendChild(overlay);
         const video = overlay.querySelector('video');
+        const hint = overlay.querySelector('.p2p-scan-hint');
         let stream = null;
         let stopped = false;
+        let timer = null;
         const stop = () => {
             stopped = true;
+            if (timer) clearTimeout(timer);
             if (stream) stream.getTracks().forEach((track) => track.stop());
             overlay.remove();
         };
-        overlay.querySelector('button').addEventListener('click', stop);
+        overlay.querySelector('#p2pScanCancel').addEventListener('click', () => {
+            stop();
+            if (onCancel) onCancel();
+        });
+
         try {
+            // `facingMode: environment` is a preference, not a demand: a laptop
+            // has only a front camera, and asking for a rear one it does not
+            // have is an OverconstrainedError rather than a webcam.
             stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }, audio: false,
+                video: { facingMode: { ideal: 'environment' } }, audio: false,
             });
             video.srcObject = stream;
-            await video.play();
-            const detector = new BarcodeDetector({ formats: ['qr_code'] });
-            const tick = async () => {
-                if (stopped) return;
-                try {
-                    const found = await detector.detect(video);
-                    const hit = found.find((code) => /^MYTCG\d/.test(code.rawValue || ''));
-                    if (hit) { stop(); onCode(hit.rawValue); return; }
-                } catch (error) { /* a frame failed to decode; try the next */ }
-                requestAnimationFrame(tick);
-            };
-            requestAnimationFrame(tick);
+            // Some browsers reject play() until the metadata is in; the
+            // autoplay attribute covers those, so a rejection here is not fatal.
+            await video.play().catch(() => {});
         } catch (error) {
             stop();
-            showToast(`Could not open the camera: ${error.message || error}`);
+            showToast(cameraError(error));
+            if (onCancel) onCancel();
+            return;
         }
+
+        const detector = await platformDetector();
+        if (!detector) hint.textContent = 'Point the camera at the other player\'s code.';
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+
+        const found = (raw) => {
+            if (!raw) return false;
+            const code = codeFromScan(raw);
+            if (code) { stop(); onCode(code); return true; }
+            if (/^MYTCG\d/.test(raw)) { stop(); onCode(raw); return true; }
+            return false;
+        };
+
+        const tick = async () => {
+            if (stopped) return;
+            if (video.readyState >= 2 && video.videoWidth) {
+                try {
+                    if (detector) {
+                        for (const hit of await detector.detect(video)) {
+                            if (found(hit.rawValue)) return;
+                        }
+                    } else {
+                        // Our own decoder works on pixels, and a 1080p frame is
+                        // mostly wasted on it: the symbol only has to be a few
+                        // pixels per module, and the work is per pixel.
+                        const scale = Math.min(1, 640 / video.videoWidth);
+                        canvas.width = Math.round(video.videoWidth * scale);
+                        canvas.height = Math.round(video.videoHeight * scale);
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+                        if (found(decodeQr(frame))) return;
+                    }
+                } catch (error) { /* a frame failed to decode; try the next */ }
+            }
+            // The platform decoder is cheap enough to run every frame; ours
+            // costs a few milliseconds, so it runs about ten times a second —
+            // fast enough to feel instant, slow enough to leave the phone cool.
+            if (detector) requestAnimationFrame(tick);
+            else timer = setTimeout(tick, 90);
+        };
+        tick();
+    }
+
+    /** Camera failures the player can actually do something about. */
+    function cameraError(error) {
+        const name = (error && error.name) || '';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+            return 'Camera access was blocked. Allow the camera for this site in your '
+                + "browser's settings, or just type the code.";
+        }
+        if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+            return 'No camera found on this device. Type the code instead.';
+        }
+        if (name === 'NotReadableError') {
+            return 'Another app is using the camera. Close it and try again.';
+        }
+        return `Could not open the camera: ${(error && error.message) || error}`;
     }
 
     function beginLanMatch({ hostBase, matchId, seed, playerId, decks }) {
@@ -1215,7 +1548,7 @@ export function createMenuController(ui, game, cardStack) {
         // In a lobby: waiting room.
         if (lanLobby) {
             const seats = lanLobby.seats || [];
-            // The host can free a seat by hand: an invite-code guest that drops
+            // The host can free a seat by hand: an online guest that drops
             // is noticed automatically (the channel closes), but a LAN guest
             // that walks away leaves nothing to notice.
             const rows = seats.map((s) => `
@@ -1233,13 +1566,18 @@ export function createMenuController(ui, game, cardStack) {
                 : '';
             const canStart = lanLobby.is_host && seats.length >= 2;
             const startLabel = seats.length >= 2 ? `Start ${seats.length}-player game` : 'Need at least 2 players';
-            // An invite-code host adds each further player with another code
-            // swap; LAN guests just walk in, so the button is p2p-only.
-            const inviteMore = lanLobby.is_host && p2pHub && seats.length < MAX_P2P_SEATS
+            // A host swapping codes by hand adds each further player with
+            // another swap; a room-code host does not — everyone uses the one
+            // code — and a LAN guest just walks in.
+            const inviteMore = lanLobby.is_host && p2pHub && !roomCode && seats.length < MAX_P2P_SEATS
                 ? `<button class="btn ghost" id="lanInviteMoreBtn" style="width:100%;margin-top:8px;">
                         Invite another player (${seats.length}/${MAX_P2P_SEATS} seated)</button>`
                 : '';
+            // The code stays on screen for the whole wait: the second and third
+            // players ask for it long after the first one did.
+            const codeBanner = roomCode && lanLobby.is_host ? roomCodeHtml(roomCode) : '';
             ui.lanBody.innerHTML = `
+                ${codeBanner}
                 <div class="lan-section-title">${lanLobby.is_host ? 'Your lobby' : 'Joined lobby'}
                     (${seats.length} in)</div>
                 <div class="lan-seats">${rows}${waitingRow}</div>
@@ -1254,34 +1592,62 @@ export function createMenuController(ui, game, cardStack) {
             if (startBtn) startBtn.addEventListener('click', startLanAsHost);
             const inviteMoreBtn = document.getElementById('lanInviteMoreBtn');
             if (inviteMoreBtn) inviteMoreBtn.addEventListener('click', startP2pHost);
+            bindRoomCodeButtons(roomCode);
             ui.lanBody.querySelectorAll('[data-drop-pid]').forEach((button) => {
                 button.addEventListener('click', () => dropLobbySeat(button.dataset.dropPid));
             });
             document.getElementById('lanLeaveBtn').addEventListener('click', leaveLanLobby);
             return;
         }
-        // Otherwise: name + host/join browser. LAN uses the deck already selected
-        // for vs-AI play, so there is no separate deck picker here.
+        // Otherwise: name, then the three ways in. Online-by-code leads, because
+        // it is the one that works from anywhere and asks the least of the
+        // player; same-Wi-Fi play needs no code at all and comes next; swapping
+        // descriptions by hand is the fallback for when no rendezvous is
+        // reachable, and is folded away until it is wanted.
+        const online = rendezvousAvailable();
         ui.lanBody.innerHTML = `
             <label class="lan-label">Your name</label>
             <input id="lanNameInput" class="lan-input" value="${escapeHtml(name)}" maxlength="20" />
-            <div class="lan-section-title">Host a game</div>
-            <p class="tiny" style="margin:0 0 8px;">Open a lobby and start once others join — 2 to 5 players.</p>
-            <button class="btn" id="lanHostBtn" style="width:100%;">Host game</button>
-            <div class="lan-section-title">Join a game ${lanEnabled ? '' : '(starting discovery…)'}</div>
+
+            <div class="lan-section-title">Play online with friends</div>
+            <p class="tiny" style="margin:0 0 8px;">Anywhere, not just this Wi‑Fi. One code for the
+                whole table — up to ${MAX_P2P_SEATS} players join with the same one. Once you are
+                connected the game runs directly between you.</p>
+            ${online ? `
+                <button class="btn" id="onlineHostBtn" style="width:100%;">Host an online game</button>
+                <label class="lan-label" for="roomCodeInput">…or enter a friend's game code</label>
+                <div class="room-join">
+                    <input id="roomCodeInput" class="lan-input room-code-input" maxlength="13"
+                        autocapitalize="characters" autocomplete="off" spellcheck="false"
+                        inputmode="text" placeholder="7QK4F-2M9XB" />
+                    <button class="btn small" id="roomScanBtn" title="Scan a code" aria-label="Scan a code">Scan</button>
+                </div>
+                <button class="btn ghost" id="roomJoinBtn" style="width:100%;margin-top:8px;">Join game</button>`
+            : `<p class="tiny" style="margin:0 0 8px;">No matchmaking server is set for this build,
+                    so online games need a code swapped by hand (below) — or point it at one:</p>
+               <div class="room-join">
+                   <input id="rendezvousInput" class="lan-input" placeholder="https://…"
+                       value="${escapeHtml(rendezvousBase())}" autocomplete="off" spellcheck="false" />
+                   <button class="btn small" id="rendezvousSaveBtn">Use</button>
+               </div>`}
+
+            <div class="lan-section-title">On this Wi‑Fi ${lanEnabled ? '' : '(looking…)'}</div>
+            <p class="tiny" style="margin:0 0 8px;">Same network, no code needed.</p>
+            <button class="btn ghost" id="lanHostBtn" style="width:100%;">Host on this network</button>
             <div class="lan-peers" id="lanPeers"></div>
-            <div class="lan-section-title">Play online with a friend</div>
-            <p class="tiny" style="margin:0 0 8px;">Anywhere, not just this Wi‑Fi. Swap a code over chat
-                and the game connects you directly — no server in between. One code swap per guest,
-                so a free-for-all seats up to ${MAX_P2P_SEATS} the same way a duel seats two.</p>
-            <button class="btn ghost" id="p2pHostBtn" style="width:100%;">Create an invite code</button>
-            <label class="lan-label" for="p2pInviteInput">…or enter a friend's invite code</label>
-            <textarea id="p2pInviteInput" class="lan-input p2p-code" rows="3"
-                placeholder="MYTCG2.…"></textarea>
-            ${scanSupported()
-                ? '<button class="btn ghost" id="p2pScanJoinBtn" style="width:100%;margin-top:8px;">Scan their code</button>'
-                : ''}
-            <button class="btn ghost" id="p2pJoinBtn" style="width:100%;margin-top:8px;">Answer this invite</button>`;
+
+            <details class="lan-advanced">
+                <summary class="tiny">Connect without a server (swap codes by hand)</summary>
+                <p class="tiny" style="margin:8px 0;">Two long codes per player, passed over any chat
+                    you like. Nothing of ours is involved at any point — worth it if you would rather
+                    no server saw even the introduction.</p>
+                <button class="btn ghost" id="p2pHostBtn" style="width:100%;">Create an invite code</button>
+                <label class="lan-label" for="p2pInviteInput">…or enter a friend's invite code</label>
+                <textarea id="p2pInviteInput" class="lan-input p2p-code" rows="3"
+                    placeholder="MYTCG2.…"></textarea>
+                <button class="btn ghost" id="p2pScanJoinBtn" style="width:100%;margin-top:8px;">Scan their code</button>
+                <button class="btn ghost" id="p2pJoinBtn" style="width:100%;margin-top:8px;">Answer this invite</button>
+            </details>`;
         const nameInput = document.getElementById('lanNameInput');
         // Persist on every keystroke so a later re-render never loses in-progress text.
         nameInput.addEventListener('input', () => localStorage.setItem('mytcg_lan_name', nameInput.value.trim()));
@@ -1292,9 +1658,74 @@ export function createMenuController(ui, game, cardStack) {
             if (!code.trim()) { showToast('Enter the invite code your friend sent you.'); return; }
             startP2pGuest(code);
         });
-        const scanJoinBtn = document.getElementById('p2pScanJoinBtn');
-        if (scanJoinBtn) scanJoinBtn.addEventListener('click', () => scanQrCode(startP2pGuest));
+        document.getElementById('p2pScanJoinBtn').addEventListener('click', () => scanQrCode(startP2pGuest));
+        const hostOnlineBtn = document.getElementById('onlineHostBtn');
+        if (hostOnlineBtn) hostOnlineBtn.addEventListener('click', hostOnlineGame);
+        const codeInput = document.getElementById('roomCodeInput');
+        if (codeInput) {
+            // Group the code as it is typed, so what is on screen matches what
+            // is on the other player's screen.
+            codeInput.addEventListener('input', () => {
+                const clean = codeInput.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 10);
+                codeInput.value = formatCode(clean);
+            });
+            codeInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') joinOnlineGame(codeInput.value);
+            });
+            document.getElementById('roomJoinBtn').addEventListener('click', () => {
+                joinOnlineGame(codeInput.value);
+            });
+            document.getElementById('roomScanBtn').addEventListener('click', () => {
+                scanQrCode(
+                    (code) => joinOnlineGame(code),
+                    // Backing out of the scanner puts them on the keyboard
+                    // rather than back at a panel with nothing focused.
+                    () => { const box = document.getElementById('roomCodeInput'); if (box) box.focus(); },
+                );
+            });
+        }
+        const rendezvousInput = document.getElementById('rendezvousInput');
+        if (rendezvousInput) {
+            document.getElementById('rendezvousSaveBtn').addEventListener('click', () => {
+                setRendezvousBase(rendezvousInput.value);
+                showToast(rendezvousBase() ? 'Matchmaking server set.' : 'Matchmaking server cleared.');
+                renderLan();
+            });
+        }
         renderLanPeers();
+    }
+
+    /**
+     * The host's code, big enough to read across a table, with the QR beside it.
+     *
+     * The QR carries a *link*, not the bare code: a phone's own camera app opens
+     * a link, which lands the guest on the game with the code already filled in,
+     * so the most common way anyone will ever scan this needs nothing installed
+     * and no button pressed. The code underneath is for saying out loud.
+     */
+    function roomCodeHtml(code) {
+        const link = joinLink(code);
+        const qr = link ? qrCodeHtml(link) : '';
+        return `
+            <div class="room-banner">
+                <div class="room-banner-side">
+                    <div class="tiny">Anyone with this code can join</div>
+                    <div class="room-code" id="roomCodeText">${escapeHtml(formatCode(code))}</div>
+                    <div class="room-banner-actions">
+                        <button class="btn small ghost" id="roomCopyCodeBtn">Copy code</button>
+                        ${link ? '<button class="btn small ghost" id="roomCopyLinkBtn">Copy link</button>' : ''}
+                    </div>
+                </div>
+                ${qr ? `<div class="p2p-qr room-qr" title="Scan with any camera app">${qr}</div>` : ''}
+            </div>`;
+    }
+
+    function bindRoomCodeButtons(code) {
+        if (!code) return;
+        const copyCode = document.getElementById('roomCopyCodeBtn');
+        if (copyCode) copyCode.addEventListener('click', () => copyToClipboard(formatCode(code)));
+        const copyLink = document.getElementById('roomCopyLinkBtn');
+        if (copyLink) copyLink.addEventListener('click', () => copyToClipboard(joinLink(code)));
     }
 
     // The code-swapping panel, for both sides: the code we produced — as text to
@@ -1303,11 +1734,17 @@ export function createMenuController(ui, game, cardStack) {
     function renderP2pPanel() {
         const view = p2pView;
         const isHost = view.mode === 'host';
-        if (view.busy && !view.code) {
+        // Joining by room code, or any step that has nothing to show yet: a
+        // line of status and a way out.
+        if (view.mode === 'joining' || (view.busy && !view.code)) {
+            const heading = view.mode === 'joining'
+                ? `Joining ${escapeHtml(formatCode(view.code))}`
+                : 'Play online';
             ui.lanBody.innerHTML = `
-                <div class="lan-section-title">Play online</div>
-                <p class="tiny">${escapeHtml(view.status || 'Working…')}</p>
-                <button class="btn ghost" id="p2pCancelBtn" style="width:100%;margin-top:12px;">Cancel</button>`;
+                <div class="lan-section-title">${heading}</div>
+                <p class="tiny p2p-status">${escapeHtml(view.status || 'Working…')}</p>
+                <button class="btn ghost" id="p2pCancelBtn" style="width:100%;margin-top:12px;">
+                    ${view.busy ? 'Cancel' : 'Back'}</button>`;
             document.getElementById('p2pCancelBtn').addEventListener('click', cancelP2p);
             return;
         }
@@ -1318,9 +1755,8 @@ export function createMenuController(ui, game, cardStack) {
         const codeHint = isHost
             ? 'Show this code, or send it however you normally chat.'
             : 'Send this back to the host — they enter it to finish connecting.';
-        const scanButton = scanSupported()
-            ? `<button class="btn ghost" id="p2pScanBtn" style="width:100%;margin-top:8px;">Scan their code</button>`
-            : '';
+        const scanButton = '<button class="btn ghost" id="p2pScanBtn" '
+            + 'style="width:100%;margin-top:8px;">Scan their code</button>';
         const replyBox = isHost
             ? `<label class="lan-label" for="p2pReplyInput">Their reply code</label>
                <textarea id="p2pReplyInput" class="lan-input p2p-code" rows="3"
@@ -1394,7 +1830,7 @@ export function createMenuController(ui, game, cardStack) {
     async function leaveLanLobby() {
         stopLobbyPolling();
         // Free the seat on the way out so the others are not left waiting on a
-        // chair nobody is sitting in. Invite-code guests need no call: the host
+        // chair nobody is sitting in. Online guests need no call: the host
         // sees the channel close. Best-effort either way — leaving must not
         // hang on an unreachable host.
         if (lanLobby && !lanLobby.is_host && !lanLobby.started && !lanLobby.p2p) {
@@ -1402,10 +1838,11 @@ export function createMenuController(ui, game, cardStack) {
                 lobby_id: lanLobby.lobby_id, player_id: lanLobby.my_pid,
             }).catch(() => {});
         }
-        // An invite-code lobby only exists as long as the direct connection
+        // An online lobby only exists as long as the direct connection
         // does, so leaving it drops the connection too.
         closeActiveP2p();
         setP2pTransport(null);
+        releaseRoom();
         p2pHub = null;
         p2pGuestSession = null;
         lanLobby = null;
@@ -2415,6 +2852,27 @@ export function createMenuController(ui, game, cardStack) {
         // Warm the collection cache in the background; custom deck art on the
         // menu tile resolves once it lands.
         ensureCollection().then(() => renderMenu());
+        // A join link that was tapped or scanned with the phone's own camera.
+        followJoinLink();
+    }
+
+    /**
+     * `#join=CODE` in the address: somebody scanned the host's QR with their
+     * camera app, or tapped the link out of a chat. That is the shortest path
+     * there is into a game, so it opens the panel and joins straight away.
+     *
+     * The hash is cleared first. Leaving it would rejoin the same game on every
+     * reload, long after it has finished.
+     */
+    function followJoinLink() {
+        let code = '';
+        try {
+            const match = (location.hash || '').match(/join=([0-9A-Za-z-]+)/);
+            code = match ? normalizeCode(match[1]) : '';
+            if (match) history.replaceState(navCurrent, '', location.pathname + location.search);
+        } catch (error) { /* no history access: the code below still works */ }
+        if (!code) return;
+        openLan().then(() => joinOnlineGame(code));
     }
 
     return { init, openMenu, showScreen, navBack, p2pSealedLink };
