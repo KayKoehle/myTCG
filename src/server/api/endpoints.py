@@ -12,6 +12,7 @@ from ..engine import sandbox, sealed
 from ..engine.transitions import available_decks, deal_piles, register_custom_deck
 from ..services import GameService
 from ..services.lan import LanService
+from ..services.rendezvous import RendezvousError, RendezvousService
 from .schemas import (
     ActionRequest,
     ActionResponse,
@@ -50,6 +51,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 game_service = GameService()
 lan_service = LanService(deck_registrar=register_custom_deck)
+rendezvous_service = RendezvousService()
 WEBAPP_DIR = Path(__file__).resolve().parents[1] / "webapp"
 WEBAPP_MANIFEST = WEBAPP_DIR / "manifest.webmanifest"
 WEBAPP_SW = WEBAPP_DIR / "sw.js"
@@ -292,7 +294,7 @@ def register_ws_routes(app: FastAPI):
 
     @app.post("/api/lan/leave")
     async def lan_leave(request: dict):
-        # Host-only in invite-code play: it is deliberately not in the webapp's
+        # Host-only in online play: it is deliberately not in the webapp's
         # P2P_GUEST_PATHS allowlist, so a guest cannot renumber the lobby or
         # unseat anybody else through the relay.
         try:
@@ -313,7 +315,7 @@ def register_ws_routes(app: FastAPI):
     @app.post("/api/lan/start")
     async def lan_start(request: dict):
         try:
-            # `seed` is optional and only invite-code games send it: their deal
+            # `seed` is optional and only online games send it: their deal
             # is agreed by commit-reveal once every player is seated.
             params = lan_service.start_game(request["lobby_id"], seed=request.get("seed"))
         except (KeyError, ValueError) as exc:
@@ -332,6 +334,50 @@ def register_ws_routes(app: FastAPI):
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, **params}
+
+    # --- Rendezvous ----------------------------------------------------------
+    # The drop box that turns online play into one short code instead of a
+    # chain of invite/reply codes (services/rendezvous.py). Everything below
+    # moves opaque ciphertext between players; the key is derived from the code
+    # they share and never reaches this process, so nothing here can read a
+    # connection description, let alone substitute its own.
+
+    def _rendezvous(call):
+        try:
+            return call()
+        except RendezvousError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    @app.post("/api/rendezvous/open")
+    async def rendezvous_open(request: dict):
+        return _rendezvous(lambda: rendezvous_service.open_room(request.get("room_id")))
+
+    @app.post("/api/rendezvous/poll")
+    async def rendezvous_poll(request: dict):
+        return _rendezvous(lambda: rendezvous_service.poll(request.get("room_id")))
+
+    @app.post("/api/rendezvous/answer")
+    async def rendezvous_answer(request: dict):
+        return _rendezvous(lambda: rendezvous_service.answer(
+            request.get("room_id"), request.get("guest_id"), request.get("blob")))
+
+    @app.post("/api/rendezvous/close")
+    async def rendezvous_close(request: dict):
+        return _rendezvous(lambda: rendezvous_service.close_room(request.get("room_id")))
+
+    @app.post("/api/rendezvous/offer")
+    async def rendezvous_offer(request: dict):
+        return _rendezvous(lambda: rendezvous_service.offer(
+            request.get("room_id"), request.get("guest_id"), request.get("blob")))
+
+    @app.post("/api/rendezvous/collect")
+    async def rendezvous_collect(request: dict):
+        return _rendezvous(lambda: rendezvous_service.collect(
+            request.get("room_id"), request.get("guest_id")))
+
+    @app.post("/api/rendezvous/stats")
+    async def rendezvous_stats(request: dict | None = None):
+        return rendezvous_service.stats()
 
     @app.post("/api/lan/trade/propose")
     async def lan_trade_propose(request: dict):

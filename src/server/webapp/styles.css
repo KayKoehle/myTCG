@@ -4170,6 +4170,56 @@ details[open]>.cos-summary::before {
     background: #000;
 }
 .p2p-scan .btn { width: min(340px, 84vw); }
+.p2p-scan-hint { color: var(--muted); text-align: center; max-width: min(340px, 84vw); }
+
+/* The host's game code, sized to be read across a table and typed into another
+   phone. Two columns where there is room for the QR beside it, stacked when
+   there is not. */
+.room-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+}
+.room-banner-side { flex: 1 1 150px; min-width: 0; }
+.room-code {
+    /* Tabular, monospaced digits: at this size a 0 that could be an O is the
+       difference between joining and not. */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: clamp(22px, 7vw, 30px);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin: 4px 0 8px;
+    user-select: all;
+    word-break: break-all;
+}
+.room-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.room-qr { margin: 0; flex: 0 0 auto; }
+.room-qr svg { width: min(132px, 34vw); border-radius: 6px; }
+
+/* Code entry: the box and its Scan button on one line. */
+.room-join { display: flex; gap: 8px; align-items: stretch; }
+.room-join .lan-input { flex: 1 1 auto; min-width: 0; }
+.room-join .btn { flex: 0 0 auto; white-space: nowrap; }
+.room-code-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* Hand-swapped codes are the fallback now, so they are folded away. */
+.lan-advanced { margin-top: 18px; }
+.lan-advanced > summary {
+    cursor: pointer;
+    color: var(--muted);
+    padding: 6px 0;
+}
 
 /* Trade sheet: two offer columns and the card pickers. */
 .trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }

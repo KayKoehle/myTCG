@@ -337,7 +337,7 @@ class LanService:
         """Free a seat in a lobby that has not started yet.
 
         Called when a player leaves, and when the host notices one is gone: an
-        invite-code game has one direct connection per guest, so a dropped
+        online game has one direct connection per guest, so a dropped
         channel is a dropped player and the rest of the table should not have to
         rebuild the lobby around the empty chair.
 
@@ -379,7 +379,7 @@ class LanService:
         Returns the match parameters guests need (match_id, seed, deck list).
         The caller (endpoints) creates the authoritative match on the host.
 
-        `seed` overrides the one picked when the lobby opened. Invite-code games
+        `seed` overrides the one picked when the lobby opened. Online games
         settle their seed by commit-reveal among the players (webapp/js/p2p.js),
         and that cannot finish until everyone has joined — so the deal is fixed
         here, at start, rather than when the lobby was created.

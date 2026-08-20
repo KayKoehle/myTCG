@@ -437,3 +437,43 @@ export function qrSvg(text, { moduleSize = 4, quiet = 4 } = {}) {
 }
 
 export const QR_BYTE_LIMIT = byteCapacity(MAX_VERSION);
+
+/**
+ * The function patterns of a symbol: finders and their separators, alignment,
+ * timing, the format and version fields. `reserved[row][col]` is 1 where a
+ * module is one of them and therefore carries no data.
+ *
+ * The decoder (js/qrdecode.js) needs exactly this to know which modules to read
+ * and which to skip, and it is built here — by the encoder's own drawing code,
+ * on the encoder's own tables — so the two cannot drift apart. A decoder with
+ * its own copy of the layout is a decoder that quietly stops reading the codes
+ * this file produces the day one of them is corrected.
+ *
+ * The mask passed to `drawFormat` is irrelevant: only *which* modules the
+ * format field occupies matters here, never what is written in them.
+ */
+export function functionPatterns(version) {
+    const size = version * 4 + 17;
+    const matrix = emptyMatrix(size);
+    drawFinder(matrix, 0, 0);
+    drawFinder(matrix, 0, size - 7);
+    drawFinder(matrix, size - 7, 0);
+    drawAlignment(matrix, version);
+    for (let i = 8; i < size - 8; i += 1) {
+        place(matrix, 6, i, i % 2 === 0);
+        place(matrix, i, 6, i % 2 === 0);
+    }
+    drawVersion(matrix, version);
+    drawFormat(matrix, 0);
+    return matrix;
+}
+
+/**
+ * The encoder's tables and field arithmetic, shared with the decoder rather
+ * than copied into it. Same reasoning as `functionPatterns`: one table, one
+ * place to be wrong, one place to fix.
+ */
+export const qrTables = {
+    EC_M, ALIGNMENT, FORMAT_BITS_M, FORMAT_COPY_1, MAX_VERSION,
+    EXP, LOG, gfMul, maskBit, dataCodewords,
+};

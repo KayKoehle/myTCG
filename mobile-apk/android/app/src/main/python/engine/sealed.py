@@ -1,6 +1,6 @@
 """Sealed cards: state the host holds but cannot read.
 
-Invite-code play has no server, so one player's machine runs the match — and
+Online play has no server, so one player's machine runs the match — and
 today that machine holds every deck order and every hand in the clear
 (:class:`~.state.GameState`). The encrypted shuffle in ``webapp/js/mentalpoker.js``
 removes the need to trust it, but only if the rules runtime never sees the

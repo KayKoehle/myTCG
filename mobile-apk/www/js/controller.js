@@ -33,7 +33,7 @@ export function createGameController(ui, cardStack) {
     // entry arrives as a bare handle with `sealed: true` (engine/sealed.py).
     // We can read it: the other players published their keys for the positions
     // we drew, so our own instance knows what those handles are. This is the
-    // lookup that puts the card back into the picture, set by the invite-code
+    // lookup that puts the card back into the picture, set by the online
     // wiring when a match is dealt from an encrypted shuffle.
     let sealedCardLookup = null;
 
@@ -2100,7 +2100,7 @@ export function createGameController(ui, cardStack) {
         } else if (app.lanHostBase !== P2P_HOST_BASE) {
             saveLanSession({ hostBase: app.lanHostBase, matchId, seed, playerId, decks });
         }
-        // An invite-code guest deliberately saves nothing: the route to the host
+        // An online guest deliberately saves nothing: the route to the host
         // is a live WebRTC channel, not an address, so a "rejoin" offer after a
         // drop or a restart could never be honoured (js/p2p.js).
         try {
@@ -2355,7 +2355,7 @@ export function createGameController(ui, cardStack) {
 
     // Leave the match for the menu. Unlike endLanGame (which also runs when one
     // match hands over to the next) this is the player walking away, so an
-    // invite-code connection is torn down here rather than in endLanGame.
+    // online connection is torn down here rather than in endLanGame.
     function exitToMenu() {
         endLanGame();
         closeActiveP2p();
@@ -2524,7 +2524,7 @@ export function createGameController(ui, cardStack) {
         // The menu offers a "Reconnect" entry when an unclean exit left a live
         // guest session behind; it rejoins by feeding this back to startLanGame.
         loadLanSession,
-        // Invite-code play hands over a reader for the cards only we can open
+        // Online play hands over a reader for the cards only we can open
         // once a match is dealt from an encrypted shuffle (js/sealedplay.js).
         setSealedCardLookup(lookup) { sealedCardLookup = lookup; },
         // For the in-game trade UI: who we are and which match we're in.

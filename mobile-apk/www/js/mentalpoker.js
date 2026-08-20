@@ -1,6 +1,6 @@
 // Shuffling a deck that nobody can see and nobody can stack.
 //
-// In invite-code play there is no server, so one player's machine would
+// In online play there is no server holding the match, so one player's machine would
 // normally hold the deal — and could read every hand. This module removes the
 // need to trust it, using the classic "mental poker" construction (Shamir,
 // Rivest and Adleman, 1979) adapted to this game's shape.
