@@ -172,6 +172,8 @@ body {
     background: linear-gradient(165deg, rgba(16, 42, 66, 0.92), rgba(9, 24, 38, 0.95));
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(10px);
+    /* Dips while the board turns around between local players. */
+    transition: opacity 200ms ease;
 }
 
 .icon-btn {
@@ -1564,6 +1566,9 @@ select {
     top: 0;
     left: 0;
     width: 170px;
+    /* Set per card by layoutHand() so the fan overlaps left-to-right; the
+       desktop hover rule below overrides it to lift the card being read. */
+    z-index: var(--hand-z, 1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 10px;
     padding: 8px;
@@ -1572,7 +1577,107 @@ select {
     display: grid;
     gap: 8px;
     cursor: grab;
+    perspective: 900px;
     transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+/* --- Hover-to-read (desktop) ----------------------------------------------
+   A hand card has two faces: the art it always shows, and an effect-text side
+   it turns to while a mouse rests on it. The flip is CSS only and lives on an
+   inner wrapper, so the card's own border, the mulligan X and the keep/redraw
+   button stay put and the drag handlers (bound to .hand-card itself) never
+   notice. Touch devices get nothing here — a tap still opens the inspector. */
+.hand-card-inner {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    transform-style: preserve-3d;
+    transition: transform 420ms cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+.hand-card-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.hand-card-front {
+    display: grid;
+    gap: 8px;
+}
+
+.hand-card-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 3px;
+    padding: 2px;
+    border-radius: 8px;
+    background: linear-gradient(165deg, rgba(14, 44, 70, 0.98), rgba(8, 26, 43, 0.98));
+}
+
+.hand-back-title {
+    font-size: 11.5px;
+    font-weight: 800;
+    line-height: 1.15;
+    color: #f5fbff;
+    text-align: center;
+}
+
+.hand-back-type {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* Long effects scroll rather than shrink the type past reading size; the
+   whole card, effect and lore included, is still one click away in the
+   inspector. */
+.hand-back-effect {
+    font-size: 11px;
+    line-height: 1.3;
+    color: #dcefff;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 4px 3px 0;
+    margin-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    /* The fan overlaps, so the card under the cursor has to come to the front
+       and lift clear of its neighbours to be readable. */
+    .hand-card:hover {
+        z-index: 300;
+    }
+
+    .hand-card:hover .hand-card-inner {
+        transform: rotateY(180deg);
+    }
+
+    /* The redraw marker would sit right across the effect text it was turned
+       over to read, so it steps back to a watermark while the card is held. */
+    .hand-card.marked:hover .mulligan-x {
+        opacity: 0.3;
+    }
+
+    /* Never flip mid-drag — the ghost following the cursor is a clone of this
+       markup, and the card being dragged should read as the card being played.
+       A mulligan does flip: the keep/redraw button and the redraw X live
+       outside the turning wrapper, so both faces keep them. */
+    .hand-card.dragging:hover .hand-card-inner,
+    .drag-ghost .hand-card-inner {
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hand-card-inner {
+        transition: none;
+    }
 }
 
 .hand-title-main {
@@ -1650,6 +1755,7 @@ select {
     line-height: 1;
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
     pointer-events: none;
+    transition: opacity 200ms ease;
 }
 
 .hand-card.marked .mulligan-x {
@@ -4021,8 +4127,10 @@ details[open]>.cos-summary::before {
     min-width: 0;
 }
 
-/* Full-screen hand-off between local players: covers the outgoing player's
-   board until the incoming player confirms they hold the device. */
+/* Hand-off between local players. The board is never blacked out: it stays on
+   screen behind a light scrim with only the private zones covered (see
+   .secrets-hidden below), so the incoming player can already read the
+   position while the device changes hands. */
 .passplay-overlay {
     position: fixed;
     inset: 0;
@@ -4032,8 +4140,8 @@ details[open]>.cos-summary::before {
     justify-content: center;
     padding: 24px;
     background:
-        radial-gradient(700px 460px at 50% 20%, rgba(23, 182, 255, 0.18), transparent 65%),
-        linear-gradient(165deg, #07131f, #0b1f31);
+        radial-gradient(700px 460px at 50% 30%, rgba(23, 182, 255, 0.16), transparent 70%),
+        rgba(4, 13, 22, 0.55);
 }
 
 .passplay-card {
@@ -4042,6 +4150,100 @@ details[open]>.cos-summary::before {
     justify-items: center;
     text-align: center;
     max-width: 340px;
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: linear-gradient(165deg, rgba(16, 42, 66, 0.97), rgba(8, 22, 36, 0.98));
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* --- Turning the board around ---------------------------------------------
+   The physical pass, on screen: the board spins a full turn while the seat
+   behind it swaps. turnBoard() measures the board first and hands the spin the
+   numbers it needs: --turn-dx/--turn-dy pull the board to the middle of the
+   screen, --turn-scale shrinks it enough to clear the quarter turns, and
+   --turn-rest lets it swell back out at the half-way point, where it is merely
+   upside down and can sit as large as the screen allows; body.board-turning
+   clips what still hangs over the sides.
+
+   The pull-back is front-loaded (and released late) on purpose: within the
+   first quarter of the spin the board has already drawn back to the middle of
+   the screen, and it stays there, so it turns whole and centred rather than
+   only at the half-way point. The translate comes first in the transform
+   list, so --turn-dx/--turn-dy are plain viewport offsets, unaffected by the
+   rotation that follows them. */
+@keyframes board-turn-out {
+    0% {
+        transform: translate(0px, 0px) rotate(0deg) scale(1);
+        animation-timing-function: ease-in;
+    }
+    28% {
+        transform: translate(var(--turn-dx, 0px), var(--turn-dy, 0px)) rotate(38deg) scale(var(--turn-scale, 0.62));
+        animation-timing-function: linear;
+    }
+    100% {
+        transform: translate(var(--turn-dx, 0px), var(--turn-dy, 0px)) rotate(180deg) scale(var(--turn-rest, 0.75));
+    }
+}
+
+@keyframes board-turn-in {
+    0% {
+        transform: translate(var(--turn-dx, 0px), var(--turn-dy, 0px)) rotate(180deg) scale(var(--turn-rest, 0.75));
+        animation-timing-function: linear;
+    }
+    72% {
+        transform: translate(var(--turn-dx, 0px), var(--turn-dy, 0px)) rotate(322deg) scale(var(--turn-scale, 0.62));
+        animation-timing-function: ease-out;
+    }
+    100% { transform: translate(0px, 0px) rotate(360deg) scale(1); }
+}
+
+.board-turn-out {
+    animation: board-turn-out 620ms linear forwards;
+}
+
+.board-turn-in {
+    animation: board-turn-in 620ms linear forwards;
+}
+
+body.board-turning {
+    overflow-x: clip;
+}
+
+/* Nothing on a turning board is meant to be touched, and the sticky top bar
+   swaps its seat names mid-turn — fade it rather than letting them pop. */
+body.board-turning .board {
+    pointer-events: none;
+}
+
+body.board-turning .status-panel {
+    opacity: 0.35;
+}
+
+/* --- Hidden information during a hand-off ---------------------------------
+   Whatever belongs to one seat alone is covered, not removed: the layout
+   holds its shape so the board behind the pass prompt is the same board that
+   comes back. Hand cards turn into card backs; the rest simply blanks. */
+body.secrets-hidden .hand-card > *,
+body.secrets-hidden .opp-card-revealed,
+body.secrets-hidden .deck-revealed-card {
+    visibility: hidden;
+}
+
+body.secrets-hidden .hand-card {
+    background: var(--card-back);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    cursor: default;
+}
+
+/* A decision popup can hold cards only one seat may read; the hand-off has
+   already dismissed them, this just guarantees nothing lingers on screen. */
+body.secrets-hidden .choice-modal,
+body.secrets-hidden .stack-modal,
+body.secrets-hidden .inspector-modal,
+body.secrets-hidden .peek-restore {
+    display: none !important;
 }
 
 .passplay-icon { font-size: 52px; line-height: 1; }
