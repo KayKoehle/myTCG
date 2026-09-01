@@ -2,6 +2,7 @@ import { P2P_HOST_BASE, postJson, lanPost, isLocalBridge, setLanSelfBase, setP2p
 import {
     closeActiveP2p, createGuestOffer, createGuestSession, createHostHub, p2pSupported,
 } from './p2p.js';
+import { refuseGuestCall } from './guestcalls.js';
 import { qrSvg } from './qr.js';
 import { decodeQr } from './qrdecode.js';
 import {
@@ -830,22 +831,27 @@ export function createMenuController(ui, game, cardStack) {
                 const data = await lanPost(lanLobby.host_base, '/api/lan/lobby', { lobby_id: lanLobby.lobby_id });
                 if (data.ok && data.lobby) {
                     lanLobby.seats = data.lobby.seats;
-                    lanLobby.started = data.lobby.started;
                     // Somebody ahead of us leaving renumbers the seats behind
                     // them, so a guest re-reads its own id from the lobby (by
                     // the seat_uid it was given at join) rather than trusting
-                    // the number it joined on. No seat of ours left means we
-                    // are the one who was removed.
-                    if (!lanLobby.is_host && !lanLobby.started && lanLobby.seat_uid) {
+                    // the number it joined on. Before the `started` flag is
+                    // applied, not after: the poll that first sees the match
+                    // running is the one whose number we then play the whole
+                    // match on, and a seat freed since the previous tick would
+                    // otherwise seat us at somebody else's hand.
+                    if (!lanLobby.is_host && lanLobby.seat_uid) {
                         const mine = (data.lobby.seats || [])
                             .find((s) => s.seat_uid === lanLobby.seat_uid);
-                        if (!mine) {
+                        // No seat of ours left means we are the one who was
+                        // removed — but only a lobby still open can remove us.
+                        if (!mine && !data.lobby.started) {
                             showToast('The host removed you from the lobby.');
                             leaveLanLobby();
                             return;
                         }
-                        lanLobby.my_pid = Number(mine.player_id);
+                        if (mine) lanLobby.my_pid = Number(mine.player_id);
                     }
+                    lanLobby.started = data.lobby.started;
                     // Not while a code swap is on screen: inviting the third,
                     // fourth and fifth player happens *from* the lobby, so this
                     // tick would otherwise rebuild the panel — and wipe the box
@@ -896,6 +902,11 @@ export function createMenuController(ui, game, cardStack) {
                 lobby_id: lanLobby.lobby_id, ...(seed === undefined ? {} : { seed }),
             });
             if (!data.ok) { showToast(data.error || 'Could not start'); return; }
+            // The host stops polling the lobby the moment the match opens, so
+            // nothing else will ever set this: without it a guest dropping
+            // mid-match still looks like a guest leaving an open lobby, and the
+            // host tries to renumber seats the engine has already dealt to.
+            lanLobby.started = true;
             beginLanMatch({
                 hostBase: null, matchId: data.match_id, seed: data.seed,
                 playerId: 1, decks: data.decks,
@@ -913,31 +924,16 @@ export function createMenuController(ui, game, cardStack) {
     // runs one connection per guest, so free-for-alls work like duels with more
     // invites.
 
-    // What a guest may ask its host to run. A guest is a stranger's browser, so
-    // it gets the calls a player legitimately needs and nothing else — notably
-    // not /api/lan/start (the host decides when to start) and not the sandbox
-    // routes, which can edit a live match at will.
-    const P2P_GUEST_PATHS = new Set([
-        '/api/state', '/api/action', '/api/ai-move', '/api/replay',
-        // A sealed match is dealt from ciphertexts the host holds, so opening a
-        // card and auditing the piles at the end are calls only it can answer.
-        // Neither takes the host's word for anything: both are checked against
-        // the deal every player committed to (engine/sealed.py).
-        '/api/reveal', '/api/sealed/audit',
-        '/api/lan/join', '/api/lan/lobby',
-        '/api/lan/trade/propose', '/api/lan/trade/offer', '/api/lan/trade/confirm',
-        '/api/lan/trade/cancel', '/api/lan/trade/state',
-    ]);
-
     // Host side: run one of a guest's calls against our own local server.
     // `guest` is the connection the call arrived on, which is how a lobby seat
     // gets tied to a channel: when that channel drops we know which seat to
-    // free. (/api/lan/leave is deliberately not in the allowlist above — the
-    // host frees seats, so no guest can unseat another player through us.)
+    // free — and it is also the seat the call has to speak for, since the
+    // number in the body is the guest's to write and every seat's hand is one
+    // `/api/state` away from anybody free to choose it. js/guestcalls.js holds
+    // both halves of that rule.
     async function p2pServe(path, body, guest) {
-        if (!P2P_GUEST_PATHS.has(path)) {
-            throw new Error(`The host refused the call ${path}.`);
-        }
+        const refusal = refuseGuestCall(path, body, guest && guest.playerId);
+        if (refusal) throw new Error(refusal);
         const data = await lanPost('', path, body);
         if (path === '/api/lan/join' && guest && data && data.ok) {
             guest.playerId = Number(data.player_id);
@@ -1093,6 +1089,10 @@ export function createMenuController(ui, game, cardStack) {
             startRoomPolling();
         } catch (error) {
             p2pView = null;
+            // The room may already be open — give it back rather than leaving a
+            // code nobody is listening on, which a guest would sit and wait for
+            // until it timed out.
+            releaseRoom();
             showToast(`Could not open the game: ${error.message || error}`);
         }
         renderLan();

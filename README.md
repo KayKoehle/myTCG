@@ -45,6 +45,7 @@ src/
       js/mentalpoker.js      Encrypted shuffle: a deck nobody can read or stack
       js/shuffle.js          Running that shuffle across a whole table
       js/sealedplay.js       A player's side of a match nobody's machine can read
+      js/guestcalls.js       What a guest may ask its host for, and in whose name
 mobile-apk/                  Android app (Capacitor + Chaquopy)
 scripts/sync_mobile.py       Copies engine/webapp/data into mobile-apk
 tests/                       Pytest suite (invariants + per-card tests)
@@ -401,9 +402,26 @@ another seat's name.
 
 ### Guests are not trusted with the whole API
 
-A guest may only call the routes a player actually needs
-(`P2P_GUEST_PATHS` in `menu.js`) — notably not `/api/lan/start`, and not the
-sandbox routes, which can edit a live match at will.
+The host runs each guest's calls against its own instance, so every one of them
+is a stranger's browser asking a machine it does not own to do something.
+`webapp/js/guestcalls.js` answers the two questions that raises, and `p2pServe`
+in `menu.js` is the one place it is asked.
+
+**Which calls.** Only the routes a player actually needs — notably not
+`/api/lan/start` (the host decides when the game begins), not `/api/lan/leave`
+(the host frees seats, so no guest can unseat anybody else), not `/api/ai-move`
+(an online game has no AI seat, and the route would take another player's turn
+for them), and not the sandbox routes, which can edit a live match at will.
+
+**In whose name.** A seat is not the guest's to choose. The host stamps one onto
+the connection when that guest joins the lobby, and every field of a body that
+names a seat has to be that one. A snapshot is built for the viewer it is asked
+for and shows *that viewer's hand*, so a guest free to write `player_id: 2` is a
+guest reading seat 2's hand — and one free to write it into `/api/action` plays
+their turn, or confirms a trade in the name of the player whose cards it gives
+away. None of that needs a modified client; it is the ordinary payload with one
+number changed. The rules are pure, so the whole set runs headless in
+`scripts/run_guest_calls.mjs` (`tests/test_guest_calls.py`).
 
 ### STUN
 
