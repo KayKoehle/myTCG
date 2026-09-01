@@ -423,7 +423,10 @@ export function layoutHand(ui) {
     }
 
     // Card width is set in CSS (smaller on phones), so measure it here.
-    const cardWidth = cards[0].getBoundingClientRect().width || 170;
+    // offsetWidth/offsetHeight, not getBoundingClientRect: the board can be
+    // mid-transform (the pass-and-play turn scales it) and the layout width is
+    // what the fan has to be spread over, not the on-screen one.
+    const cardWidth = cards[0].offsetWidth || 170;
     const availableWidth = Math.max(cardWidth, handEl.clientWidth || cardWidth);
     const totalSpread = Math.max(0, availableWidth - cardWidth);
     const step = cards.length === 1
@@ -432,10 +435,12 @@ export function layoutHand(ui) {
 
     cards.forEach((cardEl, index) => {
         cardEl.style.left = `${Math.round(index * step)}px`;
-        cardEl.style.zIndex = String(index + 1);
+        // A custom property rather than an inline z-index, so the CSS hover
+        // rule can lift the card being read above the ones fanned over it.
+        cardEl.style.setProperty('--hand-z', String(index + 1));
     });
 
-    const cardHeight = cards[0].getBoundingClientRect().height || 218;
+    const cardHeight = cards[0].offsetHeight || 218;
     handEl.style.minHeight = `${Math.ceil(cardHeight + 12)}px`;
 }
 
@@ -935,16 +940,29 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
             const isUnplayable = !isOpeningMulligan && !app.playableCardSet.has(c.id);
             const hasSynergy = !isOpeningMulligan && synergyHandSet.has(c.id);
             const costClass = statChangeClass(c.cost, c.base_cost, false);
+            const type = typeLabel(c);
+            // Two faces: the art side the hand always shows, and an effect-text
+            // side the card turns to when a mouse hovers it (desktop only —
+            // see .hand-card-inner in styles.css; touch keeps tap-to-inspect).
             return `
                 <div class="hand-card ${isOpeningMulligan ? 'mulligan-mode' : ''} ${app.mulliganSelected.has(c.id) ? 'marked' : ''} ${isPlayable ? 'playable' : ''} ${isUnplayable ? 'unplayable' : ''} ${hasSynergy ? 'synergy' : ''}" data-card-id="${c.id}">
-                    <div class="hand-card-headline">
-                        <span class="stat-badge cost ${costClass}">${c.cost ?? '?'}</span>
-                        <div class="hand-title-main" style="--title-scale: ${titleScale};"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
-                        <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
-                    </div>
-                    ${typeLabel(c) ? `<div class="card-type">${escapeHtml(typeLabel(c))}</div>` : ''}
-                    <div class="hand-media">
-                        ${cardArtTag(c.name, 'hand-art')}
+                    <div class="hand-card-inner">
+                        <div class="hand-card-face hand-card-front">
+                            <div class="hand-card-headline">
+                                <span class="stat-badge cost ${costClass}">${c.cost ?? '?'}</span>
+                                <div class="hand-title-main" style="--title-scale: ${titleScale};"><span class="hand-title-text">${escapeHtml(handTitle)}</span></div>
+                                <span class="stat-badge power">${c.power !== null ? c.power : '?'}</span>
+                            </div>
+                            ${type ? `<div class="card-type">${escapeHtml(type)}</div>` : ''}
+                            <div class="hand-media">
+                                ${cardArtTag(c.name, 'hand-art')}
+                            </div>
+                        </div>
+                        <div class="hand-card-face hand-card-back" aria-hidden="true">
+                            <div class="hand-back-title">${escapeHtml(handTitle)}</div>
+                            ${type ? `<div class="hand-back-type">${escapeHtml(type)}</div>` : ''}
+                            <div class="hand-back-effect">${escapeHtml(effectLabel(c))}</div>
+                        </div>
                     </div>
                     <div class="mulligan-x">X</div>
                     ${canActMulligan ? `<button type="button" class="mull-toggle">${app.mulliganSelected.has(c.id) ? 'Redraw' : 'Keep'}</button>` : ''}

@@ -1822,11 +1822,103 @@ export function createGameController(ui, cardStack) {
         return custom || `Player ${seatNo}`;
     }
 
-    // Full-screen opaque hand-off: hides the outgoing player's board until the
-    // incoming player taps, then swaps the active seat and re-renders their view.
+    // Everything on screen that only the seat holding the device may see: the
+    // hand, an opened-up opponent hand, revealed deck tops, and any decision
+    // popup. A body class covers them in place (see .secrets-hidden in
+    // styles.css) instead of blacking the whole screen out, so the board
+    // itself stays readable through a hand-off. Anything both players can see
+    // anyway — the lanes, the piles, the set-aside scenario cards — stays.
+    function setSecretsHidden(hidden) {
+        document.body.classList.toggle('secrets-hidden', Boolean(hidden));
+    }
+
+    function prefersReducedMotion() {
+        return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    // Half of the board turn; the other half plays after the seat has swapped.
+    const BOARD_TURN_HALF_MS = 620;
+
+    // How the board has to move to spin in full view. A board is a tall column,
+    // usually taller than the screen and rarely centred in it, so turning it
+    // where it stands would swing most of it off the viewport: it draws back to
+    // the middle of the screen for the turn and returns afterwards.
+    //
+    // The scale is what keeps the whole of it there. A rotating box is at its
+    // widest and its tallest on its diagonal, so a board centred and shrunk to
+    // fit its diagonal into the shorter side of the viewport is wholly visible
+    // at every angle. Tall phone boards would have to shrink further than is
+    // worth looking at, so the floor wins there and the corners clip past the
+    // quarter turns instead.
+    function boardTurnGeometry(boardEl) {
+        const rect = boardEl.getBoundingClientRect();
+        const width = rect.width || 1;
+        const height = rect.height || 1;
+        const vw = window.innerWidth || width;
+        const vh = window.innerHeight || height;
+        const fit = Math.min(vw, vh) / Math.hypot(width, height);
+        const scale = Math.max(0.45, Math.min(0.85, fit));
+        // Half-way through, the board is merely upside down, so it can sit as
+        // large as an upright board fits — never smaller than the turn scale
+        // it grew from, and never so large it crowds the edges.
+        const rest = Math.max(scale, Math.min(0.9, vw / width, vh / height));
+        return {
+            dx: Math.round(vw / 2 - (rect.left + width / 2)),
+            dy: Math.round(vh / 2 - (rect.top + height / 2)),
+            scale,
+            rest,
+        };
+    }
+
+    // Turn the board around to face the next player: it spins out to 180deg,
+    // the perspective swaps at the midpoint (where the board is upside down
+    // and nothing has to line up), then it spins back up to 360deg the right
+    // way round for whoever now holds the device.
+    async function turnBoard(swapSeats) {
+        const boardEl = ui.gameScreen && ui.gameScreen.querySelector('.board');
+        if (!boardEl || prefersReducedMotion()) {
+            await swapSeats();
+            return;
+        }
+        // Measured once, before the spin starts: both halves have to be given
+        // the same numbers or the two animations would not meet.
+        const geometry = boardTurnGeometry(boardEl);
+        boardEl.style.setProperty('--turn-dx', `${geometry.dx}px`);
+        boardEl.style.setProperty('--turn-dy', `${geometry.dy}px`);
+        boardEl.style.setProperty('--turn-scale', String(geometry.scale));
+        boardEl.style.setProperty('--turn-rest', String(geometry.rest));
+        document.body.classList.add('board-turning');
+        try {
+            boardEl.classList.add('board-turn-out');
+            await sleep(BOARD_TURN_HALF_MS);
+            await swapSeats();
+            // The out phase holds its end transform (animation-fill-mode:
+            // forwards) and the in phase starts from exactly that, so trading
+            // the two classes in one tick never flashes an untransformed board.
+            boardEl.classList.remove('board-turn-out');
+            boardEl.classList.add('board-turn-in');
+            await sleep(BOARD_TURN_HALF_MS);
+        } finally {
+            boardEl.classList.remove('board-turn-out', 'board-turn-in');
+            boardEl.style.removeProperty('--turn-dx');
+            boardEl.style.removeProperty('--turn-dy');
+            boardEl.style.removeProperty('--turn-scale');
+            boardEl.style.removeProperty('--turn-rest');
+            document.body.classList.remove('board-turning');
+        }
+    }
+
+    // Hand-off between local players. The board stays on screen throughout —
+    // only the hidden information is covered — and the physical pass is
+    // mirrored by turning the whole board around to the incoming player.
     function promptPassAndPlay(seatId) {
         return new Promise((resolve) => {
             app.passPending = true;
+            // Cover the private zones *before* the prompt paints: the outgoing
+            // player is still the one holding the device.
+            closeInspector();
+            if (cardStack) cardStack.close();
+            setSecretsHidden(true);
             const overlay = document.createElement('div');
             overlay.className = 'passplay-overlay';
             overlay.innerHTML = `
@@ -1836,14 +1928,26 @@ export function createGameController(ui, cardStack) {
                     <div class="passplay-sub">Hand it to <strong>${escapeHtml(seatLabel(seatId))}</strong>.</div>
                     <button class="passplay-btn" type="button">I'm ${escapeHtml(seatLabel(seatId))} — ready</button>
                 </div>`;
+            const button = overlay.querySelector('.passplay-btn');
             const finish = async () => {
+                button.disabled = true;
                 overlay.remove();
-                app.passPending = false;
-                app.activeSeatId = Number(seatId);
-                await refresh();
-                resolve();
+                try {
+                    await turnBoard(async () => {
+                        app.activeSeatId = Number(seatId);
+                        await refresh();
+                    });
+                } catch (error) {
+                    // A failed re-fetch must not strand the device mid-hand-off
+                    // with the board still covered and no way to act.
+                    flashStatus(error);
+                } finally {
+                    setSecretsHidden(false);
+                    app.passPending = false;
+                    resolve();
+                }
             };
-            overlay.querySelector('.passplay-btn').addEventListener('click', finish);
+            button.addEventListener('click', finish, { once: true });
             document.body.appendChild(overlay);
         });
     }
@@ -2024,6 +2128,7 @@ export function createGameController(ui, cardStack) {
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
         app.passPending = false;
+        setSecretsHidden(false);
         resetSeatRoles();
         // Rematch starts back at the first local seat holding the device.
         if (app.localSeatIds && app.localSeatIds.length) app.activeSeatId = Number(app.localSeatIds[0]);
@@ -2091,6 +2196,7 @@ export function createGameController(ui, cardStack) {
         app.mulliganSelected.clear();
         app.opponentTurnActive = false;
         app.passPending = false;
+        setSecretsHidden(false);
         playedCardIds = new Set();
         // Hosting: keep the Wi-Fi radio awake so guests can reach us if the
         // screen sleeps. Guests: persist enough to rejoin the host after a drop
