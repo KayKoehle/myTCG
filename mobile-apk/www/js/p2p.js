@@ -190,6 +190,9 @@ function parseCandidates(sdp) {
         if (!line.startsWith('a=candidate:')) continue;
         const parts = line.slice('a=candidate:'.length).trim().split(/\s+/);
         // foundation component transport priority address port "typ" type ...
+        // A line shorter than that is not one we can read; skipping it costs a
+        // candidate, while reading past the end would cost the whole code.
+        if (parts.length < 6) continue;
         const [, component, transport, , address, port] = parts;
         if (component !== '1' || transport.toLowerCase() !== 'udp') continue;
         const portNumber = Number(port);
@@ -632,6 +635,11 @@ export async function createHostHub({ name }) {
     // *lobby*'s seat ids are positional and do get renumbered — that is what
     // the seat_uid in the lobby summary is for.)
     let nextSeat = 2; // seat 1 is the host
+    // Guests that have been answered but have not finished connecting. They
+    // hold a seat: several room-code joiners are answered concurrently, and a
+    // check against `guests` alone would let all of them past a table with one
+    // chair left and seat six players at a five-seat game.
+    let pendingSeats = 0;
     let rpcHandler = null;
     let lostHandler = null;
     let closing = false;
@@ -692,14 +700,22 @@ export async function createHostHub({ name }) {
         name: name || 'Host',
         commit,
         get guests() { return guests.slice(); },
-        get seatsUsed() { return guests.length + 1; },
+        // Seats spoken for: the players at the table, everybody the hub has
+        // already promised a place to, and us.
+        get seatsUsed() { return guests.length + pendingSeats + (pendingInvite ? 1 : 0) + 1; },
 
         /** Create the next invite code. One outstanding invite at a time. */
         async createInvite() {
+            // Drop the outstanding invite before counting seats: it is holding
+            // one open, and minting again is asking for that same seat rather
+            // than another.
+            if (pendingInvite) {
+                closePeer(pendingInvite);
+                pendingInvite = null;
+            }
             if (hub.seatsUsed >= MAX_SEATS) {
                 throw new Error(`A game seats at most ${MAX_SEATS} players.`);
             }
-            if (pendingInvite) closePeer(pendingInvite);
             const pc = new RTCPeerConnection({ iceServers: iceServers() });
             const channel = pc.createDataChannel('mytcg', { ordered: true });
             await pc.setLocalDescription(await pc.createOffer());
@@ -747,35 +763,60 @@ export async function createHostHub({ name }) {
             if (hub.seatsUsed >= MAX_SEATS) {
                 throw new Error(`A game seats at most ${MAX_SEATS} players.`);
             }
-            const pc = new RTCPeerConnection({ iceServers: iceServers() });
-            const channelPromise = new Promise((resolve) => {
-                pc.addEventListener('datachannel', (event) => resolve(event.channel), { once: true });
-            });
-            await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
-            await pc.setLocalDescription(await pc.createAnswer());
-            await waitForIceGathering(pc);
-            const answerCode = encodeCode({
-                role: ROLE_ANSWER, name: hub.name, commit, sdp: pc.localDescription.sdp,
-            });
-            let done = false;
-            return {
-                answerCode,
-                guestName: payload.name || 'Player',
-                async seat() {
-                    const channel = await withTimeout(
-                        channelPromise, CONNECT_TIMEOUT_MS,
-                        'That player never finished connecting.',
-                    );
-                    await waitForOpen(channel, CONNECT_TIMEOUT_MS);
-                    done = true;
-                    return admit({ pc, channel, wire: createWire(channel) }, payload);
-                },
-                /** Give up on a guest that stopped halfway. */
-                abandon() {
-                    if (done) return;
-                    try { pc.close(); } catch (error) { /* already gone */ }
-                },
+            // Taken now rather than when the channel opens: answering is the
+            // promise of a seat, and several joiners are answered at once.
+            pendingSeats += 1;
+            let released = false;
+            const release = () => {
+                if (released) return;
+                released = true;
+                pendingSeats -= 1;
             };
+            const pc = new RTCPeerConnection({ iceServers: iceServers() });
+            try {
+                const channelPromise = new Promise((resolve) => {
+                    pc.addEventListener('datachannel', (event) => resolve(event.channel), { once: true });
+                });
+                await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
+                await pc.setLocalDescription(await pc.createAnswer());
+                await waitForIceGathering(pc);
+                const answerCode = encodeCode({
+                    role: ROLE_ANSWER, name: hub.name, commit, sdp: pc.localDescription.sdp,
+                });
+                let done = false;
+                return {
+                    answerCode,
+                    guestName: payload.name || 'Player',
+                    async seat() {
+                        const channel = await withTimeout(
+                            channelPromise, CONNECT_TIMEOUT_MS,
+                            'That player never finished connecting.',
+                        );
+                        await waitForOpen(channel, CONNECT_TIMEOUT_MS);
+                        done = true;
+                        // The seat stops being a promise and becomes a player:
+                        // `admit` is what starts counting them in `guests`, so
+                        // the reservation is given back only afterwards.
+                        try {
+                            return admit({ pc, channel, wire: createWire(channel) }, payload);
+                        } finally {
+                            release();
+                        }
+                    },
+                    /** Give up on a guest that stopped halfway. */
+                    abandon() {
+                        if (done) return;
+                        release();
+                        try { pc.close(); } catch (error) { /* already gone */ }
+                    },
+                };
+            } catch (error) {
+                // Nothing was handed over, so the seat this was holding goes
+                // back to the table rather than staying spoken for.
+                release();
+                try { pc.close(); } catch (closeError) { /* already gone */ }
+                throw error;
+            }
         },
 
         /**
@@ -876,6 +917,7 @@ export async function createHostHub({ name }) {
             closing = true;
             if (pendingInvite) closePeer(pendingInvite);
             pendingInvite = null;
+            pendingSeats = 0;
             for (const guest of guests) closePeer(guest);
             guests.length = 0;
             if (activeSession === hub) activeSession = null;

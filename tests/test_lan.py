@@ -219,3 +219,47 @@ def test_non_participant_cannot_offer():
     trade = svc.propose_trade(match_id="m1", a_pid=1, b_pid=2)
     with pytest.raises(ValueError):
         svc.set_offer(trade["trade_id"], 3, ["Gilgamesh"])
+
+
+def test_both_players_proposing_at_once_open_one_trade(monkeypatch):
+    """Both players open the trade sheet by proposing, so the two calls really
+    do arrive together — and rival sessions would leave each side staging an
+    offer into a trade the other never sees, with neither ever completing.
+
+    Looking for an existing trade and creating one therefore have to be a single
+    critical section. This wedges a second caller into the exact moment between
+    them (the id is minted there) rather than racing threads and hoping: one
+    that is properly excluded waits, finds the first trade and converges on it.
+    """
+    import threading
+    import uuid as uuid_module
+
+    from server.services import lan as lan_module
+
+    svc, _ = make_service()
+    other_result: list[str] = []
+    real_uuid4 = uuid_module.uuid4
+    reentered = False
+
+    def other_player_proposes() -> None:
+        other_result.append(svc.propose_trade(match_id="m1", a_pid=2, b_pid=1)["trade_id"])
+
+    def uuid4_letting_the_other_player_in():
+        nonlocal reentered
+        if not reentered:
+            reentered = True
+            other = threading.Thread(target=other_player_proposes)
+            other.start()
+            # Long enough for a caller that is *not* excluded to get all the way
+            # through and open a rival trade; one that is simply waits.
+            other.join(0.5)
+            others.append(other)
+        return real_uuid4()
+
+    others: list[threading.Thread] = []
+    monkeypatch.setattr(lan_module.uuid, "uuid4", uuid4_letting_the_other_player_in)
+    mine = svc.propose_trade(match_id="m1", a_pid=1, b_pid=2)["trade_id"]
+    for thread in others:
+        thread.join(5)
+
+    assert other_result == [mine]

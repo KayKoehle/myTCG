@@ -90,6 +90,58 @@ def test_leaving_a_lobby_through_the_bridge_frees_the_seat(mobile_api):
     mobile_api.LAN.stop()
 
 
+def test_hosting_without_a_headcount_seats_the_whole_table(mobile_api):
+    """The webapp sends no headcount when hosting on the Wi-Fi — the lobby stays
+    open and the match starts with whoever joined — so the bridge must read a
+    missing one as the engine's cap and not as a duel. Defaulting to two turned
+    the third player away on Android and nowhere else."""
+    host = call(mobile_api, "/api/lan/host", {
+        "name": "Alice", "deck_name": "siege_of_troy",
+    })
+    assert host["ok"]
+    lobby_id = host["lobby"]["lobby_id"]
+    assert host["lobby"]["capacity"] == 5
+
+    for name, deck in [("Bob", "epic_of_gilgamesh"), ("Carol", "the_flood")]:
+        joined = call(mobile_api, "/api/lan/join", {
+            "lobby_id": lobby_id, "name": name, "deck_name": deck,
+        })
+        assert joined["ok"], joined
+
+    started = call(mobile_api, "/api/lan/start", {"lobby_id": lobby_id})
+    assert started["ok"] and len(started["decks"]) == 3
+
+    mobile_api.LAN.stop()
+
+
+def test_starting_deals_over_a_match_a_guest_asked_for_first(mobile_api):
+    """`start_game` opens the lobby's doors before the match is dealt, so a
+    guest polling in that instant sees the match id and asks for its state — and
+    a state call creates the match it names. The deal agreed in the lobby has to
+    win over that one, or the table spends the game in a match dealt from a
+    guest's defaults."""
+    host = call(mobile_api, "/api/lan/host", {
+        "name": "Alice", "deck_name": "siege_of_troy", "num_players": 2,
+    })
+    lobby_id = host["lobby"]["lobby_id"]
+    call(mobile_api, "/api/lan/join", {
+        "lobby_id": lobby_id, "name": "Bob", "deck_name": "the_flood",
+    })
+
+    # The guest gets in first, with nothing but its own defaults to go on.
+    early = call(mobile_api, "/api/state", {"match_id": lobby_id, "player_id": 1})
+    assert early["snapshot"]["decks"]["1"] != "siege_of_troy"
+
+    started = call(mobile_api, "/api/lan/start", {"lobby_id": lobby_id, "seed": 424242})
+    assert started["ok"]
+
+    state = call(mobile_api, "/api/state", {"match_id": lobby_id, "player_id": 1})
+    decks = state["snapshot"]["decks"]
+    assert [decks["1"], decks["2"]] == ["siege_of_troy", "the_flood"]
+
+    mobile_api.LAN.stop()
+
+
 def test_host_missing_deck_returns_structured_error(mobile_api):
     result = call(mobile_api, "/api/lan/host", {"name": "Alice", "num_players": 2})
     assert result["ok"] is False and "deck" in result["error"].lower()
@@ -203,7 +255,7 @@ def sealed_match(mobile_api, match_id: str) -> tuple[str, str, str]:
     cards = list(mobile_api.deal_piles(["epic_of_gilgamesh"])[0])[:RUN["pile_size"]]
     for name in SEALED_DECKS:
         mobile_api.register_custom_deck(name, cards)
-    mobile_api.SERVICE.get_or_create_match(
+    mobile_api.SERVICE.create_match(
         match_id=match_id, decks=SEALED_DECKS,
         sealed_ciphers=[RUN["piles"][0]["ciphers"], RUN["piles"][1]["ciphers"]],
     )

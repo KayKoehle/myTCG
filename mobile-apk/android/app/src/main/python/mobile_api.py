@@ -162,7 +162,7 @@ class MobileGameService:
             winner_deck = None
         self.matchup_stats.record(match.deck_a, match.deck_b, winner_deck)
 
-    def get_or_create_match(
+    def create_match(
         self,
         match_id: str,
         seed: int = 42,
@@ -173,9 +173,15 @@ class MobileGameService:
         decks: list[str] | None = None,
         sealed_ciphers: list[list[str]] | None = None,
     ) -> Match:
-        match = self._matches.get(match_id)
-        if match is not None:
-            return match
+        """Deal a match, replacing any earlier one under this id.
+
+        Unconditional, and that is the point for LAN play (mirrors
+        services/game_service.py). The host marks the lobby started and *then*
+        deals; a guest polling in that instant sees the match id and asks for
+        its state, which would otherwise create the match itself — from its own
+        default seed and decks. Dealing over the top is what makes the agreed
+        deal the one everybody ends up playing.
+        """
         # Player-edited decks arrive as explicit card lists; register them
         # under the (non-stock) name the client picked before dealing.
         if deck_a_cards:
@@ -198,6 +204,26 @@ class MobileGameService:
         created.record()
         self._matches[match_id] = created
         return created
+
+    def get_or_create_match(
+        self,
+        match_id: str,
+        seed: int = 42,
+        deck_a: str = "epic_of_gilgamesh",
+        deck_b: str = "siege_of_troy",
+        deck_a_cards: list[str] | None = None,
+        deck_b_cards: list[str] | None = None,
+        decks: list[str] | None = None,
+    ) -> Match:
+        return self._matches.get(match_id) or self.create_match(
+            match_id=match_id,
+            seed=seed,
+            deck_a=deck_a,
+            deck_b=deck_b,
+            deck_a_cards=deck_a_cards,
+            deck_b_cards=deck_b_cards,
+            decks=decks,
+        )
 
     def reveal_card(
         self, match_id: str, handle: str, keys: list[Any], claimed_index: int,
@@ -449,7 +475,11 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
             lobby = LAN.host_game(
                 host_name=body.get("name", "Host"),
                 deck_name=deck_name,
-                num_players=body.get("num_players", 2),
+                # Absent means "as many as the engine seats", not two: the
+                # webapp deliberately sends no headcount when hosting on the
+                # Wi-Fi (the match starts with whoever has joined), so a
+                # default of 2 turned away the third player on Android alone.
+                num_players=body.get("num_players"),
                 deck_cards=body.get("deck_cards"),
                 seed=body.get("seed"),
             )
@@ -530,9 +560,13 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
         except (KeyError, ValueError) as exc:
             return _response_ok({"ok": False, "error": str(exc)})
         # Build the authoritative match locally so guests can immediately drive
-        # it through /api/state and /api/action on this instance.
+        # it through /api/state and /api/action on this instance. Dealt over the
+        # top of anything already under this id: `start_game` opened the lobby's
+        # doors a moment ago, and a guest that polled in between has already
+        # asked for the match's state — which would have created it from that
+        # guest's own defaults rather than from the deal agreed here.
         try:
-            SERVICE.get_or_create_match(
+            SERVICE.create_match(
                 match_id=params["match_id"], seed=params["seed"], decks=params["decks"],
                 # Present when the players ran the encrypted shuffle first.
                 sealed_ciphers=body.get("sealed_ciphers"),

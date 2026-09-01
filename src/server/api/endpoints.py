@@ -381,8 +381,14 @@ def register_ws_routes(app: FastAPI):
 
     @app.post("/api/lan/trade/propose")
     async def lan_trade_propose(request: dict):
-        return {"ok": True, "trade": lan_service.propose_trade(
-            match_id=request["match_id"], a_pid=request["a_pid"], b_pid=request["b_pid"])}
+        # Structured like its siblings rather than raising: a missing field here
+        # would be a 500 with a plain-text body, which the client can only
+        # report as an opaque parse failure.
+        try:
+            return {"ok": True, "trade": lan_service.propose_trade(
+                match_id=request["match_id"], a_pid=request["a_pid"], b_pid=request["b_pid"])}
+        except (KeyError, ValueError, TypeError) as exc:
+            return {"ok": False, "error": str(exc)}
 
     @app.post("/api/lan/trade/offer")
     async def lan_trade_offer(request: dict):

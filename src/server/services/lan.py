@@ -408,26 +408,27 @@ class LanService:
 
     def propose_trade(self, match_id: str, a_pid: int, b_pid: int) -> dict[str, Any]:
         a_pid, b_pid = int(a_pid), int(b_pid)
+        # Idempotent per match + player pair: if either player already opened a
+        # trade between the two of them, both converge on that one session
+        # rather than creating rival trades. Both players open the sheet by
+        # proposing, so the two calls really do arrive together — the lookup and
+        # the creation are therefore one critical section, not two.
         with self._lock:
-            # Idempotent per match + player pair: if either player already opened
-            # a trade between the two of them, both converge on that one session
-            # rather than creating rival trades.
             pair = {a_pid, b_pid}
             for tr in self._trades.values():
                 if tr.status == "open" and tr.match_id == match_id and {tr.a_pid, tr.b_pid} == pair:
                     return tr.summary()
-        trade_id = f"trade-{uuid.uuid4().hex[:10]}"
-        trade = Trade(
-            trade_id=trade_id,
-            match_id=match_id,
-            a_pid=int(a_pid),
-            b_pid=int(b_pid),
-            offers={int(a_pid): [], int(b_pid): []},
-            confirmed={int(a_pid): False, int(b_pid): False},
-        )
-        with self._lock:
+            trade_id = f"trade-{uuid.uuid4().hex[:10]}"
+            trade = Trade(
+                trade_id=trade_id,
+                match_id=match_id,
+                a_pid=a_pid,
+                b_pid=b_pid,
+                offers={a_pid: [], b_pid: []},
+                confirmed={a_pid: False, b_pid: False},
+            )
             self._trades[trade_id] = trade
-        return trade.summary()
+            return trade.summary()
 
     def _get_trade(self, trade_id: str) -> Trade:
         trade = self._trades.get(trade_id)
