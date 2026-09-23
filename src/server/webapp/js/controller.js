@@ -1666,7 +1666,7 @@ export function createGameController(ui, cardStack) {
         }
     }
 
-    async function refresh() {
+    async function fetchSnapshot() {
         const c = cfg();
         const data = await postJson('/api/state', {
             match_id: c.match_id,
@@ -1677,7 +1677,11 @@ export function createGameController(ui, cardStack) {
             deck_a_cards: c.deck_a_cards,
             decks: c.decks,
         });
-        rerender(data.snapshot);
+        return data.snapshot;
+    }
+
+    async function refresh() {
+        rerender(await fetchSnapshot());
     }
 
     async function doAction(action) {
@@ -1819,7 +1823,9 @@ export function createGameController(ui, cardStack) {
         const seatNo = idx >= 0 ? idx + 1 : seatId;
         const names = cfg().local_seat_names;
         const custom = Array.isArray(names) && idx >= 0 ? (names[idx] || '').trim() : '';
-        return custom || `Player ${seatNo}`;
+        const lanNames = cfg().lan_seat_names;
+        const lanName = lanNames && lanNames[String(seatId)] ? String(lanNames[String(seatId)]) : '';
+        return custom || lanName || `Player ${seatNo}`;
     }
 
     // Everything on screen that only the seat holding the device may see: the
@@ -1957,6 +1963,32 @@ export function createGameController(ui, cardStack) {
     // mode) auto-draw so play flows straight into the main phase.
     function clearLanPoll() {
         if (app.lanPollTimer) { clearTimeout(app.lanPollTimer); app.lanPollTimer = null; }
+        if (app.lanWatchTimer) { clearTimeout(app.lanWatchTimer); app.lanWatchTimer = null; }
+    }
+    // On our own turn nobody else can act — except to concede, which is legal
+    // at any moment. Without a look at the host now and then, an opponent who
+    // surrendered (or whose dropped connection forfeited for them) goes
+    // unnoticed until our next play bounces off a finished game. Only a game
+    // over is applied: redrawing the board mid-turn for anything else would
+    // yank a card out from under a drag.
+    function scheduleLanWatch() {
+        if (app.lanWatchTimer) clearTimeout(app.lanWatchTimer);
+        app.lanWatchTimer = setTimeout(async () => {
+            app.lanWatchTimer = null;
+            const snap = app.snapshot;
+            if (!isLanGame() || app.lanReconnecting || !snap || snap.phase === 'GAME_OVER') return;
+            if (actorSeat(snap) !== cfg().player_id) return;
+            if (!app.actionPending) {
+                try {
+                    const fresh = await fetchSnapshot();
+                    if (fresh && fresh.phase === 'GAME_OVER' && app.snapshot === snap) {
+                        rerender(fresh);
+                        return;
+                    }
+                } catch (error) { /* our next play reports a lost host */ }
+            }
+            if (app.snapshot === snap) scheduleLanWatch();
+        }, 3000);
     }
     function scheduleLanPoll() {
         if (app.lanPollTimer || app.lanReconnecting) return;
@@ -1986,8 +2018,9 @@ export function createGameController(ui, cardStack) {
             clearLanPoll();
             if (!snap.pending_choice) {
                 const drawAction = humanLegalActions(snap, you).find((a) => a.kind === 'draw_card');
-                if (drawAction) await doAction(drawAction);
+                if (drawAction) { await doAction(drawAction); return; }
             }
+            scheduleLanWatch();
             return;
         }
         // A remote seat is acting. Unlike an AI game there's no local loop to flip
@@ -2088,6 +2121,13 @@ export function createGameController(ui, cardStack) {
         if (!snap) return;
 
         if (snap.phase === 'GAME_OVER') {
+            // A LAN or online table cannot be re-dealt from here: a fresh match
+            // id would be created on the host from default decks with nobody
+            // else in it. The way to a rematch is the lobby, so go back.
+            if (isLanGame()) {
+                exitToMenu();
+                return;
+            }
             // Rematch: same decks, fresh match. The header home button is the
             // way back to the main menu.
             await newGame();
@@ -2178,9 +2218,10 @@ export function createGameController(ui, cardStack) {
     // Enter a LAN match already created on the host. `hostBase` is null when we
     // are the host (same-origin), or the host's URL when we are a guest. Our
     // seat is `playerId`; every other seat is a remote human.
-    async function startLanGame({ hostBase = null, matchId, seed, playerId, decks = null }) {
+    async function startLanGame({ hostBase = null, matchId, seed, playerId, decks = null, seatNames = null }) {
         endLanGame();
         app.lanGame = true;
+        app.lanSeatNames = seatNames && typeof seatNames === 'object' ? seatNames : null;
         app.lanHostBase = hostBase || null;
         setLanHostBase(hostBase || null);
         app.localSeatIds = null;
@@ -2204,7 +2245,7 @@ export function createGameController(ui, cardStack) {
         if (!app.lanHostBase) {
             acquireLanHostLock();
         } else if (app.lanHostBase !== P2P_HOST_BASE) {
-            saveLanSession({ hostBase: app.lanHostBase, matchId, seed, playerId, decks });
+            saveLanSession({ hostBase: app.lanHostBase, matchId, seed, playerId, decks, seatNames: app.lanSeatNames });
         }
         // An online guest deliberately saves nothing: the route to the host
         // is a live WebRTC channel, not an address, so a "rejoin" offer after a
@@ -2228,6 +2269,7 @@ export function createGameController(ui, cardStack) {
         app.lanGame = false;
         app.lanHostBase = null;
         app.lanPollFails = 0;
+        app.lanSeatNames = null;
         setLanHostBase(null);
         app.humanPlayerId = 1;
     }
@@ -2269,12 +2311,20 @@ export function createGameController(ui, cardStack) {
     function setReconnectOverlay(visible, message) {
         if (!ui.reconnectOverlay) return;
         ui.reconnectOverlay.classList.toggle('hidden', !visible);
+        if (!visible) ui.reconnectOverlay.classList.remove('gone');
         ui.reconnectOverlay.setAttribute('aria-hidden', String(!visible));
         if (message && ui.reconnectStatus) ui.reconnectStatus.textContent = message;
     }
 
     function startReconnect() {
         if (!isLanGame() || app.lanReconnecting) return;
+        // An online guest's route to the host is a WebRTC channel, and a
+        // channel that has gone cannot be dialled again: retrying would spin
+        // the overlay forever. Say so and leave the way out.
+        if (app.lanHostBase === P2P_HOST_BASE) {
+            lanConnectionLost(ONLINE_HOST_GONE);
+            return;
+        }
         app.lanReconnecting = true;
         clearLanPoll();
         setReconnectOverlay(true, 'Reconnecting to the game…');
@@ -2306,6 +2356,27 @@ export function createGameController(ui, cardStack) {
         setReconnectOverlay(false);
         flashStatus('Reconnected.');
         rerender(snapshot);
+    }
+
+    const ONLINE_HOST_GONE = 'The host left the game. Online games cannot reconnect — '
+        + 'leave and start a new one.';
+
+    /**
+     * The match's host is gone for good (an online game's channel closed).
+     * Stops every poll and puts up the overlay without its spinner: there is
+     * nothing to wait for, only the Leave button. A match that had already
+     * ended needs no alarm — the host simply went home.
+     */
+    function lanConnectionLost(message = ONLINE_HOST_GONE) {
+        if (!isLanGame()) return;
+        if (app.snapshot && app.snapshot.phase === 'GAME_OVER') return;
+        clearLanPoll();
+        if (app.lanReconnectTimer) { clearTimeout(app.lanReconnectTimer); app.lanReconnectTimer = null; }
+        // Holds every poll and the reconnect loop off from here on.
+        app.lanReconnecting = true;
+        setOpponentTurn(false);
+        setReconnectOverlay(true, message);
+        if (ui.reconnectOverlay) ui.reconnectOverlay.classList.add('gone');
     }
 
     function stopReconnect() {
@@ -2534,6 +2605,14 @@ export function createGameController(ui, cardStack) {
             });
         });
         ui.btnNewGame.onclick = () => {
+            // Not over a LAN table: the new match would be made on the host
+            // under a fresh id, with nobody else in it and the others left
+            // waiting on our seat.
+            if (isLanGame()) {
+                closeSheet(ui.settingsModal);
+                flashStatus('Leave this game with friends before starting another.');
+                return;
+            }
             // Debug path: the settings-sheet deck dropdowns take over from
             // whatever the main menu picked (always a 1v1).
             app.deckAName = null;
@@ -2609,6 +2688,10 @@ export function createGameController(ui, cardStack) {
     // really begun: leaving is free (no surrender, no game_result, no stats).
     function canQuitFree() {
         if (!isMatchLive()) return false;
+        // Not with other people at the table: they cannot deal around an empty
+        // seat, so walking out before the mulligan would leave them waiting on
+        // it for good. Leaving a LAN match is always a surrender.
+        if (isLanGame()) return false;
         const history = (app.snapshot && app.snapshot.action_history) || [];
         const prefix = `mulligan_keep:${cfg().player_id}:`;
         return !history.some((entry) => String(entry).startsWith(prefix));
@@ -2624,6 +2707,14 @@ export function createGameController(ui, cardStack) {
         startLanGame,
         endLanGame,
         isLanGame,
+        lanConnectionLost,
+        // Re-read the match now rather than at the next poll — used when the
+        // host settles something outside the turn order (a dropped player's
+        // forfeit) that its own board has to show.
+        async refreshLan() {
+            if (!isLanGame() || app.lanReconnecting) return;
+            try { await refresh(); } catch (error) { /* the next poll retries */ }
+        },
         isMatchLive,
         canQuitFree,
         promptSurrender,

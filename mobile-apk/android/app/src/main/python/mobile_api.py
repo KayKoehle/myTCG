@@ -544,6 +544,12 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
             return _response_ok({"ok": False, "error": str(exc)})
         return _response_ok({"ok": True, **result})
 
+    if url == "/api/lan/close":
+        try:
+            return _response_ok({"ok": True, **LAN.close_lobby(body["lobby_id"])})
+        except (KeyError, ValueError) as exc:
+            return _response_ok({"ok": False, "error": str(exc)})
+
     if url == "/api/lan/lobby":
         try:
             return _response_ok({"ok": True, "lobby": LAN.lobby(body["lobby_id"])})
@@ -589,8 +595,9 @@ def _handle_lan(url: str, body: dict[str, Any]) -> str | None:
     if url == "/api/lan/trade/confirm":
         try:
             return _response_ok({"ok": True, "trade": LAN.confirm_trade(
-                body["trade_id"], body["player_id"])})
-        except (KeyError, ValueError) as exc:
+                body["trade_id"], body["player_id"],
+                expected_offers=body.get("expected_offers"))})
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:
             return _response_ok({"ok": False, "error": str(exc)})
 
     if url == "/api/lan/trade/cancel":

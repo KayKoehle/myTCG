@@ -1,7 +1,13 @@
 """Unit tests for the LAN lobby and trade logic (no networking)."""
 
-import pytest
+import asyncio
+import json
 
+import pytest
+from fastapi import FastAPI
+
+from server.api import endpoints
+from server.api.schemas import ActionRequest
 from server.services.lan import LanService
 
 
@@ -263,3 +269,72 @@ def test_both_players_proposing_at_once_open_one_trade(monkeypatch):
         thread.join(5)
 
     assert other_result == [mine]
+
+
+def test_starting_twice_is_refused():
+    """A second start would redeal the match under everyone already playing it."""
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=2)
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    svc.start_game(lobby["lobby_id"])
+    with pytest.raises(ValueError, match="already started"):
+        svc.start_game(lobby["lobby_id"])
+
+
+def test_closing_a_lobby_stops_advertising_it_and_turns_guests_away():
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=3)
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    svc.close_lobby(lobby["lobby_id"])
+    assert json.loads(svc._beacon_payload())["lobby"] is None
+    # A seated guest's next poll is its cue to leave; a newcomer cannot join.
+    with pytest.raises(KeyError):
+        svc.lobby(lobby["lobby_id"])
+    with pytest.raises(KeyError):
+        svc.join_game(lobby["lobby_id"], name="Carol", deck_name="the_flood")
+    # Closing again (a retry, a double tap) is not an error.
+    assert svc.close_lobby(lobby["lobby_id"])["closed"]
+
+
+def test_closing_a_started_lobby_is_refused():
+    svc, _ = make_service()
+    lobby = svc.host_game(host_name="Alice", deck_name="siege_of_troy", num_players=2)
+    svc.join_game(lobby["lobby_id"], name="Bob", deck_name="epic_of_gilgamesh")
+    svc.start_game(lobby["lobby_id"])
+    with pytest.raises(ValueError):
+        svc.close_lobby(lobby["lobby_id"])
+
+
+def test_confirm_against_a_stale_view_of_the_deal_is_refused():
+    """Bob looked at Alice's offer of card A and pressed Confirm; before his
+    confirm arrived Alice swapped it for card B. Her change reset both
+    confirmations, but his confirm lands after the reset — it must not accept
+    a deal he never saw."""
+    svc, _ = make_service()
+    trade = svc.propose_trade("m1", 1, 2)
+    tid = trade["trade_id"]
+    svc.set_offer(tid, 1, ["card_a"])
+    seen = svc.trade(tid)["offers"]
+    svc.set_offer(tid, 1, ["card_b"])
+    with pytest.raises(ValueError, match="changed"):
+        svc.confirm_trade(tid, 2, expected_offers=seen)
+    assert svc.trade(tid)["confirmed"] == {"1": False, "2": False}
+    # Confirming what is actually on the table works.
+    current = svc.trade(tid)["offers"]
+    assert svc.confirm_trade(tid, 2, expected_offers=current)["confirmed"]["2"] is True
+
+
+def test_an_action_after_the_game_ended_is_answered_not_a_500():
+    """The usual way to get here online: the opponent surrendered while it was
+    our turn, and our next play reaches a finished game. The player needs the
+    reason, and a guest relaying through its host needs a body at all."""
+    app = FastAPI()
+    endpoints.register_ws_routes(app)
+    route = next(r.endpoint for r in app.routes if getattr(r, "path", None) == "/api/action")
+    endpoints.game_service.create_match(match_id="lan-ended", seed=3)
+    asyncio.run(route(ActionRequest(match_id="lan-ended", player_id=2, action_kind="surrender")))
+
+    late = asyncio.run(route(ActionRequest(match_id="lan-ended", player_id=1, action_kind="end_turn")))
+    assert late.ok is False
+    assert late.snapshot is None
+    assert "GAME_OVER" in late.error

@@ -268,6 +268,9 @@ export function createMenuController(ui, game, cardStack) {
             game.promptSurrender();
             return;
         }
+        if (ui.gameScreen.classList.contains('active') && target.screen !== 'game') {
+            forgetPlayedLobby();
+        }
         navCurrent = target;
         if (target.screen === 'decks' && decksUnlocked()) {
             editorDeckId = target.editor || null;
@@ -426,6 +429,7 @@ export function createMenuController(ui, game, cardStack) {
             seed: session.seed,
             playerId: session.playerId,
             decks: session.decks,
+            seatNames: session.seatNames || null,
         });
     }
 
@@ -829,6 +833,13 @@ export function createMenuController(ui, game, cardStack) {
         const tick = async () => {
             try {
                 const data = await lanPost(lanLobby.host_base, '/api/lan/lobby', { lobby_id: lanLobby.lobby_id });
+                // The host closed the lobby (left it, or opened another): the
+                // Start button we are waiting on is gone with it.
+                if (data && data.ok === false && !lanLobby.is_host && /not found/i.test(data.error || '')) {
+                    showToast('The host closed the lobby.');
+                    leaveLanLobby();
+                    return;
+                }
                 if (data.ok && data.lobby) {
                     lanLobby.seats = data.lobby.seats;
                     // Somebody ahead of us leaving renumbers the seats behind
@@ -858,6 +869,18 @@ export function createMenuController(ui, game, cardStack) {
                     // — every 1.5s while the host pastes the reply code into it.
                     // The panel re-renders itself when the swap ends.
                     if (!p2pView) renderLan();
+                    // An online guest's seed lands a moment after the start:
+                    // the reveal is checked (and hashed) off the channel while
+                    // this reply comes straight back. Wait a tick or two for it
+                    // rather than recording the match under seed 0 — but not
+                    // for ever, since the seed only feeds our own replay.
+                    const seedDue = data.lobby.started && !lanLobby.is_host && lanLobby.p2p
+                        && lanLobby.agreed_seed === undefined
+                        && (lanLobby.seedWaits = (lanLobby.seedWaits || 0) + 1) <= 10;
+                    if (seedDue) {
+                        lanLobbyTimer = setTimeout(tick, 300);
+                        return;
+                    }
                     // A guest jumps into the match as soon as the host starts it.
                     if (data.lobby.started && !lanLobby.is_host) {
                         beginLanMatch({
@@ -885,6 +908,13 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     async function startLanAsHost() {
+        // The shuffle agreement takes a round trip to every player, and the
+        // lobby poll redraws the button meanwhile — a second tap would start
+        // a second agreement nobody answers.
+        if (!lanLobby || !lanLobby.is_host || lanLobby.starting || lanLobby.started) return;
+        lanLobby.starting = true;
+        renderLan();
+        let seedAgreed = false;
         try {
             // Doors shut. The room is only for getting people in, and one left
             // open would let a stranger with the code walk into a live game —
@@ -895,13 +925,27 @@ export function createMenuController(ui, game, cardStack) {
             // included — can pick a shuffle that suits them (js/p2p.js).
             let seed;
             if (p2pHub) {
-                setP2pStatus('Agreeing the shuffle with every player…');
-                seed = await p2pHub.agreeSeed();
+                try {
+                    seed = await p2pHub.agreeSeed();
+                } catch (error) {
+                    // Every guest has already sent its nonce and is waiting on a
+                    // reveal that will not come, so this table cannot be started
+                    // again. Close it: their channels drop and they are told,
+                    // instead of sitting in a lobby that can never begin.
+                    showToast(String(error.message || error));
+                    leaveLanLobby();
+                    return;
+                }
+                seedAgreed = true;
             }
             const data = await lanPost('', '/api/lan/start', {
                 lobby_id: lanLobby.lobby_id, ...(seed === undefined ? {} : { seed }),
             });
             if (!data.ok) { showToast(data.error || 'Could not start'); return; }
+            lanLobby.starting = false;
+            // The seats as dealt, not as of the last poll: a guest who dropped
+            // in the meantime renumbered everyone behind them.
+            if (Array.isArray(data.seats)) lanLobby.seats = data.seats;
             // The host stops polling the lobby the moment the match opens, so
             // nothing else will ever set this: without it a guest dropping
             // mid-match still looks like a guest leaving an open lobby, and the
@@ -913,7 +957,13 @@ export function createMenuController(ui, game, cardStack) {
             });
         } catch (error) {
             showToast(`Could not start: ${error.message || error}`);
-            renderLan();
+        } finally {
+            if (lanLobby && lanLobby.starting) {
+                lanLobby.starting = false;
+                // Guests that agreed a seed are past the point of a retry.
+                if (seedAgreed) leaveLanLobby();
+                else renderLan();
+            }
         }
     }
 
@@ -958,6 +1008,21 @@ export function createMenuController(ui, game, cardStack) {
      * everybody the lobby.
      */
     async function onP2pGuestLost(guest) {
+        // Mid-match there is no seat to free and no way back in: online games
+        // cannot reconnect. Left alone, the match would wait on their turn
+        // for ever, so the dropped seat concedes and the table sees a result.
+        if (lanLobby && lanLobby.is_host && lanLobby.started && guest.playerId
+            && game.isLanGame() && game.isMatchLive()) {
+            showToast(`${guest.name} disconnected and forfeits the match.`);
+            const ctx = game.lanContext();
+            try {
+                await lanPost('', '/api/action', {
+                    match_id: ctx.matchId, player_id: guest.playerId, action_kind: 'surrender',
+                });
+            } catch (error) { /* already over, or never dealt */ }
+            await game.refreshLan();
+            return;
+        }
         showToast(`${guest.name} disconnected.`);
         // Once the match is dealt the seats belong to the engine, not the
         // lobby: there is nothing to renumber and the player is simply gone.
@@ -1275,12 +1340,34 @@ export function createMenuController(ui, game, cardStack) {
     }
 
     /**
+     * Guest: the channel to the host closed. Nothing polls it once the lobby
+     * poll stops (and a poll that fails is taken for a blip), so without this
+     * a guest sits on "Waiting for the host" — or on a board that never moves
+     * again — for good. Our own leaving closes it too; by then the session has
+     * already been let go of, which is what the first check is for.
+     */
+    function onP2pHostLost(session) {
+        if (p2pGuestSession !== session) return;
+        p2pGuestSession = null;
+        setP2pTransport(null);
+        if (lanLobby && lanLobby.started) {
+            game.lanConnectionLost();
+            return;
+        }
+        showToast('The host closed the lobby.');
+        leaveLanLobby();
+    }
+
+    /**
      * The seed lands when the host starts; keep it for the guest's own replay,
      * where a deal from any other seed would show up.
      */
     function attachGuestSeed(session) {
         session.onAgreedSeed((seed, error) => {
             if (error) {
+                // A closed channel fails the agreement too; onP2pHostLost has
+                // already told the player and left.
+                if (p2pGuestSession !== session) return;
                 showToast(String(error.message || error));
                 leaveLanLobby();
                 return;
@@ -1305,6 +1392,9 @@ export function createMenuController(ui, game, cardStack) {
         });
         if (!data.ok) throw new Error(data.error || 'Join failed.');
         p2pGuestSession = session;
+        if (session.channel) {
+            session.channel.addEventListener('close', () => onP2pHostLost(session));
+        }
         lanLobby = {
             lobby_id: lobbyId, host_base: P2P_HOST_BASE, is_host: false,
             my_pid: data.player_id, seat_uid: data.seat_uid,
@@ -1530,10 +1620,12 @@ export function createMenuController(ui, game, cardStack) {
         const lobby = lanLobby;
         closeLan({ keepDiscovery: true });
         lanLobby = lobby; // keep for the in-game trade UI (rosters/host base)
+        const seatNames = {};
+        for (const seat of (lobby && lobby.seats) || []) seatNames[String(seat.player_id)] = seat.name;
         applyCosmetics(getSelectedDeckId());
         pushNav({ screen: 'game' });
         showScreen('game');
-        game.startLanGame({ hostBase, matchId, seed, playerId, decks });
+        game.startLanGame({ hostBase, matchId, seed, playerId, decks, seatNames });
     }
 
     function renderLan() {
@@ -1551,8 +1643,11 @@ export function createMenuController(ui, game, cardStack) {
             // The host can free a seat by hand: an online guest that drops
             // is noticed automatically (the channel closes), but a LAN guest
             // that walks away leaves nothing to notice.
+            const isMine = (s) => (lanLobby.is_host
+                ? Number(s.player_id) === 1
+                : (lanLobby.seat_uid ? s.seat_uid === lanLobby.seat_uid : Number(s.player_id) === Number(lanLobby.my_pid)));
             const rows = seats.map((s) => `
-                <div class="lan-seat"><span>${escapeHtml(s.name)}</span>
+                <div class="lan-seat${isMine(s) ? ' mine' : ''}"><span>${escapeHtml(s.name)}${isMine(s) ? ' <span class="tiny lan-seat-you">(you)</span>' : ''}</span>
                     <span class="lan-seat-side"><span class="tiny">seat ${s.player_id}</span>
                     ${lanLobby.is_host && Number(s.player_id) !== 1
                         ? `<button class="lan-seat-drop" data-drop-pid="${s.player_id}"
@@ -1564,8 +1659,11 @@ export function createMenuController(ui, game, cardStack) {
             const waitingRow = hasRoom
                 ? '<div class="lan-seat lan-seat-empty"><span class="tiny">waiting for players to join…</span></div>'
                 : '';
-            const canStart = lanLobby.is_host && seats.length >= 2;
-            const startLabel = seats.length >= 2 ? `Start ${seats.length}-player game` : 'Need at least 2 players';
+            const starting = Boolean(lanLobby.starting);
+            const canStart = lanLobby.is_host && seats.length >= 2 && !starting;
+            const startLabel = starting
+                ? (p2pHub ? 'Agreeing the shuffle with every player…' : 'Starting…')
+                : seats.length >= 2 ? `Start ${seats.length}-player game` : 'Need at least 2 players';
             // A host swapping codes by hand adds each further player with
             // another swap; a room-code host does not — everyone uses the one
             // code — and a LAN guest just walks in.
@@ -1827,6 +1925,30 @@ export function createMenuController(ui, game, cardStack) {
         });
     }
 
+    /**
+     * Off the board after a LAN or online match: its lobby is spent. Kept
+     * alive through the match for the trade sheet, but left behind it would
+     * greet the next "Play with Friends" with a finished table and a live
+     * Start button — dealing again over the old match, on a connection that
+     * is already gone.
+     */
+    function forgetPlayedLobby() {
+        if (!lanLobby || !lanLobby.started) return;
+        if (trade) closeTrade({ silentCancel: true });
+        stopLobbyPolling();
+        releaseRoom();
+        closeActiveP2p();
+        setP2pTransport(null);
+        p2pHub = null;
+        p2pGuestSession = null;
+        p2pView = null;
+        lanLobby = null;
+        if (lanEnabled) {
+            lanPost('', '/api/lan/disable', {}).catch(() => {});
+            lanEnabled = false;
+        }
+    }
+
     async function leaveLanLobby() {
         stopLobbyPolling();
         // Free the seat on the way out so the others are not left waiting on a
@@ -1837,6 +1959,11 @@ export function createMenuController(ui, game, cardStack) {
             lanPost(lanLobby.host_base, '/api/lan/leave', {
                 lobby_id: lanLobby.lobby_id, player_id: lanLobby.my_pid,
             }).catch(() => {});
+        }
+        // A host leaving takes the lobby with it, or it goes on being
+        // advertised — and joined — with nobody left to start it.
+        if (lanLobby && lanLobby.is_host && !lanLobby.started) {
+            lanPost('', '/api/lan/close', { lobby_id: lanLobby.lobby_id }).catch(() => {});
         }
         // An online lobby only exists as long as the direct connection
         // does, so leaving it drops the connection too.
@@ -1858,12 +1985,24 @@ export function createMenuController(ui, game, cardStack) {
     let tradeMine = [];
     let tradeTimer = null;
 
-    async function openTrade() {
+    function seatName(pid) {
+        const seat = ((lanLobby && lanLobby.seats) || []).find((s) => Number(s.player_id) === Number(pid));
+        return seat ? seat.name : `Player ${pid}`;
+    }
+
+    async function openTrade(chosenOpp = null) {
         const ctx = game.lanContext();
         if (!ctx || !ctx.matchId) return;
         await ensureCollection();
-        const opp = (ctx.players || []).map(Number).find((pid) => pid !== Number(ctx.playerId));
-        if (opp == null) { showToast('No opponent to trade with.'); return; }
+        const opponents = (ctx.players || []).map(Number).filter((pid) => pid !== Number(ctx.playerId));
+        if (!opponents.length) { showToast('No opponent to trade with.'); return; }
+        // A free-for-all has several people to trade with; ask which, rather
+        // than always opening a trade with the first seat along.
+        if (chosenOpp == null && opponents.length > 1) {
+            renderTradePicker(opponents);
+            return;
+        }
+        const opp = chosenOpp == null ? opponents[0] : Number(chosenOpp);
         try {
             const data = await lanPost(ctx.hostBase, '/api/lan/trade/propose', {
                 match_id: ctx.matchId, a_pid: Number(ctx.playerId), b_pid: Number(opp),
@@ -1882,6 +2021,20 @@ export function createMenuController(ui, game, cardStack) {
         ui.tradeModal.setAttribute('aria-hidden', 'false');
         renderTrade();
         startTradePolling();
+    }
+
+    function renderTradePicker(opponents) {
+        ui.tradeBody.innerHTML = `
+            <div class="trade-col-title">Trade with…</div>
+            <div class="trade-pick-list">
+                ${opponents.map((pid) => `<button class="btn ghost" data-trade-with="${pid}">
+                    ${escapeHtml(seatName(pid))}</button>`).join('')}
+            </div>`;
+        ui.tradeBody.querySelectorAll('[data-trade-with]').forEach((button) => {
+            button.addEventListener('click', () => openTrade(Number(button.dataset.tradeWith)));
+        });
+        ui.tradeModal.classList.add('open');
+        ui.tradeModal.setAttribute('aria-hidden', 'false');
     }
 
     function closeTrade({ silentCancel = false } = {}) {
@@ -1928,21 +2081,35 @@ export function createMenuController(ui, game, cardStack) {
             const data = await lanPost(trade.host_base, '/api/lan/trade/offer', {
                 trade_id: trade.trade_id, player_id: trade.my_pid, card_ids: tradeMine,
             });
+            if (!trade) return;
             if (data.ok) Object.assign(trade, data.trade);
-        } catch (error) { showToast(`${error}`); }
+            else showToast(data.error || 'Could not change your offer.');
+        } catch (error) { showToast(`${error.message || error}`); }
         renderTrade();
     }
 
     async function confirmTrade() {
+        if (!trade) return;
         try {
             const data = await lanPost(trade.host_base, '/api/lan/trade/confirm', {
                 trade_id: trade.trade_id, player_id: trade.my_pid,
+                // The deal as it stood on screen. If either side changed since,
+                // the host refuses rather than confirming cards we never saw.
+                expected_offers: {
+                    [trade.my_pid]: tradeMine.slice(),
+                    [trade.opp_pid]: (trade.offers[String(trade.opp_pid)] || []).slice(),
+                },
             });
+            if (!trade) return;
             if (data.ok) {
                 Object.assign(trade, data.trade);
                 if (trade.status === 'completed') { finishTrade(); return; }
+            } else {
+                showToast(data.error || 'Could not confirm the trade.');
+                const latest = await lanPost(trade.host_base, '/api/lan/trade/state', { trade_id: trade.trade_id });
+                if (trade && latest.ok && latest.trade) Object.assign(trade, latest.trade);
             }
-        } catch (error) { showToast(`${error}`); }
+        } catch (error) { showToast(`${error.message || error}`); }
         renderTrade();
     }
 

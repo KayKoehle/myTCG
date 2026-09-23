@@ -131,6 +131,12 @@ def register_ws_routes(app: FastAPI):
             )
         except sealed.SealedCardError as exc:
             return ActionResponse(ok=False, needs_reveal=sealed.reveal_request(exc.card_id))
+        except ValueError as exc:
+            # An illegal action — most often one sent against a board that has
+            # moved on, like a play after the opponent already surrendered.
+            # Answered in words: a bare 500 reaches the player as "non-JSON
+            # response", and over an online game's relay not even that.
+            return ActionResponse(ok=False, error=str(exc))
         snapshot = game_service.state_snapshot(match_id=request.match_id, viewer_player_id=request.player_id)
         return ActionResponse(snapshot=snapshot)
 
@@ -305,6 +311,14 @@ def register_ws_routes(app: FastAPI):
             return {"ok": False, "error": str(exc)}
         return {"ok": True, **result}
 
+    @app.post("/api/lan/close")
+    async def lan_close(request: dict):
+        # Host-only, like /api/lan/leave: not in the webapp's guest allowlist.
+        try:
+            return {"ok": True, **lan_service.close_lobby(request["lobby_id"])}
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+
     @app.post("/api/lan/lobby")
     async def lan_lobby(request: dict):
         try:
@@ -402,8 +416,9 @@ def register_ws_routes(app: FastAPI):
     async def lan_trade_confirm(request: dict):
         try:
             return {"ok": True, "trade": lan_service.confirm_trade(
-                request["trade_id"], request["player_id"])}
-        except (KeyError, ValueError) as exc:
+                request["trade_id"], request["player_id"],
+                expected_offers=request.get("expected_offers"))}
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:
             return {"ok": False, "error": str(exc)}
 
     @app.post("/api/lan/trade/cancel")

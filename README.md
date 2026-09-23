@@ -439,6 +439,15 @@ guests still get one). The game code does not help here — it is closed the
 moment the match starts, and a rejoining player would need the match, not the
 lobby.
 
+So a drop is settled rather than waited out. A peer that vanishes without
+hanging up (a closed tab, a lost signal) is noticed when ICE gives up on it,
+which closes the channel like a clean exit would. A guest dropping mid-match
+concedes (the engine's surrender, so the table gets a result instead of a turn
+that never comes); the host dropping puts every guest's board behind a "the host
+left" notice with only a way out, since there is nothing to retry. Before the
+match, a host leaving closes the lobby (`/api/lan/close`, host-only like
+`/api/lan/leave`), and its guests are told and sent back to the menu.
+
 ## AI opponents
 
 The mobile app and the server share the same AI code in the engine:
