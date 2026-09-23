@@ -27,6 +27,8 @@ class ActionResponse(BaseModel):
     # Still a 200 — the client has to read the body to know what happened.
     snapshot: Optional[dict[str, Any]] = None
     needs_reveal: Optional[dict[str, Any]] = None
+    # Set when the action was refused outright (illegal in this position).
+    error: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

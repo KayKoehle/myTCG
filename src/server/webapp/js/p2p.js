@@ -429,6 +429,18 @@ function waitForOpen(channel, timeoutMs) {
     });
 }
 
+// A peer that vanishes without hanging up — a closed tab, a phone that lost
+// its signal — never sends the channel's close. ICE notices instead, when its
+// consent checks go unanswered, so a failed connection is turned into the
+// close everything downstream already listens for.
+function closeOnFailure(pc, channel) {
+    pc.addEventListener('connectionstatechange', () => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+            try { channel.close(); } catch (error) { /* already gone */ }
+        }
+    });
+}
+
 // Multiplexes one data channel: request/response API calls in both directions,
 // plus the one-shot control messages the handshake needs.
 function createWire(channel) {
@@ -687,6 +699,7 @@ export async function createHostHub({ name }) {
         };
         nextSeat += 1;
         guests.push(seated);
+        closeOnFailure(seated.pc, seated.channel);
         if (rpcHandler) seated.wire.onRpc((path, body) => rpcHandler(path, body, seated));
         // Wired up whether or not this game ever deals sealed: a relay that
         // is installed late is a relay that has already lost messages.
@@ -893,7 +906,7 @@ export async function createHostHub({ name }) {
                     message = await guest.wire.waitFor('nonce');
                 } catch (error) {
                     throw new Error(`${guest.name} is no longer connected, so the shuffle could `
-                        + 'not be agreed. Leave the lobby and set the game up again.');
+                        + 'not be agreed. Set the game up again.');
                 }
                 const revealed = fromHex(message.nonce);
                 if (toHex(await sha256(revealed)) !== toHex(guest.commit)) {
@@ -959,6 +972,7 @@ function buildGuestSession({ pc, channelPromise, hostName, hostCommit, nonce, co
                 'The host never opened the connection. Ask them to check they are still in the lobby.',
             );
             session.channel = channel;
+            closeOnFailure(pc, channel);
             const wire = createWire(channel);
             session.wire = wire;
             wire.on(SEALED_TYPE, (message) => sealedInbox.deliver(Number(message.from), message.body));

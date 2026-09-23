@@ -4060,6 +4060,8 @@ details[open]>.cos-summary::before {
 .reconnect-title { font-size: 17px; font-weight: 800; letter-spacing: 0.04em; }
 .reconnect-sub { font-size: 13px; color: var(--muted); }
 .reconnect-card .btn { margin-top: 4px; }
+/* Nothing left to wait for (an online host is gone): no spinner, just the way out. */
+.reconnect-overlay.gone .reconnect-spinner { display: none; }
 
 .passplay-count {
     display: flex;
@@ -4302,6 +4304,9 @@ body.secrets-hidden .peek-restore {
     font-weight: 700;
 }
 .lan-seat-empty { background: rgba(16, 37, 59, 0.3); font-weight: 400; }
+/* Your own seat: in a renumbered lobby of five, the one name to find first. */
+.lan-seat.mine { border-color: rgba(23, 182, 255, 0.55); }
+.lan-seat-you { font-weight: 400; color: var(--muted); }
 .lan-seat-side { display: flex; align-items: center; gap: 10px; }
 /* Host-only: free a seat someone has left. Quiet by default — removing a
    player is not the button anyone should hit by reflex. */
@@ -4393,12 +4398,14 @@ body.secrets-hidden .peek-restore {
     /* Tabular, monospaced digits: at this size a 0 that could be an O is the
        difference between joining and not. */
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: clamp(22px, 7vw, 30px);
+    /* Sized to stay on one line beside the QR on a phone: a code that wraps
+       mid-group ("9EBA1-64W2" / "X") reads as two codes. */
+    font-size: clamp(18px, 5.4vw, 30px);
     font-weight: 800;
     letter-spacing: 0.06em;
     margin: 4px 0 8px;
     user-select: all;
-    word-break: break-all;
+    white-space: nowrap;
 }
 .room-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .room-qr { margin: 0; flex: 0 0 auto; }
@@ -4449,6 +4456,7 @@ body.secrets-hidden .peek-restore {
 .trade-status.ready { color: var(--good); font-weight: 700; }
 .trade-picker { margin-top: 12px; }
 .trade-actions { display: flex; gap: 8px; margin-top: 12px; }
+.trade-pick-list { display: grid; gap: 8px; margin-top: 8px; }
 .trade-actions .btn { flex: 1; }
 .trade-confirmed { color: var(--good); font-weight: 700; }
 

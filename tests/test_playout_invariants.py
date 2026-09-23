@@ -105,3 +105,17 @@ def test_every_legal_action_applies(deck_a: str, deck_b: str, seed: int) -> None
         steps += 1
 
     assert is_terminal(state), f"game did not terminate in {MAX_STEPS} steps"
+
+
+def test_surrender_during_a_pending_choice_leaves_no_choice_open() -> None:
+    """Conceding while a decision is open (here the opening mulligan) ends the
+    game; the chooser must not be offered that decision over the final board."""
+    from server.engine.actions import SurrenderAction
+
+    state = create_initial_state(seed=4, deck_a="epic_of_gilgamesh", deck_b="siege_of_troy")
+    assert state.pending_choice is not None
+    chooser = state.player_ids[state.pending_choice.chooser_idx]
+    other = next(pid for pid in state.player_ids if pid != chooser)
+    over = apply_action(state, SurrenderAction(player_id=other))
+    assert over.phase == "GAME_OVER"
+    assert over.pending_choice is None

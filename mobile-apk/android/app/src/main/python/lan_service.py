@@ -366,6 +366,22 @@ class LanService:
                 remaining["player_id"] = index + 1
             return {"lobby_id": lobby_id, "left": seat["seat_uid"], "lobby": lobby.summary()}
 
+    def close_lobby(self, lobby_id: str) -> dict[str, Any]:
+        """The host walked away from a lobby that never started.
+
+        Without this the lobby outlives its host: the beacon keeps advertising
+        it, newcomers keep joining it, and the guests already seated wait on a
+        Start button nobody will press. Their next lobby poll gets "Lobby not
+        found" instead, which is their cue to leave. Closing one that is already
+        gone is still a success — the host only wants it not to exist.
+        """
+        with self._lock:
+            lobby = self._lobbies.get(lobby_id)
+            if lobby is not None and lobby.started:
+                raise ValueError("Game already started")
+            self._lobbies.pop(lobby_id, None)
+            return {"lobby_id": lobby_id, "closed": True}
+
     def lobby(self, lobby_id: str) -> dict[str, Any]:
         with self._lock:
             lobby = self._lobbies.get(lobby_id)
@@ -388,6 +404,10 @@ class LanService:
             lobby = self._lobbies.get(lobby_id)
             if lobby is None:
                 raise KeyError("Lobby not found")
+            if lobby.started:
+                # Starting again would redeal the match under everyone already
+                # playing it: create_match replaces whatever holds that id.
+                raise ValueError("Game already started")
             if len(lobby.seats) < MIN_PLAYERS:
                 raise ValueError(f"Need at least {MIN_PLAYERS} players")
             if seed is not None:
@@ -450,7 +470,21 @@ class LanService:
             trade.confirmed = {k: False for k in trade.confirmed}
             return trade.summary()
 
-    def confirm_trade(self, trade_id: str, player_id: int) -> dict[str, Any]:
+    def confirm_trade(
+        self,
+        trade_id: str,
+        player_id: int,
+        expected_offers: dict[Any, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        """Confirm the trade as it stands.
+
+        ``expected_offers`` is the deal the player was looking at when they
+        pressed Confirm (pid -> card ids). Changing an offer resets both
+        confirmations, but a confirm already on the wire lands *after* that
+        reset — and would then accept cards its sender never saw. So when the
+        client says what it agreed to, anything else is refused rather than
+        confirmed.
+        """
         with self._lock:
             trade = self._get_trade(trade_id)
             if trade.status != "open":
@@ -458,6 +492,11 @@ class LanService:
             pid = int(player_id)
             if pid not in trade.confirmed:
                 raise ValueError("Not a participant in this trade")
+            if expected_offers is not None:
+                seen = {int(k): list(v or []) for k, v in expected_offers.items()}
+                actual = {k: list(v) for k, v in trade.offers.items()}
+                if any(seen.get(k, []) != v for k, v in actual.items()):
+                    raise ValueError("The trade changed — check it and confirm again.")
             trade.confirmed[pid] = True
             if all(trade.confirmed.values()):
                 trade.status = "completed"

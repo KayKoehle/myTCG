@@ -14,6 +14,7 @@ export function createAppState() {
         // Editable display name per local seat (index 0 = seat 1); null outside
         // pass-and-play, where blank entries fall back to "Player N".
         localSeatNames: null,
+        lanSeatNames: null,
         activeSeatId: 1,
         // LAN multiplayer: when true, other seats are remote humans on the
         // network. lanHostBase is the authoritative host's URL (null = we are
@@ -92,6 +93,8 @@ export function buildConfig(ui, app) {
         viewer_player_id: youId,
         local_seat_ids: localSeats,
         local_seat_names: localSeats && app.localSeatNames && app.localSeatNames.length ? app.localSeatNames : null,
+        // LAN/online: player id -> the name that seat joined the lobby under.
+        lan_seat_names: app.lanGame && app.lanSeatNames ? app.lanSeatNames : null,
         seed: app.seed,
         deck_a: app.deckAName || ui.deckA.value.trim() || app.defaultDeckA,
         deck_b: app.deckBName || ui.deckB.value.trim() || app.defaultDeckB,

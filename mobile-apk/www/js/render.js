@@ -22,6 +22,15 @@ import { unpeekAll } from './peek.js';
 
 // Short display name for a rival, derived from the deck they play
 // ("The Trojan Siege Deck" -> "Trojan Siege"); falls back to "Rival N".
+// A LAN or online seat's own name, as the lobby knew it. Players there are
+// people, not decks: two of them on the same deck would otherwise both read
+// "Gilgamesh", and an edited deck's registered name is an internal key.
+function lanSeatName(config, playerId) {
+    const names = config && config.lan_seat_names;
+    const name = names && names[String(playerId)];
+    return name ? String(name) : '';
+}
+
 function rivalName(snapshot, playerId, seatIdx) {
     const deckId = snapshot.decks && snapshot.decks[playerId];
     const meta = deckId && DECK_META[deckId];
@@ -286,7 +295,8 @@ function renderActionHistory(snapshot, ui, config) {
     const localSeatName = (i) => (localNames[i] && String(localNames[i]).trim()) || `Player ${i + 1}`;
     const nameByPid = new Map(players.map((pid, i) => [
         pid,
-        isLocal ? localSeatName(i) : (pid === human ? 'You' : (isFfa ? rivalName(snapshot, pid, i) : 'Opponent')),
+        isLocal ? localSeatName(i) : (pid === human ? 'You'
+            : (lanSeatName(config, pid) || (isFfa ? rivalName(snapshot, pid, i) : 'Opponent'))),
     ]));
     const relabelPlayers = (text) => {
         let out = String(text);
@@ -468,7 +478,10 @@ export function updateEndTurnButton(ui, app, config) {
         ui.btnEndTurn.textContent = opponentChoosing ? 'Opponent choosing…' : "Opponent's Turn";
     } else {
         ui.btnEndTurn.disabled = isGameOver ? false : !(canActMulligan || legal.some((a) => a.kind === 'end_turn'));
-        ui.btnEndTurn.textContent = isGameOver ? 'Rematch' : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
+        // A LAN table has no one-tap rematch (see the controller); its game-over
+        // button leads back to the menu instead.
+        const gameOverLabel = app.lanGame ? 'Back to menu' : 'Rematch';
+        ui.btnEndTurn.textContent = isGameOver ? gameOverLabel : (isOpeningMulligan ? 'Confirm mulligan' : 'End Turn');
     }
     ui.btnEndTurn.classList.toggle('mulligan-confirm', Boolean(isOpeningMulligan) && !opponentTurn);
     ui.btnEndTurn.classList.toggle('opponent-turn', opponentTurn);
@@ -542,7 +555,8 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
     };
     // Per-rival display info: short name, seat color class, engine side index.
     const rivalInfo = new Map(opponents.map((pid, i) => [pid, {
-        name: isLocal ? seatName(pid) : (isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp'),
+        name: isLocal ? seatName(pid)
+            : (lanSeatName(config, pid) || (isFfa ? rivalName(snapshot, pid, i + 1) : 'Opp')),
         cls: seatClass(i),
         sideIdx: players.indexOf(pid),
     }]));

@@ -1511,6 +1511,10 @@ def _apply_surrender(state: GameState, action: SurrenderAction) -> GameState:
         state,
         victory_points=tuple(victory_points),
         phase="GAME_OVER",
+        # A finished game owes nobody a decision. Left in place, a choice that
+        # was open when someone conceded (an opening mulligan, a card's pick)
+        # is still offered to its chooser over the final board.
+        pending_choice=None,
         action_history=state.action_history + history_entries,
     )
 
