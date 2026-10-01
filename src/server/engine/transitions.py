@@ -34,6 +34,15 @@ _load_data_if_needed = catalog.load_data_if_needed
 # engine/sandbox.py). Those are match scratch space, never a deck to pick.
 SANDBOX_DECK_PREFIX = "sandbox:"
 
+# Extra opening cards by turn order: index 0 is the starting seat, index 1 the
+# seat after it, and so on (missing entries = 0). A lever for seat-order
+# fairness, currently unused: with the current decks every seat already wins
+# its fair share without one (minimax arena: 2P first seat 47.5%, 3P seats
+# 33.4/34.2/32.4%). A fifth card for the starter overshot to 58.8% in 2P, one
+# for the second seat to 62.1% — a card is worth ~10pp. (+1 turn-one mana
+# overshoots even harder: an early tempo play snowballs more than a card.)
+EXTRA_OPENING_CARDS: tuple[int, ...] = ()
+
 
 def available_decks() -> tuple[str, ...]:
     _load_data_if_needed()
@@ -191,7 +200,7 @@ def create_initial_state(
     `sealed_deal` deals piles of sealed handles instead of cards: the order was
     settled by the players' encrypted shuffle before this was called, and the
     host holds positions it cannot read (engine/sealed.py). Everything else
-    about the deal — who starts, the extra opening card — is unchanged, and
+    about the deal — who starts, any extra opening cards — is unchanged, and
     still follows from the seed the players agreed on.
     """
     _load_data_if_needed()
@@ -224,14 +233,11 @@ def create_initial_state(
         deck_piles.append(tuple(pile[4:]))
         deck_names.append(deck_name)
     starting_idx = rng.randrange(0, n)
-    # Going first is measurably a disadvantage (later seats always commit
-    # with more information, and a round scores right after the last seat's
-    # turn), so the starting seat opens with a fifth card as compensation.
-    # (+1 turn-one mana was arena-tested as an alternative and overshoots
-    # badly — an early tempo play snowballs much harder than a card.)
-    if deck_piles[starting_idx]:
-        hands[starting_idx] = hands[starting_idx] + (deck_piles[starting_idx][0],)
-        deck_piles[starting_idx] = deck_piles[starting_idx][1:]
+    for order, extra in enumerate(EXTRA_OPENING_CARDS[:n]):
+        seat_idx = (starting_idx + order) % n
+        extra = min(extra, len(deck_piles[seat_idx]))
+        hands[seat_idx] = hands[seat_idx] + deck_piles[seat_idx][:extra]
+        deck_piles[seat_idx] = deck_piles[seat_idx][extra:]
 
     def per_seat(value):
         return tuple(value for _ in range(n))
