@@ -11,7 +11,6 @@ layout_effect_and_lore(root, namespace, effect_element, effect_string, icon_map,
 
 from __future__ import annotations
 
-import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -23,11 +22,13 @@ import xml.etree.ElementTree as ET
 TEXT_X: float = 2.18
 TEXT_WIDTH: float = 58.0      # usable column width in SVG units
 
-# Vertical text zone: top of effect area → bottom of card text zone
-EFFECT_ZONE_TOP: float = 65.0    # y where effect text starts (approx)
-CARD_TEXT_ZONE_BOTTOM: float = 93.0  # y of the lowest usable line
+# Vertical text zone, in card (root) coordinates — the lore is appended to the
+# root, so these must match creature_template.svg's frame: the effect text's
+# first line sits at ≈55.4 and the effect_box ends at 85.24 (card: 88.9 tall).
+EFFECT_ZONE_TOP: float = 55.4    # y where effect text starts (approx)
+CARD_TEXT_ZONE_BOTTOM: float = 83.6  # y of the lowest usable baseline
 
-TOTAL_ZONE_HEIGHT: float = CARD_TEXT_ZONE_BOTTOM - EFFECT_ZONE_TOP  # ≈ 28 units
+TOTAL_ZONE_HEIGHT: float = CARD_TEXT_ZONE_BOTTOM - EFFECT_ZONE_TOP  # ≈ 29 units
 
 # Typography constants
 NORMAL_EFFECT_FONT_SIZE: float = 2.82   # px / SVG units
@@ -37,7 +38,11 @@ SMALL_LORE_FONT_SIZE: float = 2.10
 TINY_EFFECT_FONT_SIZE: float = 1.95
 TINY_LORE_FONT_SIZE: float = 1.75
 
-CHAR_WIDTH_RATIO: float = 0.4 
+CHAR_WIDTH_RATIO: float = 0.43  # 0.4 let some italic lore lines overrun the box
+# Inline mana icons are drawn over a run of spaces left in the effect text, at
+# an x estimated from the preceding characters (regular, not italic, text).
+EFFECT_CHAR_WIDTH_RATIO: float = 0.415
+ICON_GAP: str = "     "  # wide enough for the icon (1.15 em) at ~0.25 em per space
 LINE_HEIGHT_RATIO: float = 1.45  # line_height = font_size * ratio
 
 LORE_SEPARATOR_GAP: float = 2.5  # vertical gap between effect block and lore
@@ -56,15 +61,25 @@ def _estimate_lines(text: str, font_size: float, col_width: float) -> int:
         return 0
     char_width = font_size * CHAR_WIDTH_RATIO
     chars_per_line = max(1, int(col_width / char_width))
-    # Respect explicit newlines
-    raw_lines = text.split("\n")
-    total = 0
-    for line in raw_lines:
-        if len(line) == 0:
-            total += 1
+    # Respect explicit newlines; count words the way _wrap_words breaks them
+    # (a plain len/width estimate undercounts and pushed lore into the footer).
+    return sum(max(1, len(_wrap_words(line, chars_per_line))) for line in text.split("\n"))
+
+
+def _wrap_words(text: str, chars_per_line: int) -> list[str]:
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        candidate = (current + " " + word).strip() if current else word
+        if len(candidate) <= chars_per_line:
+            current = candidate
         else:
-            total += math.ceil(len(line) / chars_per_line)
-    return total
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 def _lines_height(n_lines: int, font_size: float) -> float:
@@ -93,22 +108,8 @@ def _append_wrapped_tspans(
     chars_per_line = max(1, int(col_width / char_width))
     line_height = font_size * LINE_HEIGHT_RATIO
 
-    words = text.split()
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        candidate = (current + " " + word).strip() if current else word
-        if len(candidate) <= chars_per_line:
-            current = candidate
-        else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-
     y = y_start
-    for line in lines:
+    for line in _wrap_words(text, chars_per_line):
         tspan = ET.SubElement(parent, "tspan", {
             "x": str(round(x, 4)),
             "y": str(round(y, 4)),
@@ -160,6 +161,55 @@ def _build_lore_element(
 
 
 # ---------------------------------------------------------------------------
+# Internal: real font metrics for placing inline icons
+# ---------------------------------------------------------------------------
+
+# The template's effect text is font-family "serif" wrapped by Inkscape at this
+# inline-size; on Windows Inkscape resolves "serif" to Times New Roman.
+EFFECT_INLINE_SIZE: float = 58.4828
+_EFFECT_FONT_FILES = ("times.ttf", "Times New Roman.ttf", "DejaVuSerif.ttf")
+_MEASURE_PX = 100
+_effect_font = None
+
+
+def _load_effect_font():
+    global _effect_font
+    if _effect_font is None:
+        _effect_font = False
+        try:
+            from PIL import ImageFont
+        except ImportError:
+            return None
+        for name in _EFFECT_FONT_FILES:
+            try:
+                _effect_font = ImageFont.truetype(name, _MEASURE_PX)
+                break
+            except OSError:
+                continue
+    return _effect_font or None
+
+
+def _caret_position(text: str, font_size: float) -> tuple[float, int] | None:
+    """(x, line index) where the next character after *text* lands, wrapping
+    words at EFFECT_INLINE_SIZE like Inkscape does. None if no font is found."""
+    font = _load_effect_font()
+    if font is None:
+        return None
+
+    def width(s: str) -> float:
+        return font.getlength(s) * font_size / _MEASURE_PX
+
+    line, line_idx = "", 0
+    for token in re.split(r"( +)", text):
+        if not token:
+            continue
+        if not token.startswith(" ") and line.strip() and width(line + token) > EFFECT_INLINE_SIZE:
+            line, line_idx = "", line_idx + 1
+        line += token
+    return width(line), line_idx
+
+
+# ---------------------------------------------------------------------------
 # Internal: render effect text with inline icon support
 # ---------------------------------------------------------------------------
 
@@ -198,15 +248,20 @@ def _render_effect(
     effect_element.set("style", style)
 
     col_width = TEXT_WIDTH
-    char_width = font_size * CHAR_WIDTH_RATIO
+    char_width = font_size * EFFECT_CHAR_WIDTH_RATIO
     line_height = font_size * LINE_HEIGHT_RATIO
 
     for part in parts:
         if part in icon_map:
+            measured = _caret_position(tspan.text, font_size)
+            if measured is not None:
+                # Real font metrics, replaying Inkscape's word wrap.
+                x_offset, line_idx = measured
+                y_offset = line_idx * line_height
             while x_offset + icon_size > col_width:
                 x_offset -= col_width
                 y_offset += line_height
-            tspan.text += "   "
+            tspan.text += ICON_GAP
             scale = icon_size / 2.3   # 2.3 is the native icon unit size
             embed_svg(
                 group_element,
