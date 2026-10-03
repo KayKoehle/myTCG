@@ -69,10 +69,75 @@ function findMatchAt(text, lower, index) {
     return null;
 }
 
-// Effect text with every catalog card name wrapped in a reference chip.
+// --- Keyword badges -------------------------------------------------------------
+// The trigger a printed effect starts with ("On enter:", "While on top:") is
+// shown as a coloured badge with a symbol, so a card's kind of effect reads at a
+// glance. First match wins, so the specific triggers sit above the generic
+// "When ..." / "At ..." ones.
+// Hand-drawn 12x12 glyphs; they take the badge colour through currentColor.
+const ICON_STROKE = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+const ICONS = {
+    // an arrow walking into a doorway
+    enter: `<path ${ICON_STROKE} d="M1.5 6h5.5M4.8 3.5 7.3 6l-2.5 2.5M9.5 2v8"/>`,
+    // a stack of cards, the top one lit
+    top: `<rect x="2" y="1.2" width="8" height="3.6" rx="1" fill="currentColor"/><path ${ICON_STROKE} opacity=".6" d="M2.5 7.2h7M2.5 10h7"/>`,
+    // a crossed-out mark
+    destroy: `<path ${ICON_STROKE} d="M2.5 2.5l7 7M9.5 2.5l-7 7"/>`,
+    // an arrow rising from the ground
+    revive: `<path ${ICON_STROKE} d="M6 9V2.8M3.4 5.3 6 2.7l2.6 2.6M2.5 10.8h7"/>`,
+    // a card with a downward chevron
+    draw: `<rect x="2.8" y="1.2" width="6.4" height="9.6" rx="1.2" ${ICON_STROKE}/><path ${ICON_STROKE} d="M4.6 5.3 6 6.8l1.4-1.5"/>`,
+    // a loop arrow around a "1"
+    once: `<path ${ICON_STROKE} d="M10 6A4 4 0 1 1 8.6 3M8.8 1v2.3H6.5M5.4 5l.9-.6V8"/>`,
+    // an hourglass
+    timed: `<path ${ICON_STROKE} d="M3.2 1.5h5.6M3.2 10.5h5.6M3.7 1.5c0 3 4.6 3 4.6 4.5s-4.6 1.5-4.6 4.5"/><path ${ICON_STROKE} d="M8.3 1.5c0 3-4.6 3-4.6 4.5s4.6 1.5 4.6 4.5"/>`,
+    // a lightning bolt
+    when: `<path d="M7 .8 2.8 6.6h2.8L5 11.2l4.4-6H6.6z" fill="currentColor"/>`,
+};
+
+const KEYWORDS = [
+    { re: /^on enter/i, cls: 'enter' },
+    { re: /^while on top/i, cls: 'top' },
+    { re: /^on (destruction|death|leave)/i, cls: 'destroy' },
+    { re: /^on revive/i, cls: 'revive' },
+    { re: /^on draw/i, cls: 'draw' },
+    { re: /^once per turn/i, cls: 'once' },
+    { re: /^at the (start|end) of/i, cls: 'timed' },
+    { re: /^when/i, cls: 'when' },
+];
+// "<Trigger text>:" at the start of the effect or of a new sentence/line.
+const KEYWORD_RE = /(^|[.!?]\s+|\n)([A-Z][^:.\n]{2,60}):/g;
+
+function keywordBadge(label) {
+    const kw = KEYWORDS.find((k) => k.re.test(label));
+    if (!kw) return null;
+    return `<span class="kw kw-${kw.cls}"><svg class="kw-icon" viewBox="0 0 12 12" aria-hidden="true">${ICONS[kw.cls]}</svg>${escapeHtml(label)}</span>`;
+}
+
+// Split `source` into plain pieces and keyword badges; `plain` renders a piece.
+function renderWithKeywords(source, plain) {
+    let html = '';
+    let from = 0;
+    for (const m of source.matchAll(KEYWORD_RE)) {
+        const badge = keywordBadge(m[2]);
+        if (!badge) continue;
+        const labelStart = m.index + m[1].length;
+        html += plain(source.slice(from, labelStart)) + badge;
+        from = labelStart + m[2].length + 1; // past the colon
+    }
+    return html + plain(source.slice(from));
+}
+
+// Effect text with every catalog card name wrapped in a reference chip and its
+// leading trigger shown as a keyword badge.
 // `selfName` (the card being read) is skipped: a card never links to itself.
 export function linkifyEffectHtml(text, selfName = '') {
     const source = String(text || '');
+    if (!source) return '';
+    return renderWithKeywords(source, (piece) => linkifyPlain(piece, selfName));
+}
+
+function linkifyPlain(source, selfName) {
     if (!cardsByName || !source) return escapeHtml(source);
 
     const skip = String(selfName || '').toLowerCase();
@@ -156,7 +221,7 @@ function previewHtml(card) {
         </div>
         ${type ? `<div class="card-type">${escapeHtml(type)}</div>` : ''}
         <div class="card-ref-preview-media">${cardArtTag(card.name, 'card-ref-preview-art', { eager: true })}</div>
-        <div class="card-ref-preview-effect tiny">${escapeHtml(effectLabel(card))}</div>
+        <div class="card-ref-preview-effect tiny">${linkifyEffectHtml(effectLabel(card), card.name)}</div>
     `;
 }
 

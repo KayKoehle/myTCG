@@ -3,6 +3,9 @@ from xml.etree import ElementTree as ET
 from src.utils import delete_contents
 
 
+ET.register_namespace("", "http://www.w3.org/2000/svg")  # default xmlns, written once
+
+
 def arrange_svgs(input_dir = "output_svgs", output_dir = "print_svgs"):
     """
     Arrange .svg files from a directory into a grid on a DIN A4-sized SVG canvas.
@@ -37,7 +40,6 @@ def arrange_svgs(input_dir = "output_svgs", output_dir = "print_svgs"):
         # Parse the target root SVG structure
         target_svg_path = os.path.join(output_dir, f"output_grid_{page_num + 1}.svg")
         target_root = ET.Element("svg", attrib={
-            "xmlns": "http://www.w3.org/2000/svg",
             "width": f"{width}cm",
             "height": f"{height}cm",
             "viewBox": f"0 0 {width} {height}"

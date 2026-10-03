@@ -17,6 +17,7 @@ import {
     statChangeClass,
     typeLabel,
 } from './helpers.js';
+import { linkifyEffectHtml } from './cardrefs.js';
 import { DECK_META } from './profile.js';
 import { unpeekAll } from './peek.js';
 
@@ -177,7 +178,7 @@ function renderCards(cards, options = {}) {
                 ${cardArtTag(c.name, 'card-art', { eager: true })}
             </div>
             <div class="card-body">
-                <div class="tiny">${effectLabel(c)}</div>
+                <div class="tiny">${linkifyEffectHtml(effectLabel(c))}</div>
             </div>
         </div>
     `;
@@ -975,7 +976,7 @@ export function renderSnapshot({ snapshot, ui, app, config, onChooseOption, card
                         <div class="hand-card-face hand-card-back" aria-hidden="true">
                             <div class="hand-back-title">${escapeHtml(handTitle)}</div>
                             ${type ? `<div class="hand-back-type">${escapeHtml(type)}</div>` : ''}
-                            <div class="hand-back-effect">${escapeHtml(effectLabel(c))}</div>
+                            <div class="hand-back-effect">${linkifyEffectHtml(effectLabel(c))}</div>
                         </div>
                     </div>
                     <div class="mulligan-x">X</div>

@@ -11,6 +11,7 @@ layout_effect_and_lore(root, namespace, effect_element, effect_string, icon_map,
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -49,6 +50,77 @@ LORE_SEPARATOR_GAP: float = 2.5  # vertical gap between effect block and lore
 
 # Minimum lore font size before we drop lore entirely
 LORE_MIN_FONT_SIZE: float = 1.60
+
+
+# ---------------------------------------------------------------------------
+# Keyword badges ("On enter:", "While on top:" ...)
+# ---------------------------------------------------------------------------
+# Mirrors the webapp (js/cardrefs.js): the trigger an effect starts with is
+# drawn as a coloured pill with a small icon. (pattern, stroke, tint, text, icon)
+
+KEYWORD_RE = re.compile(r"(^|(?<=[.!?]) +|(?<=\n))([A-Z][^:.\n]{2,60}):")
+
+_ICON_STROKE = (' fill="none" stroke="{c}" stroke-width="1.5" '
+                'stroke-linecap="round" stroke-linejoin="round"')
+
+# 12x12 glyphs, same shapes as the webapp's ICONS. {c} is the stroke colour.
+_ICON_PATHS = {
+    "enter": '<path d="M1.5 6h5.5M4.8 3.5 7.3 6l-2.5 2.5M9.5 2v8"/>',
+    "top": '<rect x="2" y="1.2" width="8" height="3.6" rx="1" fill="{c}" stroke="none"/>'
+           '<path opacity=".6" d="M2.5 7.2h7M2.5 10h7"/>',
+    "destroy": '<path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/>',
+    "revive": '<path d="M6 9V2.8M3.4 5.3 6 2.7l2.6 2.6M2.5 10.8h7"/>',
+    "draw": '<rect x="2.8" y="1.2" width="6.4" height="9.6" rx="1.2"/>'
+            '<path d="M4.6 5.3 6 6.8l1.4-1.5"/>',
+    "once": '<path d="M10 6A4 4 0 1 1 8.6 3M8.8 1v2.3H6.5M5.4 5l.9-.6V8"/>',
+    "timed": '<path d="M3.2 1.5h5.6M3.2 10.5h5.6M3.7 1.5c0 3 4.6 3 4.6 4.5s-4.6 1.5-4.6 4.5"/>'
+             '<path d="M8.3 1.5c0 3-4.6 3-4.6 4.5s4.6 1.5 4.6 4.5"/>',
+    "when": '<path d="M7 .8 2.8 6.6h2.8L5 11.2l4.4-6H6.6z" fill="{c}" stroke="none"/>',
+}
+
+# kind -> (matcher, stroke/text colour, pill tint). Darker than the webapp's
+# colours: these sit on white paper, not a dark UI.
+_KEYWORDS = [
+    (re.compile(r"on enter", re.I), "enter", "#15803d", "#dcfce7"),
+    (re.compile(r"while on top", re.I), "top", "#b45309", "#fef3c7"),
+    (re.compile(r"on (destruction|death|leave)", re.I), "destroy", "#b91c1c", "#fee2e2"),
+    (re.compile(r"on revive", re.I), "revive", "#0f766e", "#ccfbf1"),
+    (re.compile(r"on draw", re.I), "draw", "#1d4ed8", "#dbeafe"),
+    (re.compile(r"once per turn", re.I), "once", "#7e22ce", "#f3e8ff"),
+    (re.compile(r"at the (start|end) of", re.I), "timed", "#c2410c", "#ffedd5"),
+    (re.compile(r"when", re.I), "when", "#be185d", "#fce7f3"),
+]
+
+
+def _keyword_style(label: str):
+    for pattern, kind, stroke, tint in _KEYWORDS:
+        if pattern.match(label):
+            return kind, stroke, tint
+    return None
+
+
+def _split_keywords(text: str) -> list:
+    """Split *text* into plain strings and (label,) tuples for each keyword."""
+    out: list = []
+    pos = 0
+    for m in KEYWORD_RE.finditer(text):
+        if _keyword_style(m.group(2)) is None:
+            continue
+        start = m.start(2)
+        if start > pos:
+            out.append(text[pos:start])
+        out.append((m.group(2),))
+        pos = m.end()
+    if pos < len(text):
+        out.append(text[pos:])
+    return out
+
+
+def _estimate_text(text: str) -> str:
+    """*text* with each keyword swapped for a same-width stand-in, so the line
+    estimate accounts for the badge's icon and padding."""
+    return "".join(f"xxx {p[0]}:" if isinstance(p, tuple) else p
+                   for p in _split_keywords(text))
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +281,65 @@ def _caret_position(text: str, font_size: float) -> tuple[float, int] | None:
     return width(line), line_idx
 
 
+def _text_width(text: str, font_size: float) -> float:
+    font = _load_effect_font()
+    if font is None:
+        return len(text) * font_size * EFFECT_CHAR_WIDTH_RATIO
+    return font.getlength(text) * font_size / _MEASURE_PX
+
+
+def _draw_keyword_badge(group, tspan, label, font_size, x_pos, y_pos,
+                        x_offset, y_offset, col_width, line_height):
+    """Reserve room in *tspan* for a keyword pill and draw it into *group*.
+    Returns the (x_offset, y_offset) the following text continues from."""
+    kind, stroke, tint = _keyword_style(label)
+    pad = font_size * 0.28
+    icon = font_size * 0.78
+    label_w = _text_width(label, font_size) * 1.07  # bold runs wider than regular
+    pill_w = pad + icon + pad * 0.8 + label_w + pad
+    pill_h = font_size * 1.1
+
+    measured = _caret_position(tspan.text, font_size)
+    if measured is not None:
+        x_offset, line_idx = measured
+        y_offset = line_idx * line_height
+    while x_offset + pill_w > col_width:
+        x_offset -= col_width
+        y_offset += line_height
+    x_offset = max(x_offset, 0.0)
+
+    # Reserve the pill's width as spaces (a Times space is ~0.25 em wide).
+    tspan.text += " " * math.ceil(pill_w / (font_size * 0.25))
+
+    x0 = x_pos + x_offset
+    top = y_pos + y_offset + font_size * 0.16
+    ET.SubElement(group, "rect", {
+        "x": f"{x0:.3f}", "y": f"{top:.3f}",
+        "width": f"{pill_w:.3f}", "height": f"{pill_h:.3f}",
+        "rx": f"{pill_h / 2:.3f}",
+        "fill": tint, "stroke": stroke, "stroke-width": "0.18",
+    })
+    glyph = ET.SubElement(group, "g", {
+        "transform": f"translate({x0 + pad + 0.1:.3f},{top + (pill_h - icon) / 2:.3f}) scale({icon / 12:.4f})",
+        "fill": "none", "stroke": stroke, "stroke-width": "1.5",
+        "stroke-linecap": "round", "stroke-linejoin": "round",
+    })
+    for el in ET.fromstring(
+        "<g xmlns='http://www.w3.org/2000/svg'>" + _ICON_PATHS[kind].replace("{c}", stroke) + "</g>"
+    ):
+        glyph.append(el)
+    text = ET.SubElement(group, "text", {
+        "x": f"{x0 + pad + icon + pad * 0.8:.3f}",
+        "y": f"{top + pill_h * 0.5 + font_size * 0.3:.3f}",
+        "font-size": f"{font_size * 0.98:.3f}px",
+        "font-family": "serif", "font-weight": "bold",
+        "fill": stroke, "stroke": "none",
+        "textLength": f"{label_w:.3f}", "lengthAdjust": "spacingAndGlyphs",
+    })
+    text.text = label
+    return x_offset + pill_w, y_offset
+
+
 # ---------------------------------------------------------------------------
 # Internal: render effect text with inline icon support
 # ---------------------------------------------------------------------------
@@ -239,7 +370,12 @@ def _render_effect(
     x_offset, y_offset = 0.0, 0.0
     tspan.text = ""
 
-    parts = re.split(r"(\[G\]|\[R\]|\[B\]|\[1\])", effect_string)
+    parts: list = []
+    for piece in _split_keywords(effect_string):
+        if isinstance(piece, tuple):
+            parts.append(piece)
+        else:
+            parts.extend(re.split(r"(\[G\]|\[R\]|\[B\]|\[1\])", piece))
     group_element = ET.Element("g")
 
     # Update font-size on the effect element itself
@@ -252,7 +388,12 @@ def _render_effect(
     line_height = font_size * LINE_HEIGHT_RATIO
 
     for part in parts:
-        if part in icon_map:
+        if isinstance(part, tuple):
+            x_offset, y_offset = _draw_keyword_badge(
+                group_element, tspan, part[0], font_size, x_pos, y_pos,
+                x_offset, y_offset, col_width, line_height,
+            )
+        elif part in icon_map:
             measured = _caret_position(tspan.text, font_size)
             if measured is not None:
                 # Real font metrics, replaying Inkscape's word wrap.
@@ -278,7 +419,7 @@ def _render_effect(
     root.append(group_element)
 
     # Estimate height consumed
-    lines = _estimate_lines(effect_string, font_size, col_width)
+    lines = _estimate_lines(_estimate_text(effect_string), font_size, col_width)
     return y_pos + _lines_height(lines, font_size)
 
 
@@ -311,7 +452,7 @@ def _choose_layout(
         (SMALL_EFFECT_FONT_SIZE, SMALL_LORE_FONT_SIZE),
         (TINY_EFFECT_FONT_SIZE, TINY_LORE_FONT_SIZE),
     ]:
-        e_lines = _estimate_lines(effect, e_fs, TEXT_WIDTH)
+        e_lines = _estimate_lines(_estimate_text(effect), e_fs, TEXT_WIDTH)
         l_lines = _estimate_lines(anecdote, l_fs, TEXT_WIDTH)
         e_height = _lines_height(e_lines, e_fs)
         l_height = _lines_height(l_lines, l_fs)
