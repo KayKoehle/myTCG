@@ -7,7 +7,7 @@ avenges. Two zone-move helpers feed the underworld and both wake the same
 triggers: `transitions.discard_cards` (hand/deck -> underworld, trigger-aware)
 and `transitions.put_cards_to_underworld` (a silent "put" with the same
 trigger wiring). The second death (`transitions.banish_from_underworld`)
-removes a card from the game entirely.
+removes a card from the game entirely; no card of the current printing uses it.
 """
 from __future__ import annotations
 
@@ -20,11 +20,13 @@ from ..effects import (
     CardBehavior,
     EffectResult,
     Halt,
+    own_follow_up,
     partners_in_underworld,
     register,
     register_choice,
     register_opponent_chain,
     revive_choice_on_enter,
+    revive_destinations,
     start_opponent_chain,
 )
 from ..state import GameState, PendingChoice
@@ -126,7 +128,7 @@ def _thoth_enter(rt: Any, state: GameState, player_idx: int, card_id: str, locat
 
 def _handle_thoth_take(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     state = prim.draw_specific_cards_from_deck(state, chooser_idx, [option])
-    return rt.discard_cards(state, chooser_idx, "deck", [cid for cid in pending.follow_up if cid != option])
+    return rt.discard_cards(state, chooser_idx, "deck", [cid for cid in own_follow_up(pending.follow_up) if cid != option])
 
 
 register("Thoth, Scribe of the Dead", CardBehavior(on_enter=_thoth_enter))
@@ -191,10 +193,7 @@ register("Wepwawet, Opener of the Ways", CardBehavior(on_entered_underworld_from
 def _scarab_entered_underworld(rt: Any, state: GameState, player_idx: int, card_id: str) -> GameState | None:
     if card_id not in state.underworlds[player_idx]:
         return None
-    if not any(
-        player_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
-        for loc in state.locations
-    ):
+    if not revive_destinations(rt, state, player_idx):
         return None
     return prim.with_pending_choice(
         state, player_idx, "revive_underworld_here", card_id, None,
@@ -208,44 +207,43 @@ register("Sacred Scarab", CardBehavior(on_entered_underworld_from_hand_or_deck=_
 # --- The revivers ----------------------------------------------------------------
 
 def _isis_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    options = [cid for cid in state.underworlds[player_idx] if is_being(cid)]
+    # "You may banish a friendly being here to revive a being." The banish is
+    # the price, so it comes first; the being it frees a slot for is chosen
+    # afterwards, from the underworld as it stands then.
+    options = [
+        cid
+        for cid in state.locations[location_idx].stacks[player_idx]
+        if is_being(cid) and rt.can_be_banished(state, cid)
+    ]
     if not options:
-        return state
-    if not any(
-        player_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
-        for loc in state.locations
-    ):
         return state
     return Halt(
         prim.with_pending_choice(
-            state, player_idx, "isis_revive", card_id, location_idx,
-            prim.choose_options_for_cards(options, include_pass=True), "You may revive a being",
+            state, player_idx, "isis_sacrifice", card_id, location_idx,
+            prim.choose_options_for_cards(options, include_pass=True),
+            "You may banish a friendly being here to revive a being",
         )
     )
 
 
+def _handle_isis_sacrifice(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
+    state = rt.sacrifice_card(state, option)
+    revivable = [cid for cid in state.underworlds[chooser_idx] if is_being(cid)]
+    if not revivable or not revive_destinations(rt, state, chooser_idx):
+        return state
+    return prim.with_pending_choice(
+        state, chooser_idx, "isis_revive", pending.source_card_id, pending.location_id,
+        revivable, "Choose a being to revive",
+    )
+
+
 def _handle_isis_revive(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    # "If you do, banish another being from your underworld": the price is
-    # chosen before the revival resolves, so ride-along triggers (the Sacred
-    # Scarab) always fire on a settled board.
-    price_options = [cid for cid in state.underworlds[chooser_idx] if is_being(cid) and cid != option]
-    if price_options:
-        return prim.with_pending_choice(
-            state, chooser_idx, "isis_price", pending.source_card_id, pending.location_id,
-            price_options, "Choose a being to banish from your underworld forever",
-            follow_up=(option,),
-        )
     return _revive_with_location_choice(rt, state, chooser_idx, option, pending)
 
 
-def _handle_isis_price(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    state = rt.banish_from_underworld(state, chooser_idx, option)
-    return _revive_with_location_choice(rt, state, chooser_idx, pending.follow_up[0], pending)
-
-
 register("Isis, Mistress of Magic", CardBehavior(on_enter=_isis_enter))
+register_choice("isis_sacrifice", _handle_isis_sacrifice)
 register_choice("isis_revive", _handle_isis_revive)
-register_choice("isis_price", _handle_isis_price)
 
 
 def _osiris_revive(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> GameState:
@@ -347,7 +345,9 @@ register(
     CardBehavior(
         on_enter=revive_choice_on_enter(
             lambda state, player_idx, location_idx: [cid for cid in state.underworlds[player_idx] if is_being(cid)],
-            "You may revive a being",
+            "Revive a being",
+            # "On enter: Revive a being." — not a may.
+            include_pass=False,
         ),
     ),
 )

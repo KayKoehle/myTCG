@@ -65,8 +65,8 @@ const CHOICE_VERB_BY_KIND = {
     return_human_to_hand: 'Return',
     revive_underworld_here: 'Revive',
     revive_choose_location: 'Revive at',
-    put_hand_to_underworld: 'Banish',
-    namtar_send_to_underworld: 'Banish',
+    put_hand_to_underworld: 'Bury',
+    namtar_send_to_underworld: 'Bury',
     move_hero_to_here: 'Move',
     farmer_free_human: 'Free',
     enkidu_join_gilgamesh: 'Join',
@@ -78,7 +78,7 @@ const CHOICE_VERB_BY_KIND = {
     gondul_swap_with_top: 'Swap',
     swap_hand_with_deck_card: 'Swap',
     isis_revive: 'Revive',
-    isis_price: 'Banish',
+    isis_sacrifice: 'Banish',
     thoth_take_one: 'Take',
 };
 

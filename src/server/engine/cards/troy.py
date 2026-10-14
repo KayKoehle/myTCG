@@ -128,8 +128,8 @@ register("Camp Guard at the Ships", CardBehavior(on_enter=_camp_guard_enter))
 def _greek_soldiers_moved(rt: Any, state: GameState, owner_idx: int, card_id: str, source_loc: int, source_side: int, target_loc: int, target_side: int) -> GameState:
     if source_loc == target_loc and source_side != target_side:
         # "For that opponent, you may destroy up to five of their beings with
-        # Power [2] or less": that opponent's own beings only — not the
-        # soldiers themselves, nor other cards of yours smuggled over here.
+        # Power [2] or less": everything that opponent commands here — a card
+        # of yours that crossed over earlier serves them now and is fair game.
         weaklings = [
             cid
             for cid, power in _opponent_beings_here(rt, state, owner_idx, target_side, target_loc)

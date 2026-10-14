@@ -2256,6 +2256,87 @@ select {
 .fx-burst-banish { text-shadow: 0 0 18px rgba(178, 116, 255, 0.9); }
 .fx-burst-revive { text-shadow: 0 0 18px rgba(120, 255, 180, 0.9); }
 
+.fx-sacrifice { box-shadow: 0 0 28px rgba(255, 128, 40, 0.85); }
+.fx-return { box-shadow: 0 0 22px rgba(127, 212, 255, 0.7); }
+.fx-shard {
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.fx-label-destroy { color: #ff8a3d; }
+.fx-label-sacrifice { color: #ffb347; }
+
+.fx-burst-destroy { text-shadow: 0 0 18px rgba(255, 120, 50, 0.95); }
+.fx-burst-sacrifice { text-shadow: 0 0 20px rgba(255, 150, 40, 0.95); }
+
+/* Banish: a swirling rift the card spirals into. */
+.fx-portal {
+    position: fixed;
+    z-index: 384;
+    pointer-events: none;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(18, 6, 40, 0.95) 0%, rgba(60, 20, 120, 0.85) 34%, rgba(150, 90, 255, 0.45) 56%, rgba(150, 90, 255, 0) 70%),
+        conic-gradient(from 0deg, rgba(203, 166, 255, 0.0), rgba(203, 166, 255, 0.75), rgba(120, 70, 220, 0.0), rgba(203, 166, 255, 0.75), rgba(203, 166, 255, 0.0));
+    box-shadow: 0 0 32px rgba(178, 116, 255, 0.7);
+    will-change: transform, opacity;
+}
+.fx-portal-deep {
+    background:
+        radial-gradient(circle, rgba(4, 0, 10, 0.98) 0%, rgba(40, 10, 70, 0.9) 36%, rgba(110, 50, 180, 0.45) 58%, rgba(110, 50, 180, 0) 70%),
+        conic-gradient(from 0deg, rgba(160, 100, 230, 0), rgba(160, 100, 230, 0.7), rgba(60, 20, 120, 0), rgba(160, 100, 230, 0.7), rgba(160, 100, 230, 0));
+}
+
+/* Destroy: the flash of the blow. */
+.fx-impact {
+    position: fixed;
+    z-index: 386;
+    pointer-events: none;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 245, 220, 0.95) 0%, rgba(255, 150, 60, 0.7) 30%, rgba(255, 70, 40, 0) 68%);
+    will-change: transform, opacity;
+}
+
+/* Sacrifice: the band of fire that climbs the card as it burns. */
+.fx-burn-edge {
+    position: fixed;
+    z-index: 386;
+    height: 18px;
+    pointer-events: none;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(255, 250, 200, 0.95) 0%, rgba(255, 170, 50, 0.85) 35%, rgba(255, 80, 20, 0.45) 65%, rgba(255, 60, 0, 0) 100%);
+    filter: blur(1.5px);
+    will-change: transform, opacity;
+}
+
+/* Particles: embers, shards of light, motes pulled into a rift. */
+.fx-mote {
+    position: fixed;
+    z-index: 387;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+.fx-mote-ember {
+    width: 6px;
+    height: 6px;
+    background: radial-gradient(circle, #fff6c8 0%, #ffb347 45%, rgba(255, 90, 20, 0) 75%);
+    box-shadow: 0 0 8px rgba(255, 140, 40, 0.9);
+}
+.fx-mote-destroy {
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: #ffd0a0;
+    box-shadow: 0 0 6px rgba(255, 120, 50, 0.9);
+}
+.fx-mote-banish {
+    background: radial-gradient(circle, #ffffff 0%, #cba6ff 50%, rgba(178, 116, 255, 0) 80%);
+    box-shadow: 0 0 10px rgba(178, 116, 255, 0.9);
+}
+
 .fx-ring {
     position: fixed;
     z-index: 384;

@@ -174,6 +174,9 @@ export function formatLogEntry(replay, entry, seatName) {
         case 'mulligan_select': return `${who(1)} selected ${name(2)} for mulligan`;
         case 'mulligan_keep': return `${who(1)} confirmed mulligan (${parts[2]} replaced)`;
         case 'banish': return `${who(1)} lost ${name(2)} (banished)`;
+        case 'sacrifice': return `${who(1)} sacrificed ${name(2)}`;
+        case 'destroy': return `${who(1)} lost ${name(2)} (destroyed)`;
+        case 'return': return `${name(2)} returned to ${who(1)}'s hand`;
         case 'revive': return `${who(1)} revived ${name(2)}`;
         case 'discard': return `${who(1)} discarded ${name(2)}`;
         case 'bury': return `${who(1)} buried ${name(2)}`;

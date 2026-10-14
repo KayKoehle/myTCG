@@ -24,12 +24,13 @@ REPO = Path(__file__).resolve().parents[1]
 MOBILE_PY = REPO / "mobile-apk" / "android" / "app" / "src" / "main" / "python"
 MOBILE_WWW = REPO / "mobile-apk" / "www"
 
-FINISHED_DECK_TABLES = [
-    "tables/religion/mesopotamia/Epic_of_Gilgamesh.csv",
-    "tables/religion/mesopotamia/Inannas_Descent_into_the_Underworld.csv",
-    "tables/religion/mesopotamia/The_Flood.csv",
-    "tables/religion/greek/siege_of_troy.csv",
-]
+# Every finished deck the engine loads — read from the engine itself, so a new
+# deck can never be left out of the app (Odin's and Osiris's once were, and
+# the phone silently dealt another deck in their place).
+sys.path.insert(0, str(REPO / "src"))
+from server.engine.data_loader import FINISHED_DECK_FILES  # noqa: E402
+
+FINISHED_DECK_TABLES = list(FINISHED_DECK_FILES.values())
 
 
 def _iter_file_pairs() -> list[tuple[Path, Path]]:

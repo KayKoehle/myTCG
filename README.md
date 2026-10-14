@@ -423,6 +423,15 @@ away. None of that needs a modified client; it is the ordinary payload with one
 number changed. The rules are pure, so the whole set runs headless in
 `scripts/run_guest_calls.mjs` (`tests/test_guest_calls.py`).
 
+**What a snapshot shows.** Even its own seat's snapshot must not carry anybody
+else's secrets, so `engine/snapshot.py` builds it per viewer: `legal_actions`
+lists only the viewer's moves (the current player's would name every card in
+their hand they could play), another seat's pending choice arrives without its
+options or prompt (a mulligan, a deck search, Calchas's and Mimir's peeks,
+Sleipnir's look), and the log blanks a rival's mulligan picks and the cards
+riding face down in the Trojan Horse. `/api/replay` holds the full state, so
+the host only answers it for a guest once the match is over.
+
 ### STUN
 
 Home routers hide players behind NAT, so each peer needs to learn its own public
