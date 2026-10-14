@@ -199,3 +199,4 @@ def test_snapshot_history_hides_a_rivals_mulligan_and_smuggled_cards():
     gil_view = build_state_snapshot(state, "m", state.player_ids[1])
     assert not any(soldier in entry for entry in gil_view["action_history"])
     assert not any(card(soldier).name in entry for entry in gil_view["action_history_pretty"])
+

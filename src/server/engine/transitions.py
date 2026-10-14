@@ -611,9 +611,9 @@ def put_cards_to_underworld(state: GameState, player_idx: int, zone: str, card_i
 
 def banish_from_underworld(state: GameState, player_idx: int, card_id: str) -> GameState:
     """The second death: remove a card from `player_idx`'s underworld
-    entirely (Ammit's devouring, Isis's price). Unlike a normal banish there
-    is nowhere lower to go — the card leaves the game and nothing can revive
-    it."""
+    entirely. Unlike a normal banish there is nowhere lower to go — the card
+    leaves the game and nothing can revive it. (No card of the current
+    printing uses it; Ammit and Isis did before the Osiris deck's rework.)"""
     underworld = list(state.underworlds[player_idx])
     if card_id not in underworld:
         return state
