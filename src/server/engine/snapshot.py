@@ -31,12 +31,45 @@ _LANE_NAMES = {0: "left lane", 1: "middle lane", 2: "right lane"}
 
 
 def _card_name(card_id: str) -> str:
+    if card_id == HIDDEN_CARD:
+        return "a hidden card"
     card = CARD_LIBRARY.get(card_id)
     return card.name if card is not None else card_id
 
 
 def _lane_name(location_index: int) -> str:
     return _LANE_NAMES.get(location_index, f"lane {location_index + 1}")
+
+
+# A card id the viewer is not allowed to learn from the log (see
+# `redact_history_for`).
+HIDDEN_CARD = "?"
+
+
+def redact_history_for(state: GameState, viewer_idx: int) -> list[str]:
+    """The match log as one seat may read it.
+
+    Two entries name cards their seat has never shown anyone: the cards a
+    rival picked for their opening mulligan (straight out of a hand nobody else
+    has seen), and a card moved while it is face down on an enemy's side (the
+    Trojan Horse's passengers). Those ids are blanked for everyone else; the
+    rest of the log is public play.
+    """
+    viewer_id = str(state.player_ids[viewer_idx])
+    hidden_facedown = {
+        card_id for card_id in state.facedown_cards if card_owner_idx(state, card_id) != viewer_idx
+    }
+    redacted: list[str] = []
+    for entry in state.action_history:
+        parts = entry.split(":")
+        if parts[0] == "mulligan_select" and len(parts) >= 3 and parts[1] != viewer_id:
+            parts[2] = HIDDEN_CARD
+            entry = ":".join(parts)
+        elif parts[0] == "move_card" and len(parts) >= 3 and parts[2] in hidden_facedown:
+            parts[2] = HIDDEN_CARD
+            entry = ":".join(parts)
+        redacted.append(entry)
+    return redacted
 
 
 def format_action_history_entry(entry: str) -> str:
@@ -59,6 +92,12 @@ def format_action_history_entry(entry: str) -> str:
         return f"P{parts[1]} confirmed mulligan ({parts[2]} replaced)"
     if kind == "banish" and len(parts) >= 3:
         return f"P{parts[1]} lost {_card_name(parts[2])} (banished)"
+    if kind == "sacrifice" and len(parts) >= 3:
+        return f"P{parts[1]} sacrificed {_card_name(parts[2])}"
+    if kind == "destroy" and len(parts) >= 3:
+        return f"P{parts[1]} lost {_card_name(parts[2])} (destroyed)"
+    if kind == "return" and len(parts) >= 3:
+        return f"{_card_name(parts[2])} returned to P{parts[1]}'s hand"
     if kind == "revive" and len(parts) >= 3:
         return f"P{parts[1]} revived {_card_name(parts[2])}"
     if kind == "discard" and len(parts) >= 3:
@@ -328,6 +367,13 @@ def build_state_snapshot(
         return entries
 
     hand_revealed = {i: hand_is_revealed(state, i) for i in range(n)}
+    history = redact_history_for(state, viewer_idx)
+    pending = state.pending_choice
+    # Another seat's decision is theirs to see: its options name cards out of
+    # their hand or deck (a mulligan, a deck search, Calchas's and Mimir's
+    # peeks) and its prompt can say what they saw (Sleipnir, Dolon). Everyone
+    # else learns only that somebody is choosing, and what kind of choice.
+    pending_is_viewers = pending is not None and pending.chooser_idx == viewer_idx
     # 2-player compatibility fields keep pointing at "the" opponent; in FFA
     # the per-player dicts below carry every seat.
     opp_idx = next((i for i in range(n) if i != viewer_idx), viewer_idx)
@@ -381,16 +427,18 @@ def build_state_snapshot(
             for card_id in known_card_ids
             if card_id in CARD_LIBRARY
         },
-        "legal_actions": [action_payload(a) for a in legal_actions(state)],
+        # Only the viewer's own moves: the current player's list names every
+        # card in their hand they could play right now.
+        "legal_actions": [action_payload(a) for a in legal_actions(state) if a.player_id == viewer_player_id],
         "pending_choice": None
-        if state.pending_choice is None
+        if pending is None
         else {
-            "player_id": state.player_ids[state.pending_choice.chooser_idx],
-            "choice_kind": state.pending_choice.choice_kind,
-            "source_card_id": state.pending_choice.source_card_id,
-            "location_id": state.pending_choice.location_id,
-            "prompt": state.pending_choice.prompt,
-            "options": list(state.pending_choice.options),
+            "player_id": state.player_ids[pending.chooser_idx],
+            "choice_kind": pending.choice_kind,
+            "source_card_id": pending.source_card_id,
+            "location_id": pending.location_id,
+            "prompt": pending.prompt if pending_is_viewers else "",
+            "options": list(pending.options) if pending_is_viewers else [],
         },
         "locations": [
             {
@@ -422,8 +470,8 @@ def build_state_snapshot(
             "pending": bool(state.flood_pending_turn),
             "used": state.flood_used,
         },
-        "action_history": list(state.action_history),
-        "action_history_pretty": [format_action_history_entry(entry) for entry in state.action_history],
+        "action_history": history,
+        "action_history_pretty": [format_action_history_entry(entry) for entry in history],
     }
 
 

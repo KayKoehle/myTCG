@@ -103,7 +103,9 @@ def _ninsun_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
 
 
 def _alewife_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
-    options = prim.build_move_options(state, prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id}), include_pass=True)
+    # "one of your beings here": an artifact standing on this side stays put.
+    beings_here = prim.friendly_cards_here(state, player_idx, location_idx, exclude={card_id}, predicate=is_being)
+    options = prim.build_move_options(state, beings_here, include_pass=True)
     if len(options) > 1:
         return Halt(prim.with_pending_choice(state, player_idx, "move_friendly_here", card_id, location_idx, options, "Choose a friendly card to move"))
     return state
@@ -173,7 +175,8 @@ def _ishtar_hero_left(rt: Any, state: GameState, owner_idx: int, moved_card_id: 
 
 register("Ishtar", CardBehavior(on_friendly_hero_left_while_top=_ishtar_hero_left))
 register_opponent_chain("ishtar_banish_small", _ishtar_chain_step)
-register_choice("ishtar_banish_small_enemy", lambda rt, state, chooser_idx, option, pending: rt.banish_card(state, option))
+# Each opponent gives up one of their own beings: a sacrifice.
+register_choice("ishtar_banish_small_enemy", lambda rt, state, chooser_idx, option, pending: rt.sacrifice_card(state, option))
 
 
 # --- Monsters: defeated when heroes arrive, rewarding their slayer -----------

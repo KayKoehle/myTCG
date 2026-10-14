@@ -9,8 +9,11 @@ from server.engine.actions import ChooseOptionAction
 from server.engine.catalog import CARD_LIBRARY, named
 from server.engine.primitives import find_card_in_play
 from server.engine.snapshot import format_action_history_entry
+from server.engine.effects import CHOICE_HANDLERS
 from server.engine.transitions import (
+    RT,
     _apply_on_enter,
+    banish_card,
     apply_action,
     discard_from_hand,
     dynamic_card_power,
@@ -302,40 +305,54 @@ def test_scarab_may_stay_buried():
 # --- The revivers ---------------------------------------------------------------------
 
 
-def test_isis_revival_demands_the_second_death_of_another():
+def test_isis_banishes_a_friendly_being_here_to_revive_a_being():
     state = start_game(OSI, GIL)
     isis = by_name(OSI, ISIS)
     ushabti = by_name(OSI, USHABTI)
     khonsu = by_name(OSI, KHONSU)
-    state = put_in_underworld(state, ushabti, 0)
     state = put_in_underworld(state, khonsu, 0)
+    state = put_in_play(state, ushabti, 0, 0)
     state = put_in_play(state, isis, 0, 0)
 
     state = _apply_on_enter(state, 0, isis, 0)
-    assert state.pending_choice.choice_kind == "isis_revive"
-    state = choose(state, khonsu)
-    assert state.pending_choice.choice_kind == "isis_price"
-    assert "PASS" not in state.pending_choice.options, "the price is not optional"
+    assert state.pending_choice.choice_kind == "isis_sacrifice"
+    assert "PASS" in state.pending_choice.options, "the banish is a may"
+    assert ushabti in state.pending_choice.options
     state = choose(state, ushabti)
-    assert nowhere(state, ushabti), "the price is paid: gone from the game"
-
+    assert ushabti in state.underworlds[0], "banished, not gone from the game"
+    assert f"sacrifice:1:{ushabti}" in state.action_history
+    assert state.pending_choice.choice_kind == "isis_revive"
+    assert "PASS" not in state.pending_choice.options, "the price is paid: a being rises"
+    state = choose(state, khonsu)
+    assert state.pending_choice.choice_kind == "revive_choose_location"
     state = choose(state, "0")
     assert khonsu in state.locations[0].stacks[0]
+    assert not any(entry.startswith("second_death:") for entry in state.action_history)
 
 
-def test_isis_revives_for_free_when_no_other_being_lies_below():
+def test_isis_may_pass_and_revives_nothing():
     state = start_game(OSI, GIL)
     isis = by_name(OSI, ISIS)
-    ushabti = by_name(OSI, USHABTI)
-    state = put_in_underworld(state, ushabti, 0)
+    khonsu = by_name(OSI, KHONSU)
+    state = put_in_underworld(state, khonsu, 0)
     state = put_in_play(state, isis, 1, 0)
 
     state = _apply_on_enter(state, 0, isis, 1)
-    state = choose(state, ushabti)
-    assert state.pending_choice.choice_kind == "revive_choose_location"
-    after = choose(state, "1")
-    assert ushabti in after.locations[1].stacks[0]
-    assert not any(entry.startswith("second_death:") for entry in after.action_history)
+    after = choose(state, "PASS")
+    assert khonsu in after.underworlds[0]
+    assert isis in after.locations[1].stacks[0]
+
+
+def test_isis_only_offers_beings_on_her_own_side_here():
+    state = start_game(OSI, GIL)
+    isis = by_name(OSI, ISIS)
+    ushabti = by_name(OSI, USHABTI)
+    khonsu = by_name(OSI, KHONSU)
+    state = put_in_play(state, ushabti, 1, 0)  # another location
+    state = put_in_play(state, isis, 0, 0)
+    state = _apply_on_enter(state, 0, isis, 0)
+    assert ushabti not in state.pending_choice.options
+    assert khonsu not in state.pending_choice.options
 
 
 def test_ammit_may_revive_a_being():
@@ -360,7 +377,7 @@ def test_ammit_may_revive_a_being():
     assert ushabti in after.underworlds[0]
 
 
-def test_ammit_may_pass():
+def test_ammit_must_revive():
     state = start_game(OSI, GIL)
     ammit = by_name(OSI, AMMIT)
     ushabti = by_name(OSI, USHABTI)
@@ -368,8 +385,34 @@ def test_ammit_may_pass():
     state = put_in_play(state, ammit, 0, 0)
 
     state = _apply_on_enter(state, 0, ammit, 0)
-    after = choose(state, "PASS")
-    assert ushabti in after.underworlds[0]
+    assert "PASS" not in state.pending_choice.options, "On enter: Revive a being — not a may"
+
+
+def test_nephthys_draws_when_a_card_leaves_play_for_the_underworld():
+    state = start_game(OSI, GIL)
+    nephthys = by_name(OSI, NEPHTHYS)
+    ushabti = by_name(OSI, USHABTI)
+    state = put_in_play(state, nephthys, 0, 0)
+    state = put_in_play(state, ushabti, 1, 0)
+    deck_before = len(state.decks[0])
+
+    state = banish_card(state, ushabti)
+    assert len(state.decks[0]) == deck_before - 1, "a banished card enters the underworld too"
+    khonsu = by_name(OSI, KHONSU)
+    state = put_in_play(state, khonsu, 1, 0)
+    deck_before = len(state.decks[0])
+    state = banish_card(state, khonsu)
+    assert len(state.decks[0]) == deck_before, "only the first time each turn"
+
+
+def test_wepwawet_put_from_hand_by_a_put_effect_draws_two():
+    state = start_game(OSI, GIL)
+    wepwawet = by_name(OSI, WEPWAWET)
+    state = put_in_hand(state, wepwawet, 0)
+    deck_before = len(state.decks[0])
+    state = CHOICE_HANDLERS["put_hand_to_underworld"](RT, state, 0, wepwawet, None)
+    assert wepwawet in state.underworlds[0]
+    assert len(state.decks[0]) == deck_before - 2
 
 
 def test_osiris_mass_revives_the_cheap_dead_on_his_return():

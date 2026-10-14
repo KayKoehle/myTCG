@@ -704,6 +704,11 @@ export function createGameController(ui, cardStack) {
         // Cap simultaneous removal effects so a chain (e.g. the flood banishing
         // a whole board) can't spawn dozens of ghosts at once on mobile.
         let fxBudget = 8;
+        // A defeated monster is destroyed on its way out; its own DEFEATED
+        // effect tells that story, so its destroy entry plays nothing extra.
+        const defeatedNow = new Set(fresh
+            .filter((e) => String(e || '').startsWith('monster_defeated:'))
+            .map((e) => String(e).split(':')[2]));
         for (const entry of fresh) {
             const raw = String(entry || '');
             const parts = raw.split(':');
@@ -741,14 +746,22 @@ export function createGameController(ui, cardStack) {
             } else if (raw.startsWith('draw_card:')) {
                 animateCardDraw(Number(parts[1]));
                 if (Number(parts[1]) === you && app.statsMeta) questOnCardDrawn();
-            } else if (raw.startsWith('banish:')) {
-                // "Banish X enemy beings": a rival losing a being counts.
+            } else if (raw.startsWith('banish:') || raw.startsWith('sacrifice:')) {
+                // "Banish X enemy beings": a rival losing a being counts —
+                // also when your effect made them give it up themselves.
                 const ctx = cardTypeCtx(knownCard(snapshot, parts[2]));
                 if (Number(parts[1]) !== you && ctx.isBeing && app.statsMeta) questOnCardBanished();
-                if (fxBudget-- > 0) animateBanish(parts[2], Number(parts[1]));
+                if (fxBudget-- > 0) {
+                    if (raw.startsWith('sacrifice:')) animateSacrifice(parts[2], Number(parts[1]));
+                    else animateBanish(parts[2], Number(parts[1]));
+                }
+            } else if (raw.startsWith('destroy:')) {
+                if (!defeatedNow.has(parts[2]) && fxBudget-- > 0) animateDestroy(parts[2], Number(parts[1]));
+            } else if (raw.startsWith('return:')) {
+                if (fxBudget-- > 0) animateReturnToHand(parts[2], Number(parts[1]));
             } else if (raw.startsWith('second_death:')) {
                 if (fxBudget-- > 0) {
-                    animateBanish(parts[2], Number(parts[1]), { label: 'DESTROYED', glyph: '☠', cls: 'fx-banish fx-second-death' });
+                    animateBanish(parts[2], Number(parts[1]), { label: 'GONE FOREVER', glyph: '☠', cls: 'fx-banish fx-second-death' });
                 }
             } else if (raw.startsWith('discard:')) {
                 if (fxBudget-- > 0) animateToUnderworld(parts[2], Number(parts[1]));
@@ -1037,7 +1050,9 @@ export function createGameController(ui, cardStack) {
             const id = el.getAttribute('data-board-card-id');
             if (!id) return;
             const rect = el.getBoundingClientRect();
-            if (rect.width) map.set(id, { rect, node: el.cloneNode(true) });
+            const lane = el.closest('[data-location-id]');
+            const laneId = lane ? lane.getAttribute('data-location-id') : null;
+            if (rect.width) map.set(id, { rect, node: el.cloneNode(true), laneId });
         });
         return map;
     }
@@ -1141,23 +1156,252 @@ export function createGameController(ui, cardStack) {
         anim.addEventListener('cancel', done);
     }
 
-    // A being is banished/exiled: it lifts, spins and dissolves in a haze.
+    // Reduced motion: removal effects shrink to a short fade with the label,
+    // so the player still sees what left and why.
+    function fxReducedFade(fx, label, labelCls) {
+        const ghost = fxGhost(fx.rect, fx.node, '');
+        fxLabel(fx.rect, label, labelCls);
+        const anim = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, easing: 'ease-out' });
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // Small glowing motes thrown out of a card: drifting up from a fire,
+    // flying apart from a blow, swirling into a portal.
+    function fxParticles(rect, { count = 10, cls = '', spread = 1, rise = 0, inward = false, duration = 900 } = {}) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        for (let i = 0; i < count; i += 1) {
+            const mote = document.createElement('div');
+            mote.className = `fx-mote ${cls}`.trim();
+            const angle = (Math.PI * 2 * i) / count + Math.random() * 0.6;
+            const dist = (rect.width * 0.45 + Math.random() * rect.width * 0.5) * spread;
+            const dx = Math.cos(angle) * dist;
+            const dy = Math.sin(angle) * dist - rise * (0.6 + Math.random() * 0.8);
+            // Fires start along the card's lower half; other motes at its heart.
+            const ox = rise ? (Math.random() - 0.5) * rect.width * 0.8 : 0;
+            const oy = rise ? rect.height * (0.1 + Math.random() * 0.35) : 0;
+            mote.style.left = `${cx + ox}px`;
+            mote.style.top = `${cy + oy}px`;
+            document.body.appendChild(mote);
+            const frames = inward
+                ? [
+                    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`, opacity: 0 },
+                    { transform: `translate(calc(-50% + ${dx * 0.6}px), calc(-50% + ${dy * 0.6}px)) scale(1.1)`, opacity: 1, offset: 0.35 },
+                    { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0 },
+                ]
+                : [
+                    { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0 },
+                    { transform: `translate(calc(-50% + ${dx * 0.3}px), calc(-50% + ${dy * 0.3}px)) scale(1.15)`, opacity: 1, offset: 0.2 },
+                    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.3)`, opacity: 0 },
+                ];
+            const anim = mote.animate(frames, {
+                duration: duration * (0.75 + Math.random() * 0.5),
+                delay: Math.random() * 160,
+                easing: 'cubic-bezier(0.2, 0.6, 0.35, 1)',
+                fill: 'backwards',
+            });
+            const done = () => mote.remove();
+            anim.addEventListener('finish', done);
+            anim.addEventListener('cancel', done);
+        }
+    }
+
+    // A being is banished: a rift opens beneath it, the card spirals into the
+    // void and the light it leaves behind is pulled in after it.
     function animateBanish(cardId, ownerId, opts = {}) {
         if (!window.Element.prototype.animate) return;
         const { label = 'BANISHED', glyph = '✦', cls = 'fx-banish' } = opts;
         const fx = boardCardFx(cardId);
         if (!fx) return;
+        if (prefersReducedMotion()) { fxReducedFade(fx, label, 'fx-label-banish'); return; }
+        const portal = document.createElement('div');
+        portal.className = `fx-portal ${cls === 'fx-banish' ? '' : 'fx-portal-deep'}`.trim();
+        const size = Math.max(fx.rect.width, fx.rect.height) * 1.25;
+        portal.style.left = `${fx.rect.left + fx.rect.width / 2}px`;
+        portal.style.top = `${fx.rect.top + fx.rect.height / 2}px`;
+        portal.style.width = `${size}px`;
+        portal.style.height = `${size}px`;
+        document.body.appendChild(portal);
+        const portalAnim = portal.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.1) rotate(0deg)', opacity: 0 },
+                { transform: 'translate(-50%, -50%) scale(1) rotate(160deg)', opacity: 1, offset: 0.35 },
+                { transform: 'translate(-50%, -50%) scale(0.9) rotate(320deg)', opacity: 0.9, offset: 0.75 },
+                { transform: 'translate(-50%, -50%) scale(0) rotate(480deg)', opacity: 0 },
+            ],
+            { duration: 1100, easing: 'ease-in-out' }
+        );
+        const donePortal = () => portal.remove();
+        portalAnim.addEventListener('finish', donePortal);
+        portalAnim.addEventListener('cancel', donePortal);
+
         const ghost = fxGhost(fx.rect, fx.node, cls);
         fxBurst(fx.rect, glyph, 'fx-burst-banish');
         fxLabel(fx.rect, label, 'fx-label-banish');
+        fxParticles(fx.rect, { count: 12, cls: 'fx-mote-banish', inward: true, spread: 1.3, duration: 950 });
         const anim = ghost.animate(
             [
-                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1) blur(0)', opacity: 1 },
-                { transform: 'translate(0,-16px) rotate(4deg) scale(1.04)', filter: 'brightness(1.5) blur(0)', opacity: 0.95, offset: 0.3 },
-                { transform: 'translate(0,-52px) rotate(-6deg) scale(0.7)', filter: 'brightness(1.2) blur(3px)', opacity: 0.4, offset: 0.7 },
-                { transform: 'translate(0,-84px) rotate(-12deg) scale(0.4)', filter: 'brightness(1) blur(8px)', opacity: 0 },
+                { transform: 'translate(0,0) rotate(0deg) scale(1)', filter: 'brightness(1) blur(0) hue-rotate(0deg)', opacity: 1 },
+                { transform: 'translate(0,-12px) rotate(8deg) scale(1.05)', filter: 'brightness(1.6) blur(0) hue-rotate(20deg)', opacity: 1, offset: 0.22 },
+                { transform: 'translate(0,0) rotate(200deg) scale(0.55)', filter: 'brightness(1.3) blur(2px) hue-rotate(60deg)', opacity: 0.75, offset: 0.65 },
+                { transform: 'translate(0,0) rotate(420deg) scale(0.02)', filter: 'brightness(2) blur(6px) hue-rotate(90deg)', opacity: 0 },
             ],
-            { duration: 850, easing: 'cubic-bezier(0.3, 0.1, 0.2, 1)' }
+            { duration: 1000, easing: 'cubic-bezier(0.45, 0, 0.2, 1)' }
+        );
+        const done = () => ghost.remove();
+        anim.addEventListener('finish', done);
+        anim.addEventListener('cancel', done);
+    }
+
+    // A being is destroyed: the hit lands, the card cracks and bursts into
+    // shards that tumble away, and its lane shudders with the impact.
+    function animateDestroy(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        if (prefersReducedMotion()) { fxReducedFade(fx, 'DESTROYED', 'fx-label-destroy'); return; }
+        const { rect } = fx;
+        fxBurst(rect, '⚔️', 'fx-burst-destroy');
+        fxLabel(rect, 'DESTROYED', 'fx-label-destroy');
+        const flash = document.createElement('div');
+        flash.className = 'fx-impact';
+        flash.style.left = `${rect.left + rect.width / 2}px`;
+        flash.style.top = `${rect.top + rect.height / 2}px`;
+        flash.style.width = `${rect.width * 1.6}px`;
+        flash.style.height = `${rect.width * 1.6}px`;
+        document.body.appendChild(flash);
+        const flashAnim = flash.animate(
+            [
+                { transform: 'translate(-50%, -50%) scale(0.2)', opacity: 0.95 },
+                { transform: 'translate(-50%, -50%) scale(1.25)', opacity: 0 },
+            ],
+            { duration: 420, easing: 'ease-out' }
+        );
+        const doneFlash = () => flash.remove();
+        flashAnim.addEventListener('finish', doneFlash);
+        flashAnim.addEventListener('cancel', doneFlash);
+
+        // The card breaks along fixed fault lines: six shards that, laid back
+        // together, are exactly the card.
+        const shards = [
+            { clip: 'polygon(0% 0%, 55% 0%, 40% 30%, 0% 38%)', dir: [-1, -1] },
+            { clip: 'polygon(55% 0%, 100% 0%, 100% 34%, 62% 40%, 40% 30%)', dir: [1, -1] },
+            { clip: 'polygon(0% 38%, 40% 30%, 62% 40%, 48% 64%, 0% 70%)', dir: [-1.2, 0.1] },
+            { clip: 'polygon(62% 40%, 100% 34%, 100% 72%, 48% 64%)', dir: [1.2, 0.2] },
+            { clip: 'polygon(0% 70%, 48% 64%, 36% 100%, 0% 100%)', dir: [-0.8, 1] },
+            { clip: 'polygon(48% 64%, 100% 72%, 100% 100%, 36% 100%)', dir: [0.9, 1] },
+        ];
+        shards.forEach(({ clip, dir }, i) => {
+            const shard = fxGhost(rect, fx.node.cloneNode(true), 'fx-shard');
+            shard.style.clipPath = clip;
+            shard.style.webkitClipPath = clip;
+            const dist = rect.width * (0.55 + Math.random() * 0.45);
+            const dx = dir[0] * dist;
+            const dy = dir[1] * dist + rect.height * 0.35;
+            const spin = (dir[0] > 0 ? 1 : -1) * (25 + Math.random() * 50);
+            const anim = shard.animate(
+                [
+                    { transform: 'translate(0,0) rotate(0deg)', filter: 'brightness(1)', opacity: 1 },
+                    { transform: 'translate(0,0) rotate(0deg)', filter: 'brightness(2.2) saturate(0.4)', opacity: 1, offset: 0.16 },
+                    { transform: `translate(${dx * 0.35}px, ${dy * 0.15 - 10}px) rotate(${spin * 0.4}deg)`, filter: 'brightness(1.3)', opacity: 1, offset: 0.4 },
+                    { transform: `translate(${dx}px, ${dy}px) rotate(${spin}deg)`, filter: 'brightness(0.5) grayscale(0.8)', opacity: 0 },
+                ],
+                { duration: 950 + i * 25, easing: 'cubic-bezier(0.25, 0.4, 0.5, 1)' }
+            );
+            const done = () => shard.remove();
+            anim.addEventListener('finish', done);
+            anim.addEventListener('cancel', done);
+        });
+        fxParticles(rect, { count: 9, cls: 'fx-mote-destroy', spread: 1.1, duration: 700 });
+        // The blow carries into the lane the card stood in.
+        const prev = app.prevBoardRects && app.prevBoardRects.get(cardId);
+        const laneEl = prev && prev.laneId != null && ui.lanes
+            && ui.lanes.querySelector(`.lane[data-location-id="${CSS.escape(String(prev.laneId))}"]`);
+        if (laneEl && laneEl.animate) {
+            laneEl.animate(
+                [
+                    { transform: 'translate(0, 0)' },
+                    { transform: 'translate(-4px, 1px)', offset: 0.2 },
+                    { transform: 'translate(4px, -1px)', offset: 0.45 },
+                    { transform: 'translate(-2px, 0)', offset: 0.7 },
+                    { transform: 'translate(0, 0)' },
+                ],
+                { duration: 320, easing: 'ease-out' }
+            );
+        }
+    }
+
+    // A being is sacrificed by its own side: it flares with heat and burns
+    // away from the bottom up, embers rising off the burning edge.
+    function animateSacrifice(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        if (prefersReducedMotion()) { fxReducedFade(fx, 'SACRIFICED', 'fx-label-sacrifice'); return; }
+        const { rect } = fx;
+        const ghost = fxGhost(rect, fx.node, 'fx-sacrifice');
+        fxBurst(rect, '🔥', 'fx-burst-sacrifice');
+        fxLabel(rect, 'SACRIFICED', 'fx-label-sacrifice');
+        const burn = ghost.animate(
+            [
+                { clipPath: 'inset(0% 0% 0% 0%)', filter: 'brightness(1) sepia(0) saturate(1)', transform: 'translateY(0) scale(1)' },
+                { clipPath: 'inset(0% 0% 0% 0%)', filter: 'brightness(1.5) sepia(0.6) saturate(2.2)', transform: 'translateY(-3px) scale(1.04)', offset: 0.22 },
+                { clipPath: 'inset(0% 0% 45% 0%)', filter: 'brightness(1.25) sepia(0.9) saturate(2.5) hue-rotate(-12deg)', transform: 'translateY(-6px) scale(1.02)', offset: 0.6 },
+                { clipPath: 'inset(0% 0% 100% 0%)', filter: 'brightness(0.6) sepia(1) saturate(1.2)', transform: 'translateY(-10px) scale(1)' },
+            ],
+            { duration: 1250, easing: 'ease-in', fill: 'forwards' }
+        );
+        // The burning edge: a band of fire climbing the card with the burn.
+        const edge = document.createElement('div');
+        edge.className = 'fx-burn-edge';
+        edge.style.left = `${rect.left - 4}px`;
+        edge.style.width = `${rect.width + 8}px`;
+        edge.style.top = `${rect.top + rect.height}px`;
+        document.body.appendChild(edge);
+        const edgeAnim = edge.animate(
+            [
+                { transform: 'translateY(-50%) scaleY(0.4)', opacity: 0 },
+                { transform: 'translateY(-50%) scaleY(1)', opacity: 1, offset: 0.22 },
+                { transform: `translateY(calc(-50% - ${rect.height * 0.45}px)) scaleY(1.15)`, opacity: 1, offset: 0.6 },
+                { transform: `translateY(calc(-50% - ${rect.height + 10}px)) scaleY(0.6)`, opacity: 0 },
+            ],
+            { duration: 1250, easing: 'ease-in' }
+        );
+        const done = () => { ghost.remove(); edge.remove(); };
+        burn.addEventListener('finish', done);
+        burn.addEventListener('cancel', done);
+        edgeAnim.addEventListener('cancel', () => edge.remove());
+        fxParticles(rect, { count: 14, cls: 'fx-mote-ember', spread: 0.45, rise: rect.height * 0.9, duration: 1300 });
+    }
+
+    // A card goes back to its owner's hand: it lifts off the board and flies
+    // home — into your hand, or towards the rival who owns it.
+    function animateReturnToHand(cardId, ownerId) {
+        if (!window.Element.prototype.animate) return;
+        const fx = boardCardFx(cardId);
+        if (!fx) return;
+        if (prefersReducedMotion()) { fxReducedFade(fx, 'RETURNED', 'fx-label-move'); return; }
+        const { rect } = fx;
+        const chip = ui.oppChips && ui.oppChips.querySelector(`.opp-chip[data-player-id="${ownerId}"]`);
+        const homeEl = Number(ownerId) === cfg().player_id
+            ? ui.hand
+            : ((chip && chip.offsetParent) ? chip : ui.oppHand);
+        const home = homeEl && homeEl.getBoundingClientRect();
+        const ghost = fxGhost(rect, fx.node, 'fx-return');
+        fxLabel(rect, 'RETURNED', 'fx-label-move');
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = home && home.width ? home.left + home.width / 2 - cx : 0;
+        const dy = home && home.width ? home.top + home.height / 2 - cy : 80;
+        const anim = ghost.animate(
+            [
+                { transform: 'translate(0,0) scale(1) rotate(0deg)', opacity: 1 },
+                { transform: 'translate(0,-18px) scale(1.08) rotate(-4deg)', opacity: 1, offset: 0.25 },
+                { transform: `translate(${dx}px, ${dy}px) scale(0.45) rotate(6deg)`, opacity: 0.1 },
+            ],
+            { duration: 820, easing: 'cubic-bezier(0.45, 0, 0.25, 1)' }
         );
         const done = () => ghost.remove();
         anim.addEventListener('finish', done);
@@ -1996,8 +2240,20 @@ export function createGameController(ui, cardStack) {
             app.lanPollTimer = null;
             if (!isLanGame() || app.lanReconnecting) return;
             try {
-                await refresh();
+                const fresh = await fetchSnapshot();
                 app.lanPollFails = 0;
+                if (!isLanGame() || app.lanReconnecting) return;
+                // Most polls find the host exactly where it was. Re-rendering an
+                // unchanged board would still close whatever the player opened
+                // while waiting (a lane's stack, an underworld), every 0.9s —
+                // so only a real change redraws; otherwise just keep watching.
+                const key = JSON.stringify(fresh);
+                if (key === app.lanLastPollKey && app.snapshot) {
+                    scheduleLanPoll();
+                    return;
+                }
+                app.lanLastPollKey = key;
+                rerender(fresh);
             } catch (error) {
                 // One dropped poll is usually a blip; a second in a row means the
                 // host is really unreachable, so escalate to the reconnect flow.

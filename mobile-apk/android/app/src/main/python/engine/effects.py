@@ -17,7 +17,7 @@ this module.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Union
 
 from . import catalog, primitives as prim, sealed
@@ -259,6 +259,17 @@ def revealed_deck_cards(state: GameState, player_idx: int) -> tuple[str, ...]:
 # Reusable effect factories
 # --------------------------------------------------------------------------
 
+def revive_destinations(rt: Any, state: GameState, player_idx: int) -> list[int]:
+    """Locations a card of `player_idx` can be revived to right now: reachable,
+    not full, and not capped against them by an enemy top card (Agamemnon)."""
+    return [
+        i for i, loc in enumerate(state.locations)
+        if player_idx in loc.accessible
+        and prim.location_total_cards(loc) < loc.capacity
+        and not rt.enemy_stack_capped(state, i, player_idx)
+    ]
+
+
 def tutor_effect(state: GameState, player_idx: int, card_id: str, location_idx: int, count: int, pred: Predicate) -> EffectResult:
     """Draw `count` matching cards from the deck, letting the player pick.
 
@@ -316,10 +327,7 @@ def revive_choice_on_enter(
             return state
         # No reachable location has room for the revived card: don't offer a
         # choice that would silently do nothing.
-        if not any(
-            player_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
-            for loc in state.locations
-        ):
+        if not revive_destinations(rt, state, player_idx):
             return state
         options = candidates(state, player_idx, location_idx)
         if not options:
@@ -466,15 +474,29 @@ def defect_to_enemy_side() -> EnterHook:
 #
 # Cards whose text hits every opponent (e.g. "Each opponent must banish one
 # of their beings") resolve one opponent at a time in clockwise order. The
-# chain state rides in PendingChoice.follow_up; the rules runtime calls
-# `continue_opponent_chain` after each step resolves.
+# chain state rides at the end of PendingChoice.follow_up, after whatever the
+# choice itself keeps there:
+#
+#     (..own entries.., OPP_CHAIN, kind, actor, source, location, *remaining,
+#                       THEN, kind, actor, source, location, *remaining, ...)
+#
+# Each segment carries its own source card and location, so a chain survives
+# being handed on to a choice some trigger opened in between (a discarded
+# Sacred Scarab asking where to rise). Segments after the first are chains
+# queued behind it — two triggers that each hit every opponent (Inanna
+# returning beside the Anunnaki) — and start once the one ahead finishes.
+# The rules runtime calls `continue_opponent_chain` after each step resolves.
 # --------------------------------------------------------------------------
 
 OPP_CHAIN_MARKER = "OPP_CHAIN"
+CHAIN_THEN = "THEN"
 
 # chain_kind -> spec(rt, state, actor_idx, opp_idx, source_card_id, location_idx) ->
 #   (chooser: "actor"|"opponent", choice_kind, options, prompt) | None (skip this opponent)
 _OPP_CHAIN_SPECS: dict[str, Callable[[Any, GameState, int, int, str, "int | None"], "tuple[str, str, list[str], str] | None"]] = {}
+
+# (chain_kind, actor_idx, source_card_id, location_idx, remaining seats)
+ChainSegment = tuple[str, int, str, "int | None", tuple[int, ...]]
 
 
 def register_opponent_chain(chain_kind: str, spec) -> None:
@@ -483,8 +505,45 @@ def register_opponent_chain(chain_kind: str, spec) -> None:
     _OPP_CHAIN_SPECS[chain_kind] = spec
 
 
-def _chain_follow_up(chain_kind: str, actor_idx: int, remaining: list[int]) -> tuple[str, ...]:
-    return (OPP_CHAIN_MARKER, chain_kind, str(actor_idx), *[str(i) for i in remaining])
+def own_follow_up(follow_up: tuple[str, ...]) -> tuple[str, ...]:
+    """The entries a choice keeps for itself, without any chain riding along."""
+    if OPP_CHAIN_MARKER in follow_up:
+        return follow_up[: follow_up.index(OPP_CHAIN_MARKER)]
+    return follow_up
+
+
+def chain_tail(follow_up: tuple[str, ...]) -> tuple[str, ...]:
+    """The chain riding at the end of a follow_up (empty when there is none)."""
+    if OPP_CHAIN_MARKER in follow_up:
+        return follow_up[follow_up.index(OPP_CHAIN_MARKER):]
+    return tuple()
+
+
+def _encode_chain(segments: list[ChainSegment]) -> tuple[str, ...]:
+    encoded: list[str] = []
+    for kind, actor_idx, source_card_id, location_idx, remaining in segments:
+        encoded.append(OPP_CHAIN_MARKER if not encoded else CHAIN_THEN)
+        encoded.extend((kind, str(actor_idx), source_card_id, "" if location_idx is None else str(location_idx)))
+        encoded.extend(str(i) for i in remaining)
+    return tuple(encoded)
+
+
+def _decode_chain(tail: tuple[str, ...]) -> list[ChainSegment]:
+    segments: list[ChainSegment] = []
+    raw: list[str] = []
+    for token in (*tail[1:], CHAIN_THEN):
+        if token != CHAIN_THEN:
+            raw.append(token)
+            continue
+        kind, actor, source, location, *remaining = raw
+        segments.append((kind, int(actor), source, int(location) if location else None, tuple(int(i) for i in remaining)))
+        raw = []
+    return segments
+
+
+def _all_opponents(state: GameState, actor_idx: int) -> tuple[int, ...]:
+    n = state.n_players
+    return tuple((actor_idx + offset) % n for offset in range(1, n))
 
 
 def start_opponent_chain(
@@ -494,37 +553,68 @@ def start_opponent_chain(
     chain_kind: str,
     source_card_id: str,
     location_idx: int | None,
-    remaining: list[int] | None = None,
+    remaining: "list[int] | tuple[int, ...] | None" = None,
+    queued: "list[ChainSegment] | None" = None,
 ) -> GameState | None:
-    """Open the chain's choice for the first opponent with valid options.
+    """Open the chain's choice for the first opponent with valid options; when
+    this chain has nothing left to do, start the next queued one.
 
-    Returns None when no opponent has anything to do (the effect fizzles).
+    Returns None when no opponent of any chain has anything to do (the
+    effects fizzle).
     """
-    spec = _OPP_CHAIN_SPECS[chain_kind]
-    if remaining is None:
-        n = state.n_players
-        remaining = [(actor_idx + offset) % n for offset in range(1, n)]
-    while remaining:
-        opp_idx, remaining = remaining[0], remaining[1:]
-        step = spec(rt, state, actor_idx, opp_idx, source_card_id, location_idx)
-        if step is None:
-            continue
-        chooser, choice_kind, options, prompt = step
-        chooser_idx = actor_idx if chooser == "actor" else opp_idx
-        return prim.with_pending_choice(
-            state, chooser_idx, choice_kind, source_card_id, location_idx, options, prompt,
-            follow_up=_chain_follow_up(chain_kind, actor_idx, remaining),
-        )
+    segments: list[ChainSegment] = [
+        (chain_kind, actor_idx, source_card_id, location_idx,
+         tuple(_all_opponents(state, actor_idx) if remaining is None else remaining)),
+        *(queued or []),
+    ]
+    while segments:
+        kind, actor, source, location, left = segments[0]
+        spec = _OPP_CHAIN_SPECS[kind]
+        while left:
+            opp_idx, left = left[0], left[1:]
+            step = spec(rt, state, actor, opp_idx, source, location)
+            if step is None:
+                continue
+            chooser, choice_kind, options, prompt = step
+            chooser_idx = actor if chooser == "actor" else opp_idx
+            return prim.with_pending_choice(
+                state, chooser_idx, choice_kind, source, location, options, prompt,
+                follow_up=_encode_chain([(kind, actor, source, location, left), *segments[1:]]),
+            )
+        segments = segments[1:]
     return None
 
 
 def continue_opponent_chain(rt: Any, state: GameState, pending: PendingChoice) -> GameState:
-    """Resume a chain after one of its steps resolved."""
-    chain_kind = pending.follow_up[1]
-    actor_idx = int(pending.follow_up[2])
-    remaining = [int(x) for x in pending.follow_up[3:]]
-    resumed = start_opponent_chain(rt, state, actor_idx, chain_kind, pending.source_card_id, pending.location_id, remaining)
+    """Resume the chain riding on a choice after that choice resolved."""
+    segments = _decode_chain(chain_tail(pending.follow_up))
+    if not segments:
+        return state
+    kind, actor, source, location, remaining = segments[0]
+    resumed = start_opponent_chain(rt, state, actor, kind, source, location, remaining, segments[1:])
     return state if resumed is None else resumed
+
+
+def restart_chain(state: GameState, tail: tuple[str, ...]) -> tuple[str, ...]:
+    """A chain as it stood before its first step opened: every opponent of the
+    actor gets asked again (steps re-read the board, so an opponent who had
+    nothing to give up then is simply skipped again later)."""
+    segments = _decode_chain(tail)
+    if not segments:
+        return tail
+    kind, actor, source, location, _ = segments[0]
+    return _encode_chain([(kind, actor, source, location, _all_opponents(state, actor)), *segments[1:]])
+
+
+def carry_chain(pending: PendingChoice, tail: tuple[str, ...]) -> PendingChoice:
+    """Hand a chain on to `pending`, behind any chain it already carries."""
+    if not tail:
+        return pending
+    own_tail = chain_tail(pending.follow_up)
+    if own_tail:
+        merged = _encode_chain(_decode_chain(own_tail) + _decode_chain(tail))
+        return replace(pending, follow_up=own_follow_up(pending.follow_up) + merged)
+    return replace(pending, follow_up=pending.follow_up + tail)
 
 
 # --------------------------------------------------------------------------
@@ -541,10 +631,7 @@ def _handle_move_to_pending_location(rt: Any, state: GameState, chooser_idx: int
 
 
 def _handle_revive_here(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    open_locations = [
-        i for i, loc in enumerate(state.locations)
-        if chooser_idx in loc.accessible and prim.location_total_cards(loc) < loc.capacity
-    ]
+    open_locations = revive_destinations(rt, state, chooser_idx)
     if len(open_locations) <= 1:
         target = open_locations[0] if open_locations else pending.location_id
         return rt.revive_from_underworld(state, chooser_idx, target, lambda cid: cid == option)
@@ -561,7 +648,9 @@ def _handle_revive_choose_location(rt: Any, state: GameState, chooser_idx: int, 
 
 
 def _handle_put_hand_to_underworld(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    return prim.put_specific_hand_card_to_underworld(state, chooser_idx, option)
+    # Trigger-aware: a card put into the underworld from the hand wakes its
+    # own hook (Wepwawet, Sacred Scarab) and the owner's Nephthys.
+    return rt.put_cards_to_underworld(state, chooser_idx, "hand", [option])
 
 
 def _handle_draw_from_underworld(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
@@ -586,13 +675,22 @@ def _handle_discard_from_hand(rt: Any, state: GameState, chooser_idx: int, optio
     return rt.discard_from_hand(state, chooser_idx, option)
 
 
+def banish_or_sacrifice(rt: Any, state: GameState, chooser_idx: int, card_id: str) -> GameState:
+    """Banish `card_id` — a sacrifice when the chooser gives up a card they
+    command themselves ("each opponent must banish one of their beings",
+    Galla Demons), a plain banish when they take an enemy's."""
+    if prim.controller_idx(state, card_id) == chooser_idx:
+        return rt.sacrifice_card(state, card_id)
+    return rt.banish_card(state, card_id)
+
+
 def _handle_banish(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    return rt.banish_card(state, option)
+    return banish_or_sacrifice(rt, state, chooser_idx, option)
 
 
 def _handle_banish_many(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     for card_id in option.split("|"):
-        state = rt.banish_card(state, card_id)
+        state = banish_or_sacrifice(rt, state, chooser_idx, card_id)
     return state
 
 

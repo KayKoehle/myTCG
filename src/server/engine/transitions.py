@@ -449,20 +449,46 @@ def destroy_card(state: GameState, card_id: str) -> GameState:
     location_idx, side_idx, _ = found
     if effects.behavior_of(card_id).indestructible or is_immortal(state, card_id, location_idx):
         return state
-    state = prim.remove_from_stack(state, card_id, location_idx, side_idx)
+    return _send_from_play_to_underworld(state, card_id, location_idx, side_idx, "destroy")
+
+
+# How a card left play for its owner's underworld, as action_history logs it.
+# The kinds differ only in what the players saw happen (the webapp animates
+# each its own way); the rules treat them all as the card entering the
+# underworld from play.
+LEAVE_PLAY_KINDS = ("banish", "sacrifice", "destroy")
+
+
+def _send_from_play_to_underworld(state: GameState, card_id: str, location_idx: int, side_idx: int, kind: str) -> GameState:
     owner_idx = _card_owner_idx(state, card_id)
+    entries_before = _underworld_entries_this_turn(state, owner_idx)
+    state = prim.remove_from_stack(state, card_id, location_idx, side_idx)
+    state = prim.remove_facedown(state, card_id)
     underworld = list(state.underworlds[owner_idx])
     underworld.append(card_id)
-    state = prim.remove_facedown(state, card_id)
-    return replace(state, underworlds=prim.replace_tuple_index(state.underworlds, owner_idx, tuple(underworld)), beings_left_world_this_turn=True)
+    state = replace(
+        state,
+        underworlds=prim.replace_tuple_index(state.underworlds, owner_idx, tuple(underworld)),
+        beings_left_world_this_turn=True,
+        action_history=state.action_history + (f"{kind}:{state.player_ids[owner_idx]}:{card_id}",),
+    )
+    # "The first time a card enters your underworld each turn" (Nephthys)
+    # counts a card leaving play just like one discarded from the hand.
+    if entries_before == 0:
+        state = _fire_first_underworld_entry_witness(state, owner_idx, card_id)
+    return state
 
 
-def banish_card(state: GameState, card_id: str) -> GameState:
+def banish_card(state: GameState, card_id: str, sacrifice: bool = False) -> GameState:
     """Banish a card: it leaves play into its owner's underworld.
 
     Banished cards are not removed from the game — the underworld holds them,
     so revival effects can bring them back. Unlike destroying, banishing goes
     through `indestructible`; immortality still protects.
+
+    `sacrifice` marks a banish its controller chose to pay (Slave, Galla
+    Demons, "each opponent must banish one of their beings"). The rules are
+    the same; only the log — and so the animation — says so.
     """
     found = prim.find_card_in_play(state, card_id)
     if found is None:
@@ -470,29 +496,24 @@ def banish_card(state: GameState, card_id: str) -> GameState:
     location_idx, side_idx, _ = found
     if is_immortal(state, card_id, location_idx):
         return state
-    state = prim.remove_from_stack(state, card_id, location_idx, side_idx)
-    state = prim.remove_facedown(state, card_id)
-    owner_idx = _card_owner_idx(state, card_id)
-    underworld = list(state.underworlds[owner_idx])
-    underworld.append(card_id)
-    return replace(
-        state,
-        underworlds=prim.replace_tuple_index(state.underworlds, owner_idx, tuple(underworld)),
-        beings_left_world_this_turn=True,
-        action_history=state.action_history + (f"banish:{state.player_ids[owner_idx]}:{card_id}",),
-    )
+    return _send_from_play_to_underworld(state, card_id, location_idx, side_idx, "sacrifice" if sacrifice else "banish")
+
+
+def sacrifice_card(state: GameState, card_id: str) -> GameState:
+    return banish_card(state, card_id, sacrifice=True)
 
 
 def _underworld_entries_this_turn(state: GameState, player_idx: int) -> int:
-    """How many cards `player_idx` has sent to their underworld from hand or
-    deck (discarded or silently buried) since the current turn began."""
+    """How many cards have entered `player_idx`'s underworld since the current
+    turn began — discarded or buried from hand or deck, or sent there from
+    play (banished, sacrificed, destroyed)."""
     count = 0
-    discard_prefix = f"discard:{state.player_ids[player_idx]}:"
-    bury_prefix = f"bury:{state.player_ids[player_idx]}:"
+    pid = state.player_ids[player_idx]
+    prefixes = tuple(f"{kind}:{pid}:" for kind in ("discard", "bury", *LEAVE_PLAY_KINDS))
     for entry in reversed(state.action_history):
         if entry.startswith("draw_card:") or entry.startswith("end_turn:"):
             break
-        if entry.startswith(discard_prefix) or entry.startswith(bury_prefix):
+        if entry.startswith(prefixes):
             count += 1
     return count
 
@@ -614,7 +635,12 @@ def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:
     hand = list(state.hands[owner_idx])
     hand.append(card_id)
     state = prim.remove_facedown(state, card_id)
-    return replace(state, hands=prim.replace_tuple_index(state.hands, owner_idx, tuple(hand)), beings_left_world_this_turn=True)
+    return replace(
+        state,
+        hands=prim.replace_tuple_index(state.hands, owner_idx, tuple(hand)),
+        beings_left_world_this_turn=True,
+        action_history=state.action_history + (f"return:{state.player_ids[owner_idx]}:{card_id}",),
+    )
 
 
 def move_card(state: GameState, card_id: str, target_location_idx: int, target_side_idx: int | None = None, moving_player_idx: int | None = None) -> GameState:
@@ -743,6 +769,7 @@ def play_named_from_anywhere(state: GameState, player_idx: int, location_idx: in
         hands=tuple(tuple(h) for h in hands),
         decks=tuple(tuple(d) for d in decks),
         underworlds=tuple(tuple(u) for u in underworlds),
+        action_history=with_card.action_history + (f"play_card:{state.player_ids[player_idx]}:{chosen_card}:{location_idx}",),
     )
     return _apply_on_enter(state, player_idx, chosen_card, location_idx)
 
@@ -777,21 +804,22 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
     if revive_hook is not None:
         result = revive_hook(RT, state, player_idx, card_id, location_idx)
         if isinstance(result, Halt):
-            return result.state
+            # The revived card's own trigger is waiting on a choice (Inanna's
+            # banishes). A witness still saw the revival: queue its chain
+            # behind that choice rather than letting the halt swallow it.
+            return _queue_revive_witness(result.state, player_idx, card_id)
         state = result
     # Revival witnesses (e.g. Anunnaki) react while on top of the reviver's
     # stacks — a card that defected onto this side now watches for its new camp.
     if state.pending_choice is not None:
-        return state
-    for loc_idx, side_idx, witness_id in prim.find_cards_in_play(state, lambda cid: effects.behavior_of(cid).on_friendly_revive_while_top is not None):
-        if side_idx != player_idx:
-            continue
-        if prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
-            witness_hook = effects.behavior_of(witness_id).on_friendly_revive_while_top
-            result = witness_hook(RT, state, player_idx, card_id, witness_id, loc_idx)
-            if result is not None:
-                return result
-            break
+        return _queue_revive_witness(state, player_idx, card_id)
+    witness = _revive_witness(state, player_idx)
+    if witness is not None:
+        witness_id, loc_idx = witness
+        witness_hook = effects.behavior_of(witness_id).on_friendly_revive_while_top
+        result = witness_hook(RT, state, player_idx, card_id, witness_id, loc_idx)
+        if result is not None:
+            return result
     # Underworld dwellers can ride along on a revival (Sacred Scarab).
     if state.pending_choice is None:
         for witness_id in state.underworlds[player_idx]:
@@ -804,6 +832,33 @@ def _apply_on_revive(state: GameState, player_idx: int, card_id: str, location_i
     if state.pending_choice is not None:
         return state
     return _resolve_monster_rewards_here(state, location_idx)
+
+
+def _revive_witness(state: GameState, player_idx: int) -> tuple[str, int] | None:
+    """The card watching `player_idx`'s revivals from the top of one of their
+    stacks (Anunnaki), with its location — or None."""
+    for loc_idx, side_idx, witness_id in prim.find_cards_in_play(state, lambda cid: effects.behavior_of(cid).on_friendly_revive_while_top is not None):
+        if side_idx == player_idx and prim.top_card(state.locations[loc_idx], player_idx) == witness_id:
+            return witness_id, loc_idx
+    return None
+
+
+def _queue_revive_witness(state: GameState, player_idx: int, revived_card_id: str) -> GameState:
+    """Fire the revival witness while another choice is still open, by queuing
+    the "each opponent" chain it starts behind that choice. Witness chains are
+    re-read when their turn comes, so they see the board as it is then."""
+    witness = _revive_witness(state, player_idx)
+    if witness is None or state.pending_choice is None:
+        return state
+    witness_id, loc_idx = witness
+    witness_hook = effects.behavior_of(witness_id).on_friendly_revive_while_top
+    opened = witness_hook(RT, replace(state, pending_choice=None), player_idx, revived_card_id, witness_id, loc_idx)
+    if opened is None or opened.pending_choice is None:
+        return state
+    tail = effects.chain_tail(opened.pending_choice.follow_up)
+    if not tail:
+        return state
+    return replace(state, pending_choice=effects.carry_chain(state.pending_choice, effects.restart_chain(state, tail)))
 
 
 def _resolve_all_monster_rewards(state: GameState) -> GameState:
@@ -1290,10 +1345,11 @@ def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameSt
     if kind == "opening_mulligan":
         return _apply_mulligan_choice(state, chooser_idx, option)
 
+    chain = effects.chain_tail(pending.follow_up)
     if option == "PASS":
-        # Even a passed choice may carry an "each opponent" chain marker
+        # Even a passed choice may carry an "each opponent" chain
         # (a trigger's choice that interrupted the chain): resume it.
-        if pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
+        if chain:
             state = effects.continue_opponent_chain(RT, state, pending)
         if state.pending_choice is not None:
             return state
@@ -1304,14 +1360,14 @@ def _apply_choose_option(state: GameState, action: ChooseOptionAction) -> GameSt
         raise ValueError(f"Unhandled choice kind: {kind}")
     state = handler(RT, state, chooser_idx, option, pending)
     # A trigger inside the handler may have opened a fresh choice (e.g. a
-    # discarded Bennu Bird offering to fly back). When the resolved choice
-    # belonged to an "each opponent" chain, hand the chain marker on so the
-    # chain resumes once that new choice settles.
-    if state.pending_choice is not None and not state.pending_choice.follow_up and pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
-        state = replace(state, pending_choice=replace(state.pending_choice, follow_up=pending.follow_up))
+    # discarded Sacred Scarab offering to rise, then asking where). When the
+    # resolved choice carried an "each opponent" chain, hand the chain on so
+    # it resumes once that new choice settles.
+    if state.pending_choice is not None and chain:
+        state = replace(state, pending_choice=effects.carry_chain(state.pending_choice, chain))
     # "Each opponent ..." effects resolve one opponent at a time; open the
     # next opponent's step of the chain before anything else continues.
-    if state.pending_choice is None and pending.follow_up[:1] == (effects.OPP_CHAIN_MARKER,):
+    if state.pending_choice is None and chain:
         state = effects.continue_opponent_chain(RT, state, pending)
     # A reward/choice may have added heroes next to further monsters (or a
     # halted monster pipeline needs to continue) — settle them now.
@@ -1604,6 +1660,14 @@ class _Runtime:
     @staticmethod
     def banish_card(state: GameState, card_id: str) -> GameState:
         return banish_card(state, card_id)
+
+    @staticmethod
+    def sacrifice_card(state: GameState, card_id: str) -> GameState:
+        return sacrifice_card(state, card_id)
+
+    @staticmethod
+    def can_play_at(state: GameState, player_idx: int, card_id: str, location_idx: int) -> bool:
+        return _can_play_at(state, player_idx, card_id, location_idx)
 
     @staticmethod
     def return_from_play_to_hand(state: GameState, card_id: str) -> GameState:

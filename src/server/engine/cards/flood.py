@@ -11,7 +11,7 @@ from typing import Any
 
 from .. import catalog, primitives as prim
 from ..catalog import card, is_human
-from ..effects import CardBehavior, EffectResult, Halt, behavior_of, register, register_choice, tutor
+from ..effects import CardBehavior, EffectResult, Halt, behavior_of, own_follow_up, register, register_choice, tutor
 from ..state import GameState, PendingChoice
 
 DELUGE = "The Great Sumerian Deluge"
@@ -33,9 +33,10 @@ def _farmer_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
         f"{cid}|{loc_idx}"
         for cid in state.hands[player_idx]
         if is_human(cid) and card(cid).cost <= 1
-        for loc_idx, loc in enumerate(state.locations)
-        if prim.location_total_cards(loc) < loc.capacity
-        and not rt.enemy_stack_capped(state, loc_idx, player_idx)
+        for loc_idx in range(len(state.locations))
+        # The same placement rules as a normal play: in FFA an outpost that
+        # isn't yours is out of reach, and full or capped stacks are too.
+        if rt.can_play_at(state, player_idx, cid, loc_idx)
     ]
     if options:
         return Halt(
@@ -169,12 +170,13 @@ register("Shipbuilder", CardBehavior(artifact_discount_while_top=1))
 
 
 def _handle_slave_banish(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    state = rt.banish_card(state, option)
+    state = rt.sacrifice_card(state, option)
     discounts = list(state.next_artifact_discount)
     discounts[chooser_idx] += behavior_of(option).sacrifice_artifact_discount_while_top
     state = replace(state, next_artifact_discount=tuple(discounts))
-    if len(pending.follow_up) == 2:
-        play_card_id, play_location_id = pending.follow_up
+    own = own_follow_up(pending.follow_up)
+    if len(own) == 2:
+        play_card_id, play_location_id = own
         return rt.play_card(state, chooser_idx, play_card_id, int(play_location_id))
     return state
 

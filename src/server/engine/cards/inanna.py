@@ -6,6 +6,7 @@ from typing import Any
 from .. import primitives as prim
 from ..catalog import card, is_being, named
 from ..effects import (
+    CHOICE_HANDLERS,
     CardBehavior,
     EffectResult,
     Halt,
@@ -65,9 +66,21 @@ def _own_beings_here(rt: Any, state: GameState, player_idx: int, location_idx: i
     )
 
 
+def _own_beings_in_play(rt: Any, state: GameState, player_idx: int, exclude: str) -> list[str]:
+    """Every being the player commands anywhere on the board that a banish
+    would actually remove."""
+    return [
+        cid
+        for _, side_idx, cid in prim.find_cards_in_play(state, is_being)
+        if side_idx == player_idx and cid != exclude and rt.can_be_banished(state, cid)
+    ]
+
+
 def _ninshubur_enter(rt: Any, state: GameState, player_idx: int, card_id: str, location_idx: int) -> EffectResult:
+    # "you may banish a friendly being to revive her" — any friendly being,
+    # wherever it stands; Inanna then rises wherever there is room.
     if any(card(cid).name == INANNA for cid in state.underworlds[player_idx]):
-        options = _own_beings_here(rt, state, player_idx, location_idx, card_id)
+        options = _own_beings_in_play(rt, state, player_idx, card_id)
         if options:
             return Halt(
                 prim.with_pending_choice(
@@ -79,8 +92,13 @@ def _ninshubur_enter(rt: Any, state: GameState, player_idx: int, card_id: str, l
 
 
 def _handle_banish_friendly_for_inanna(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
-    state = rt.banish_card(state, option)
-    return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(INANNA))
+    state = rt.sacrifice_card(state, option)
+    inanna = next((cid for cid in state.underworlds[chooser_idx] if card(cid).name == INANNA), None)
+    if inanna is None:
+        return state
+    # The sacrifice may have been elsewhere, so Ninšubur's own location can
+    # still be full: Inanna takes the generic revive flow (location choice).
+    return CHOICE_HANDLERS["revive_underworld_here"](rt, state, chooser_idx, inanna, pending)
 
 
 register(INANNA, CardBehavior(on_revive=_inanna_revive))
@@ -100,10 +118,10 @@ register("Šara, Inanna's Beautician", CardBehavior(on_enter=tutor_named(INANNA)
 
 def _handle_use_top_ability(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     if option == "Geshtinanna -> Dumuzid":
-        state = rt.banish_card(state, pending.source_card_id)
+        state = rt.sacrifice_card(state, pending.source_card_id)
         return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(DUMUZID))
     if option == "Dumuzid -> Geshtinanna":
-        state = rt.banish_card(state, pending.source_card_id)
+        state = rt.sacrifice_card(state, pending.source_card_id)
         return rt.revive_from_underworld(state, chooser_idx, pending.location_id, named(GESHTINANNA))
     return state
 
@@ -210,8 +228,10 @@ def _namtar_enter(rt: Any, state: GameState, player_idx: int, card_id: str, loca
 def _handle_namtar_send(rt: Any, state: GameState, chooser_idx: int, option: str, pending: PendingChoice) -> GameState:
     zone, card_id = option.split("|", 1)
     if zone == "battlefield":
-        return rt.banish_card(state, card_id)
-    return prim.put_specific_zone_card_to_underworld(state, chooser_idx, zone, card_id)
+        return rt.sacrifice_card(state, card_id)
+    # Trigger-aware like every other "put into your underworld" (Wepwawet,
+    # Sacred Scarab, Nephthys answer it).
+    return rt.put_cards_to_underworld(state, chooser_idx, zone, [card_id])
 
 
 register("Galla Demons", CardBehavior(on_enter=_galla_demons_enter))

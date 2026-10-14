@@ -985,6 +985,15 @@ export function createMenuController(ui, game, cardStack) {
         const refusal = refuseGuestCall(path, body, guest && guest.playerId);
         if (refusal) throw new Error(refusal);
         const data = await lanPost('', path, body);
+        // A replay records the engine's whole state — every hand, every deck
+        // order — so a guest only gets one once the match is over. Before that
+        // it would be a window onto everybody else's cards.
+        if (path === '/api/replay' && guest) {
+            const phase = data && data.replay && data.replay.final && data.replay.final.phase;
+            if (phase !== 'GAME_OVER') {
+                throw new Error('The host only shares the replay once the match is over.');
+            }
+        }
         if (path === '/api/lan/join' && guest && data && data.ok) {
             guest.playerId = Number(data.player_id);
             guest.seatUid = data.seat_uid;
